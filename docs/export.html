@@ -1,0 +1,934 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tidy Tails - Export Appointments</title>
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Georgia', serif;
+            background: linear-gradient(135deg, #f5ede3 0%, #e8f5f0 100%);
+            color: #333;
+            line-height: 1.6;
+            min-height: 100vh;
+        }
+
+        /* Sticky Navigation */
+        nav {
+            position: sticky;
+            top: 0;
+            background: #2d5a4f;
+            color: #f5ede3;
+            padding: 1rem 2rem;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            z-index: 100;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 2rem;
+        }
+
+        nav a {
+            color: #f5ede3;
+            text-decoration: none;
+            font-size: 0.95rem;
+            transition: opacity 0.3s;
+        }
+
+        nav a:hover {
+            opacity: 0.8;
+        }
+
+        .nav-left {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .nav-right {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        /* Main Container */
+        .container {
+            max-width: 1200px;
+            margin: 2rem auto;
+            padding: 0 1rem;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 3rem;
+            background: white;
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        }
+
+        .header h1 {
+            color: #2d5a4f;
+            font-size: 2.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .header p {
+            color: #666;
+            font-size: 1rem;
+        }
+
+        /* Controls Section */
+        .controls {
+            background: white;
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+            margin-bottom: 2rem;
+        }
+
+        .control-group {
+            margin-bottom: 2rem;
+        }
+
+        .control-group:last-child {
+            margin-bottom: 0;
+        }
+
+        .control-group label {
+            display: block;
+            font-weight: bold;
+            color: #2d5a4f;
+            margin-bottom: 0.5rem;
+            font-size: 0.95rem;
+        }
+
+        .date-range {
+            display: flex;
+            gap: 1.5rem;
+            margin-bottom: 1.5rem;
+            flex-wrap: wrap;
+        }
+
+        .date-input {
+            flex: 1;
+            min-width: 200px;
+        }
+
+        .date-input input {
+            width: 100%;
+            padding: 0.75rem;
+            border: 2px solid #d4c4b0;
+            border-radius: 4px;
+            font-family: inherit;
+            font-size: 1rem;
+            transition: border-color 0.3s;
+        }
+
+        .date-input input:focus {
+            outline: none;
+            border-color: #4a8f7f;
+            box-shadow: 0 0 0 3px rgba(74, 143, 127, 0.1);
+        }
+
+        .year-buttons {
+            display: flex;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+            margin-bottom: 1.5rem;
+        }
+
+        .year-btn {
+            padding: 0.5rem 1rem;
+            border: 2px solid #d4c4b0;
+            background: white;
+            color: #333;
+            border-radius: 4px;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 0.95rem;
+            transition: all 0.3s;
+        }
+
+        .year-btn:hover {
+            border-color: #4a8f7f;
+            color: #4a8f7f;
+        }
+
+        .year-btn.active {
+            background: #4a8f7f;
+            color: white;
+            border-color: #4a8f7f;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+
+        button {
+            padding: 0.75rem 1.5rem;
+            border: none;
+            border-radius: 4px;
+            font-family: inherit;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-weight: bold;
+        }
+
+        .btn-primary {
+            background: #4a8f7f;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #2d5a4f;
+            box-shadow: 0 4px 12px rgba(74, 143, 127, 0.3);
+        }
+
+        .btn-secondary {
+            background: #f0e8df;
+            color: #2d5a4f;
+            border: 2px solid #d4c4b0;
+        }
+
+        .btn-secondary:hover {
+            background: #e8dfd3;
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        /* Status Messages */
+        .status {
+            padding: 1rem;
+            border-radius: 4px;
+            margin-bottom: 1.5rem;
+            display: none;
+        }
+
+        .status.show {
+            display: block;
+        }
+
+        .status.loading {
+            background: #e3f2fd;
+            color: #1976d2;
+            border-left: 4px solid #1976d2;
+        }
+
+        .status.success {
+            background: #e8f5e9;
+            color: #2e7d32;
+            border-left: 4px solid #2e7d32;
+        }
+
+        .status.error {
+            background: #ffebee;
+            color: #c62828;
+            border-left: 4px solid #c62828;
+        }
+
+        /* Summary Section */
+        .summary {
+            background: white;
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+            margin-bottom: 2rem;
+            display: none;
+        }
+
+        .summary.show {
+            display: block;
+        }
+
+        .summary h3 {
+            color: #2d5a4f;
+            margin-bottom: 1rem;
+            font-size: 1.2rem;
+        }
+
+        .summary-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+        }
+
+        .stat-box {
+            background: #f5ede3;
+            padding: 1rem;
+            border-radius: 4px;
+            border-left: 4px solid #4a8f7f;
+        }
+
+        .stat-label {
+            font-size: 0.85rem;
+            color: #666;
+            text-transform: uppercase;
+            margin-bottom: 0.25rem;
+        }
+
+        .stat-value {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #2d5a4f;
+        }
+
+        /* Preview Table */
+        .preview-section {
+            background: white;
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+            margin-bottom: 2rem;
+            display: none;
+            overflow-x: auto;
+        }
+
+        .preview-section.show {
+            display: block;
+        }
+
+        .preview-section h3 {
+            color: #2d5a4f;
+            margin-bottom: 1rem;
+            font-size: 1.2rem;
+        }
+
+        .preview-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9rem;
+        }
+
+        .preview-table thead {
+            background: #2d5a4f;
+            color: white;
+        }
+
+        .preview-table th {
+            padding: 0.75rem;
+            text-align: left;
+            font-weight: bold;
+            border: 1px solid #d4c4b0;
+        }
+
+        .preview-table td {
+            padding: 0.75rem;
+            border: 1px solid #d4c4b0;
+        }
+
+        .preview-table tbody tr:nth-child(even) {
+            background: #f9f7f4;
+        }
+
+        .preview-table tbody tr:hover {
+            background: #f0e8df;
+        }
+
+        .table-note {
+            font-size: 0.85rem;
+            color: #666;
+            margin-top: 0.5rem;
+            font-style: italic;
+        }
+
+        /* Loading Spinner */
+        .spinner {
+            display: inline-block;
+            width: 1rem;
+            height: 1rem;
+            border: 2px solid rgba(29, 53, 87, 0.3);
+            border-radius: 50%;
+            border-top-color: #1d3557;
+            animation: spin 0.8s linear infinite;
+            margin-right: 0.5rem;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            nav {
+                flex-direction: column;
+                gap: 1rem;
+                align-items: flex-start;
+            }
+
+            .nav-left, .nav-right {
+                width: 100%;
+            }
+
+            .header h1 {
+                font-size: 1.8rem;
+            }
+
+            .date-range {
+                flex-direction: column;
+            }
+
+            .date-input {
+                min-width: auto;
+            }
+
+            .button-group {
+                flex-direction: column;
+            }
+
+            button {
+                width: 100%;
+            }
+
+            .preview-table {
+                font-size: 0.8rem;
+            }
+
+            .preview-table th,
+            .preview-table td {
+                padding: 0.5rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav>
+        <div class="nav-left">
+            <a href="home.html">← Tidy Tails Hub</a>
+        </div>
+        <div class="nav-right">
+            <a href="index.html">Client App →</a>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <h1>Export Appointments</h1>
+            <p>Download appointment data as an Excel spreadsheet</p>
+        </div>
+
+        <!-- Controls -->
+        <div class="controls">
+            <div class="control-group">
+                <label>Quick Select Year</label>
+                <div class="year-buttons">
+                    <button class="year-btn" data-year="2023">2023</button>
+                    <button class="year-btn" data-year="2024">2024</button>
+                    <button class="year-btn" data-year="2025">2025</button>
+                    <button class="year-btn active" data-year="2026">2026</button>
+                </div>
+            </div>
+
+            <div class="control-group">
+                <label>Custom Date Range</label>
+                <div class="date-range">
+                    <div class="date-input">
+                        <label for="fromDate" style="display: block; font-size: 0.85rem; margin-bottom: 0.25rem;">From</label>
+                        <input type="date" id="fromDate">
+                    </div>
+                    <div class="date-input">
+                        <label for="toDate" style="display: block; font-size: 0.85rem; margin-bottom: 0.25rem;">To</label>
+                        <input type="date" id="toDate">
+                    </div>
+                </div>
+            </div>
+
+            <div class="status" id="status"></div>
+
+            <div class="button-group">
+                <button class="btn-primary" id="exportBtn">Export to Excel</button>
+                <button class="btn-secondary" id="allYearsBtn">Download All Years</button>
+            </div>
+        </div>
+
+        <!-- Summary -->
+        <div class="summary" id="summary">
+            <h3>Summary</h3>
+            <div class="summary-stats">
+                <div class="stat-box">
+                    <div class="stat-label">Date Range</div>
+                    <div class="stat-value" id="summaryDateRange">-</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-label">Total Rows</div>
+                    <div class="stat-value" id="summaryRows">0</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-label">Total Gross</div>
+                    <div class="stat-value" id="summaryGross">$0.00</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-label">Total Net</div>
+                    <div class="stat-value" id="summaryNet">$0.00</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Preview Table -->
+        <div class="preview-section" id="previewSection">
+            <h3>Preview (First 20 Rows)</h3>
+            <div style="overflow-x: auto;">
+                <table class="preview-table" id="previewTable">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Client Name</th>
+                            <th>Phone</th>
+                            <th>Pet Name</th>
+                            <th>Breed</th>
+                            <th>Work</th>
+                            <th>Wage</th>
+                            <th>Fee</th>
+                            <th>Tip</th>
+                            <th>Wages Pd Cash</th>
+                            <th>Fee Paid Cash</th>
+                            <th>Fee Paid Debit</th>
+                            <th>Rent from Cash</th>
+                            <th>Rent from Debit</th>
+                            <th>Net</th>
+                            <th>Gross</th>
+                        </tr>
+                    </thead>
+                    <tbody id="previewTableBody"></tbody>
+                </table>
+            </div>
+            <div class="table-note" id="previewNote"></div>
+        </div>
+    </div>
+
+    <script>
+        // Supabase Configuration
+        const SUPABASE_URL = 'https://pgkwovokciaqnbhpttba.supabase.co';
+        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBna3dvdm9rY2lhcW5iaHB0dGJhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3NjU4ODUsImV4cCI6MjA5MTM0MTg4NX0.5ZQHpyH17dcCumR-wZdJMuo7BahBXqKmMzA-3U-U504';
+
+        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+        // DOM Elements
+        const fromDateInput = document.getElementById('fromDate');
+        const toDateInput = document.getElementById('toDate');
+        const exportBtn = document.getElementById('exportBtn');
+        const allYearsBtn = document.getElementById('allYearsBtn');
+        const statusDiv = document.getElementById('status');
+        const summaryDiv = document.getElementById('summary');
+        const previewSection = document.getElementById('previewSection');
+        const previewTableBody = document.getElementById('previewTableBody');
+        const previewNote = document.getElementById('previewNote');
+        const yearBtns = document.querySelectorAll('.year-btn');
+
+        // Initialize with current year
+        const currentYear = new Date().getFullYear();
+        const today = new Date();
+
+        function setDateRange(year) {
+            const fromDate = new Date(year, 0, 1);
+            const toDate = new Date(year, 11, 31);
+
+            fromDateInput.value = formatDateForInput(fromDate);
+            toDateInput.value = formatDateForInput(toDate);
+        }
+
+        function formatDateForInput(date) {
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+        }
+
+        function formatDateForDisplay(dateStr) {
+            const date = new Date(dateStr + 'T00:00:00');
+            const day = date.getDate();
+            const month = date.toLocaleString('en-US', { month: 'short' });
+            const year = String(date.getFullYear()).slice(-2);
+            return `${day}-${month}-${year}`;
+        }
+
+        // Set initial date range to Jan 1 - today of current year
+        setDateRange(currentYear);
+        toDateInput.value = formatDateForInput(today);
+
+        // Year button handlers
+        yearBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                yearBtns.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                setDateRange(parseInt(btn.dataset.year));
+            });
+        });
+
+        // Update date range on input change
+        fromDateInput.addEventListener('change', () => {
+            yearBtns.forEach(b => b.classList.remove('active'));
+        });
+        toDateInput.addEventListener('change', () => {
+            yearBtns.forEach(b => b.classList.remove('active'));
+        });
+
+        // Show status message
+        function showStatus(message, type = 'loading') {
+            statusDiv.textContent = '';
+            statusDiv.className = `status show ${type}`;
+
+            if (type === 'loading') {
+                const spinner = document.createElement('span');
+                spinner.className = 'spinner';
+                statusDiv.appendChild(spinner);
+            }
+
+            const text = document.createTextNode(message);
+            statusDiv.appendChild(text);
+        }
+
+        function hideStatus() {
+            statusDiv.classList.remove('show');
+        }
+
+        // Fetch and process appointments
+        async function fetchAppointments(fromDate, toDate) {
+            try {
+                showStatus('Fetching appointment data from Supabase...');
+
+                // Fetch appointments with status='completed' in the date range
+                const { data: appointments, error: appointmentError } = await supabase
+                    .from('appointments')
+                    .select('*')
+                    .gte('date', fromDate)
+                    .lte('date', toDate)
+                    .eq('status', 'completed')
+                    .order('date', { ascending: true });
+
+                if (appointmentError) throw appointmentError;
+
+                if (!appointments || appointments.length === 0) {
+                    showStatus('No appointments found for the selected date range.', 'error');
+                    return [];
+                }
+
+                showStatus(`Found ${appointments.length} appointments. Fetching client and pet details...`);
+
+                // Fetch all clients and pets
+                const { data: clients, error: clientError } = await supabase
+                    .from('clients')
+                    .select('*');
+                if (clientError) throw clientError;
+
+                const { data: pets, error: petError } = await supabase
+                    .from('pets')
+                    .select('*');
+                if (petError) throw petError;
+
+                // Create lookup maps
+                const clientMap = {};
+                clients.forEach(c => {
+                    clientMap[c.id] = c;
+                });
+
+                const petMap = {};
+                pets.forEach(p => {
+                    petMap[p.id] = p;
+                });
+
+                // Transform appointments to match Sam's spreadsheet format
+                const rows = appointments.map(apt => {
+                    const client = clientMap[apt.client_id] || {};
+                    const pet = apt.pet_id ? petMap[apt.pet_id] : {};
+
+                    // Determine payment methods from notes
+                    const notes = apt.notes || '';
+                    const paymentMethod = notes.includes('payment_method: cash') ? 'cash' : 'debit';
+
+                    // Calculate fees based on payment method
+                    let feePaidCash = 0;
+                    let feePaidDebit = 0;
+                    if (paymentMethod === 'cash') {
+                        feePaidCash = apt.fee || 0;
+                    } else {
+                        feePaidDebit = apt.fee || 0;
+                    }
+
+                    // Determine rent based on payment method
+                    let rentCash = 0;
+                    let rentDebit = 0;
+                    if (apt.rent_paid) {
+                        if (paymentMethod === 'cash') {
+                            rentCash = apt.rent_paid;
+                        } else {
+                            rentDebit = apt.rent_paid;
+                        }
+                    }
+
+                    const grossAmount = (apt.fee || 0) + (apt.tip || 0);
+
+                    return {
+                        date: formatDateForDisplay(apt.date),
+                        clientName: `${client.first_name || ''} ${client.last_name || ''}`.trim() || 'N/A',
+                        phone: client.phone || '',
+                        petName: pet.name || '',
+                        breed: pet.breed || '',
+                        work: apt.time_slot || '',
+                        wage: '',
+                        fee: apt.fee || 0,
+                        tip: apt.tip || 0,
+                        wagesPdCash: 0,
+                        feePaidCash: feePaidCash,
+                        feePaidDebit: feePaidDebit,
+                        rentCash: rentCash,
+                        rentDebit: rentDebit,
+                        net: apt.net || 0,
+                        gross: grossAmount,
+                        rawDate: apt.date // For sorting
+                    };
+                });
+
+                hideStatus();
+                return rows;
+            } catch (error) {
+                console.error('Error fetching appointments:', error);
+                showStatus(`Error: ${error.message}`, 'error');
+                return [];
+            }
+        }
+
+        // Display preview and summary
+        function displayPreview(rows) {
+            if (rows.length === 0) {
+                previewSection.classList.remove('show');
+                summaryDiv.classList.remove('show');
+                return;
+            }
+
+            // Update summary
+            const totalGross = rows.reduce((sum, r) => sum + r.gross, 0);
+            const totalNet = rows.reduce((sum, r) => sum + r.net, 0);
+            const dateRange = `${rows[0].date} to ${rows[rows.length - 1].date}`;
+
+            document.getElementById('summaryDateRange').textContent = dateRange;
+            document.getElementById('summaryRows').textContent = rows.length;
+            document.getElementById('summaryGross').textContent = `$${totalGross.toFixed(2)}`;
+            document.getElementById('summaryNet').textContent = `$${totalNet.toFixed(2)}`;
+            summaryDiv.classList.add('show');
+
+            // Display preview table (first 20 rows)
+            previewTableBody.innerHTML = '';
+            const previewRows = rows.slice(0, 20);
+
+            previewRows.forEach(row => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${row.date}</td>
+                    <td>${row.clientName}</td>
+                    <td>${row.phone}</td>
+                    <td>${row.petName}</td>
+                    <td>${row.breed}</td>
+                    <td>${row.work}</td>
+                    <td>${row.wage ? `$${row.wage.toFixed(2)}` : '-'}</td>
+                    <td>${row.fee ? `$${row.fee.toFixed(2)}` : '-'}</td>
+                    <td>${row.tip ? `$${row.tip.toFixed(2)}` : '-'}</td>
+                    <td>${row.wagesPdCash ? `$${row.wagesPdCash.toFixed(2)}` : '-'}</td>
+                    <td>${row.feePaidCash ? `$${row.feePaidCash.toFixed(2)}` : '-'}</td>
+                    <td>${row.feePaidDebit ? `$${row.feePaidDebit.toFixed(2)}` : '-'}</td>
+                    <td>${row.rentCash ? `$${row.rentCash.toFixed(2)}` : '-'}</td>
+                    <td>${row.rentDebit ? `$${row.rentDebit.toFixed(2)}` : '-'}</td>
+                    <td>${row.net ? `$${row.net.toFixed(2)}` : '-'}</td>
+                    <td>${row.gross ? `$${row.gross.toFixed(2)}` : '-'}</td>
+                `;
+                previewTableBody.appendChild(tr);
+            });
+
+            previewNote.textContent = rows.length > 20
+                ? `Showing first 20 of ${rows.length} rows. Download to see all data.`
+                : `All ${rows.length} rows shown.`;
+
+            previewSection.classList.add('show');
+        }
+
+        // Create Excel workbook
+        function createExcelWorkbook(rows, sheetName = '2026') {
+            const columnHeaders = [
+                'Date',
+                'Client Name',
+                'Phone',
+                'Pet Name',
+                'Breed',
+                'work',
+                'wage',
+                'Fee',
+                'Tip',
+                'wages pd cash',
+                'Fee Paid Cash',
+                'Fee Paid Debit',
+                'Rent from cash',
+                'Rent from Debit',
+                'Net',
+                'Gross'
+            ];
+
+            // Prepare data for Excel
+            const excelData = [columnHeaders];
+            rows.forEach(row => {
+                excelData.push([
+                    row.date,
+                    row.clientName,
+                    row.phone,
+                    row.petName,
+                    row.breed,
+                    row.work,
+                    row.wage || '',
+                    row.fee || '',
+                    row.tip || '',
+                    row.wagesPdCash || '',
+                    row.feePaidCash || '',
+                    row.feePaidDebit || '',
+                    row.rentCash || '',
+                    row.rentDebit || '',
+                    row.net || '',
+                    row.gross || ''
+                ]);
+            });
+
+            // Create workbook and worksheet
+            const ws = XLSX.utils.aoa_to_sheet(excelData);
+
+            // Format header row
+            for (let i = 0; i < columnHeaders.length; i++) {
+                const cellRef = XLSX.utils.encode_cell({ r: 0, c: i });
+                if (!ws[cellRef]) continue;
+                ws[cellRef].s = {
+                    font: { bold: true, color: { rgb: 'FFFFFF' } },
+                    fill: { fgColor: { rgb: '2d5a4f' } },
+                    alignment: { horizontal: 'center', vertical: 'center' }
+                };
+            }
+
+            // Set column widths
+            const colWidths = [12, 18, 14, 14, 12, 10, 10, 10, 10, 14, 14, 14, 14, 14, 12, 12];
+            ws['!cols'] = colWidths.map(w => ({ wch: w }));
+
+            // Format currency columns
+            const currencyCols = [7, 8, 9, 10, 11, 12, 13, 14, 15]; // Fee, Tip, wages pd cash, Fee Paid Cash, Fee Paid Debit, Rent from cash, Rent from Debit, Net, Gross
+            for (let i = 1; i < excelData.length; i++) {
+                currencyCols.forEach(col => {
+                    const cellRef = XLSX.utils.encode_cell({ r: i, c: col });
+                    if (ws[cellRef]) {
+                        ws[cellRef].z = '"$"#,##0.00';
+                    }
+                });
+            }
+
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, sheetName);
+
+            return wb;
+        }
+
+        // Export to Excel
+        async function exportToExcel() {
+            const fromDate = fromDateInput.value;
+            const toDate = toDateInput.value;
+
+            if (!fromDate || !toDate) {
+                showStatus('Please select both start and end dates.', 'error');
+                return;
+            }
+
+            const rows = await fetchAppointments(fromDate, toDate);
+            if (rows.length === 0) return;
+
+            displayPreview(rows);
+
+            try {
+                showStatus('Generating Excel file...');
+                const year = new Date(fromDate).getFullYear();
+                const wb = createExcelWorkbook(rows, year.toString());
+
+                XLSX.writeFile(wb, `Tidy Tails - ${year}.xlsx`);
+                showStatus(`Successfully exported ${rows.length} appointments!`, 'success');
+            } catch (error) {
+                console.error('Error creating Excel file:', error);
+                showStatus(`Error: ${error.message}`, 'error');
+            }
+        }
+
+        // Export all years
+        async function exportAllYears() {
+            const currentYear = new Date().getFullYear();
+            const years = [2023, 2024, 2025, 2026];
+
+            try {
+                showStatus('Fetching appointments for all years...');
+
+                const wb = XLSX.utils.book_new();
+                let totalRows = 0;
+
+                for (const year of years) {
+                    const fromDate = `${year}-01-01`;
+                    const toDate = `${year}-12-31`;
+
+                    const rows = await fetchAppointments(fromDate, toDate);
+                    if (rows.length > 0) {
+                        const columnHeaders = [
+                            'Date', 'Client Name', 'Phone', 'Pet Name', 'Breed',
+                            'work', 'wage', 'Fee', 'Tip', 'wages pd cash',
+                            'Fee Paid Cash', 'Fee Paid Debit', 'Rent from cash', 'Rent from Debit', 'Net', 'Gross'
+                        ];
+
+                        const excelData = [columnHeaders];
+                        rows.forEach(row => {
+                            excelData.push([
+                                row.date, row.clientName, row.phone, row.petName, row.breed,
+                                row.work, row.wage || '', row.fee || '', row.tip || '', row.wagesPdCash || '',
+                                row.feePaidCash || '', row.feePaidDebit || '', row.rentCash || '', row.rentDebit || '', row.net || '', row.gross || ''
+                            ]);
+                        });
+
+                        const ws = XLSX.utils.aoa_to_sheet(excelData);
+
+                        // Format header
+                        for (let i = 0; i < columnHeaders.length; i++) {
+                            const cellRef = XLSX.utils.encode_cell({ r: 0, c: i });
+                            if (ws[cellRef]) {
+                                ws[cellRef].s = {
+                                    font: { bold: true, color: { rgb: 'FFFFFF' } },
+                                    fill: { fgColor: { rgb: '2d5a4f' } }
+                                };
+                            }
+                        }
+
+                        ws['!cols'] = [12, 18, 14, 14, 12, 10, 10, 10, 10, 14, 14, 14, 14, 14, 12, 12].map(w => ({ wch: w }));
+
+                        XLSX.utils.book_append_sheet(wb, ws, year.toString());
+                        totalRows += rows.length;
+                    }
+                }
+
+                XLSX.writeFile(wb, 'Tidy Tails - All Years.xlsx');
+                showStatus(`Successfully exported ${totalRows} total appointments across all years!`, 'success');
+            } catch (error) {
+                console.error('Error exporting all years:', error);
+                showStatus(`Error: ${error.message}`, 'error');
+            }
+        }
+
+        // Event listeners
+        exportBtn.addEventListener('click', exportToExcel);
+        allYearsBtn.addEventListener('click', exportAllYears);
+    </script>
+</body>
+</html>
