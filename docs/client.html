@@ -1,0 +1,1801 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#4f7942">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Tidy Tails">
+    <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'><rect fill='%234f7942' width='180' height='180'/><text x='90' y='100' font-size='80' fill='%23f9f6f0' text-anchor='middle' dominant-baseline='middle' font-family='Georgia'>🐾</text></svg>">
+    <title>Tidy Tails - Dog Grooming Scheduler</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary: #4f7942;
+            --bg: #f9f6f0;
+            --border: #ddd6cc;
+            --text: #333;
+            --light-text: #666;
+            --success: #4caf50;
+            --warning: #ffc107;
+            --error: #f44336;
+            --shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        body {
+            font-family: 'Georgia', serif;
+            background-color: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+        }
+
+        /* NAV BAR */
+        .navbar {
+            position: sticky;
+            top: 0;
+            background-color: var(--primary);
+            color: white;
+            padding: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            box-shadow: var(--shadow);
+            z-index: 1000;
+        }
+
+        .navbar a {
+            color: white;
+            text-decoration: none;
+            font-size: 1.1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            transition: opacity 0.2s;
+        }
+
+        .navbar a:hover {
+            opacity: 0.8;
+        }
+
+        .navbar-title {
+            margin-left: auto;
+            font-weight: normal;
+        }
+
+        /* CONTAINER */
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 1rem;
+        }
+
+        /* SCREENS */
+        .screen {
+            display: none;
+        }
+
+        .screen.active {
+            display: block;
+        }
+
+        /* AUTH SCREEN */
+        .auth-container {
+            background: white;
+            border: 2px solid var(--border);
+            border-radius: 8px;
+            padding: 2rem;
+            margin-top: 2rem;
+            text-align: center;
+        }
+
+        .auth-container h1 {
+            color: var(--primary);
+            margin-bottom: 0.5rem;
+            font-size: 1.8rem;
+        }
+
+        .auth-container .subtitle {
+            color: var(--light-text);
+            margin-bottom: 2rem;
+            font-size: 0.95rem;
+        }
+
+        /* FORM STYLES */
+        .form-group {
+            margin-bottom: 1.5rem;
+            text-align: left;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: bold;
+            color: var(--text);
+            font-size: 0.95rem;
+        }
+
+        input[type="text"],
+        input[type="tel"],
+        input[type="email"],
+        input[type="date"],
+        input[type="number"],
+        textarea,
+        select {
+            width: 100%;
+            padding: 0.75rem;
+            border: 2px solid var(--border);
+            border-radius: 4px;
+            font-family: 'Georgia', serif;
+            font-size: 1rem;
+            transition: border-color 0.2s;
+        }
+
+        input[type="text"]:focus,
+        input[type="tel"]:focus,
+        input[type="email"]:focus,
+        input[type="date"]:focus,
+        input[type="number"]:focus,
+        textarea:focus,
+        select:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(79, 121, 66, 0.1);
+        }
+
+        input[type="text"]:disabled,
+        input[type="tel"]:disabled {
+            background-color: #f5f5f5;
+            color: var(--light-text);
+        }
+
+        /* PIN INPUT */
+        .pin-input-group {
+            display: flex;
+            gap: 0.5rem;
+            justify-content: center;
+            margin: 1rem 0;
+        }
+
+        .pin-input {
+            width: 50px;
+            height: 50px;
+            font-size: 1.5rem;
+            text-align: center;
+            border: 2px solid var(--border) !important;
+            border-radius: 4px;
+        }
+
+        /* BUTTONS */
+        button {
+            background-color: var(--primary);
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 4px;
+            font-family: 'Georgia', serif;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            font-weight: bold;
+        }
+
+        button:hover {
+            background-color: #3d5f32;
+        }
+
+        button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+
+        .btn-block {
+            width: 100%;
+            padding: 1rem;
+            font-size: 1.1rem;
+            margin-bottom: 0.75rem;
+        }
+
+        .btn-secondary {
+            background-color: var(--border);
+            color: var(--text);
+        }
+
+        .btn-secondary:hover {
+            background-color: #ccc;
+        }
+
+        .btn-small {
+            padding: 0.5rem 1rem;
+            font-size: 0.9rem;
+        }
+
+        .btn-danger {
+            background-color: var(--error);
+        }
+
+        .btn-danger:hover {
+            background-color: #da190b;
+        }
+
+        /* DASHBOARD */
+        .dashboard-header {
+            background: white;
+            border: 2px solid var(--border);
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .dashboard-header h1 {
+            color: var(--primary);
+            font-size: 1.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .dashboard-header p {
+            color: var(--light-text);
+        }
+
+        .action-buttons {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        @media (max-width: 480px) {
+            .action-buttons {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .card {
+            background: white;
+            border: 2px solid var(--border);
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .card h2 {
+            color: var(--primary);
+            font-size: 1.2rem;
+            margin-bottom: 1rem;
+        }
+
+        .card h3 {
+            color: var(--text);
+            font-size: 1rem;
+            margin-bottom: 0.5rem;
+            margin-top: 1rem;
+        }
+
+        .card p {
+            color: var(--light-text);
+            margin-bottom: 0.5rem;
+        }
+
+        .sam-card {
+            background: linear-gradient(135deg, #4f7942 0%, #3d5f32 100%);
+            color: white;
+            text-align: center;
+            padding: 1.5rem;
+        }
+
+        .sam-card h3 {
+            color: white;
+            font-size: 1.1rem;
+            margin: 0.5rem 0;
+        }
+
+        .sam-card p {
+            color: #e8e3d8;
+            margin: 0.25rem 0;
+        }
+
+        /* APPOINTMENT STATUS */
+        .appointment-item {
+            background: white;
+            border-left: 4px solid var(--border);
+            border-radius: 4px;
+            padding: 1rem;
+            margin-bottom: 0.75rem;
+        }
+
+        .appointment-item.pending {
+            border-left-color: var(--warning);
+        }
+
+        .appointment-item.approved {
+            border-left-color: var(--success);
+        }
+
+        .appointment-item.denied {
+            border-left-color: var(--error);
+        }
+
+        .appointment-item h4 {
+            color: var(--primary);
+            margin-bottom: 0.25rem;
+        }
+
+        .appointment-item .status {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            font-weight: bold;
+            margin-top: 0.5rem;
+        }
+
+        .appointment-item.pending .status {
+            background-color: #fff3cd;
+            color: #856404;
+        }
+
+        .appointment-item.approved .status {
+            background-color: #d4edda;
+            color: #155724;
+        }
+
+        .appointment-item.denied .status {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+
+        /* WIZARD */
+        .wizard-step {
+            display: none;
+        }
+
+        .wizard-step.active {
+            display: block;
+        }
+
+        .wizard-progress {
+            background: white;
+            border: 2px solid var(--border);
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .progress-bar {
+            background-color: var(--border);
+            height: 8px;
+            border-radius: 4px;
+            overflow: hidden;
+            margin-top: 0.5rem;
+        }
+
+        .progress-fill {
+            background-color: var(--primary);
+            height: 100%;
+            transition: width 0.3s;
+        }
+
+        .wizard-title {
+            color: var(--primary);
+            font-size: 1.1rem;
+            margin-bottom: 0.5rem;
+        }
+
+        /* GRID SELECTIONS */
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.75rem;
+            margin: 1.5rem 0;
+        }
+
+        .grid-item {
+            border: 2px solid var(--border);
+            border-radius: 4px;
+            padding: 1rem;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .grid-item:hover:not(.disabled) {
+            border-color: var(--primary);
+            background-color: rgba(79, 121, 66, 0.05);
+        }
+
+        .grid-item.selected {
+            background-color: var(--primary);
+            color: white;
+            border-color: var(--primary);
+        }
+
+        .grid-item.disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            background-color: #f5f5f5;
+        }
+
+        .grid-item.disabled:hover {
+            border-color: var(--border);
+        }
+
+        .grid-item-label {
+            font-weight: bold;
+            display: block;
+            margin-bottom: 0.25rem;
+        }
+
+        .grid-item-detail {
+            font-size: 0.85rem;
+            opacity: 0.8;
+        }
+
+        /* WEEKLY GRID */
+        .week-grid {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 0.5rem;
+            margin: 1rem 0;
+        }
+
+        @media (max-width: 480px) {
+            .week-grid {
+                grid-template-columns: repeat(3, 1fr);
+            }
+        }
+
+        .day-button {
+            border: 2px solid var(--border);
+            border-radius: 4px;
+            padding: 1rem 0.5rem;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s;
+            background: white;
+        }
+
+        .day-button:hover:not(.full) {
+            border-color: var(--primary);
+        }
+
+        .day-button.selected {
+            background-color: var(--primary);
+            color: white;
+            border-color: var(--primary);
+        }
+
+        .day-button.full {
+            opacity: 0.5;
+            cursor: not-allowed;
+            background-color: #f5f5f5;
+        }
+
+        .day-name {
+            font-weight: bold;
+            display: block;
+            margin-bottom: 0.25rem;
+        }
+
+        .day-location {
+            font-size: 0.75rem;
+            color: var(--light-text);
+            margin-bottom: 0.25rem;
+        }
+
+        .day-slots {
+            font-size: 0.8rem;
+            color: var(--primary);
+            font-weight: bold;
+        }
+
+        .day-button.full .day-slots {
+            color: var(--error);
+        }
+
+        /* RATE CARD */
+        .rate-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .rate-table th {
+            background-color: var(--primary);
+            color: white;
+            padding: 0.75rem;
+            text-align: left;
+            font-weight: bold;
+        }
+
+        .rate-table td {
+            padding: 0.75rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .rate-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        .rate-note {
+            font-size: 0.9rem;
+            color: var(--light-text);
+            font-style: italic;
+            margin-top: 1rem;
+        }
+
+        /* SECONDARY CONTACTS */
+        .contact-item {
+            background: white;
+            border: 2px solid var(--border);
+            border-radius: 4px;
+            padding: 1rem;
+            margin-bottom: 0.75rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: start;
+        }
+
+        .contact-info {
+            flex: 1;
+        }
+
+        .contact-info p {
+            margin-bottom: 0.25rem;
+            color: var(--light-text);
+        }
+
+        .contact-info strong {
+            color: var(--text);
+        }
+
+        /* PETS LIST */
+        .pet-item {
+            background: white;
+            border: 2px solid var(--border);
+            border-radius: 4px;
+            padding: 1rem;
+            margin-bottom: 0.75rem;
+        }
+
+        .pet-item h4 {
+            color: var(--primary);
+            margin-bottom: 0.25rem;
+        }
+
+        .pet-item p {
+            color: var(--light-text);
+            margin-bottom: 0.25rem;
+        }
+
+        /* MESSAGES */
+        .error-message {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+            border-radius: 4px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .success-message {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+            border-radius: 4px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .info-message {
+            background-color: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+            border-radius: 4px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        /* WIZARD BUTTONS */
+        .wizard-buttons {
+            display: flex;
+            gap: 1rem;
+            margin-top: 2rem;
+        }
+
+        .wizard-buttons button {
+            flex: 1;
+        }
+
+        .wizard-buttons .btn-back {
+            background-color: var(--border);
+            color: var(--text);
+        }
+
+        .wizard-buttons .btn-back:hover {
+            background-color: #ccc;
+        }
+
+        /* REVIEW */
+        .review-item {
+            background: white;
+            border-left: 4px solid var(--primary);
+            border-radius: 4px;
+            padding: 1rem;
+            margin-bottom: 0.75rem;
+        }
+
+        .review-label {
+            color: var(--light-text);
+            font-size: 0.85rem;
+            font-weight: bold;
+        }
+
+        .review-value {
+            color: var(--text);
+            margin-top: 0.25rem;
+        }
+
+        /* LOADING */
+        .spinner {
+            border: 3px solid var(--border);
+            border-top: 3px solid var(--primary);
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 1rem auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* PROFILE FORM */
+        .add-contact-section {
+            margin-top: 2rem;
+            padding-top: 2rem;
+            border-top: 2px solid var(--border);
+        }
+
+        .inline-form {
+            background: white;
+            border: 2px solid var(--border);
+            border-radius: 4px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        /* RESPONSIVE */
+        @media (max-width: 480px) {
+            .auth-container {
+                padding: 1.5rem;
+            }
+
+            .card {
+                padding: 1rem;
+            }
+
+            .grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- NAV BAR -->
+    <nav class="navbar">
+        <a href="home.html">← Tidy Tails 🐾</a>
+        <div class="navbar-title" id="navTitle"></div>
+    </nav>
+
+    <div class="container">
+        <!-- LOGIN SCREEN -->
+        <div id="screen-login" class="screen active">
+            <div class="auth-container">
+                <h1>🐾 Tidy Tails</h1>
+                <p class="subtitle">Dog Grooming Scheduler</p>
+
+                <div id="login-form">
+                    <div class="form-group">
+                        <label for="login-phone">Phone Number</label>
+                        <input type="tel" id="login-phone" placeholder="(555) 123-4567" />
+                    </div>
+                    <button class="btn-block" onclick="app.proceedToPin()">Next</button>
+                </div>
+
+                <div id="pin-form" style="display: none;">
+                    <div class="form-group">
+                        <label>4-Digit PIN</label>
+                        <div class="pin-input-group">
+                            <input type="text" class="pin-input" maxlength="1" data-pin-index="0" />
+                            <input type="text" class="pin-input" maxlength="1" data-pin-index="1" />
+                            <input type="text" class="pin-input" maxlength="1" data-pin-index="2" />
+                            <input type="text" class="pin-input" maxlength="1" data-pin-index="3" />
+                        </div>
+                    </div>
+                    <button class="btn-block" onclick="app.verifyPin()">Sign In</button>
+                    <button class="btn-secondary btn-block" onclick="app.backToPhone()">Back</button>
+                </div>
+
+                <div id="create-pin-form" style="display: none;">
+                    <p style="color: var(--light-text); margin-bottom: 1rem;">Welcome! Let's create your account.</p>
+                    <div class="form-group">
+                        <label for="create-name">Your Name</label>
+                        <input type="text" id="create-name" placeholder="Jane Smith" />
+                    </div>
+                    <div class="form-group">
+                        <label>Create a 4-Digit PIN</label>
+                        <div class="pin-input-group">
+                            <input type="text" class="pin-input create-pin-input" maxlength="1" data-pin-index="0" />
+                            <input type="text" class="pin-input create-pin-input" maxlength="1" data-pin-index="1" />
+                            <input type="text" class="pin-input create-pin-input" maxlength="1" data-pin-index="2" />
+                            <input type="text" class="pin-input create-pin-input" maxlength="1" data-pin-index="3" />
+                        </div>
+                    </div>
+                    <button class="btn-block" onclick="app.createAccount()">Create Account</button>
+                    <button class="btn-secondary btn-block" onclick="app.backToPhone()">Back</button>
+                </div>
+
+                <div id="error-message" style="display: none; margin-top: 1rem;"></div>
+            </div>
+        </div>
+
+        <!-- DASHBOARD SCREEN -->
+        <div id="screen-dashboard" class="screen">
+            <div class="dashboard-header">
+                <h1>Welcome back, <span id="dash-name">Friend</span>! 🐾</h1>
+                <p>What would you like to do today?</p>
+            </div>
+
+            <div class="action-buttons">
+                <button class="btn-block" onclick="app.showScreen('profile')">My Profile</button>
+                <button class="btn-block" onclick="app.showScreen('book')">Book Appointment</button>
+                <button class="btn-block" style="grid-column: 1/-1;" onclick="app.showScreen('appointments')">My Appointments</button>
+            </div>
+
+            <div class="sam-card">
+                <h3>Samantha 🐕</h3>
+                <p><strong>Tidy Tails Professional Dog Grooming</strong></p>
+                <p>Grooming at Annette's & Gina's locations</p>
+            </div>
+
+            <button class="btn-secondary btn-block" style="margin-top: 1rem;" onclick="app.logout()">Sign Out</button>
+        </div>
+
+        <!-- PROFILE SCREEN -->
+        <div id="screen-profile" class="screen">
+            <div class="card">
+                <h2>My Profile</h2>
+
+                <div class="form-group">
+                    <label for="profile-name">Display Name</label>
+                    <input type="text" id="profile-name" />
+                </div>
+
+                <div class="form-group">
+                    <label for="profile-phone">Phone Number (Read-only)</label>
+                    <input type="tel" id="profile-phone" disabled />
+                </div>
+
+                <div class="form-group">
+                    <label for="profile-birthday">Birthday</label>
+                    <input type="date" id="profile-birthday" />
+                </div>
+
+                <h3>My Pets</h3>
+                <div id="pets-list"></div>
+                <button class="btn-secondary btn-small" onclick="app.showPetForm()">+ Add New Pet</button>
+
+                <div id="pet-form" style="display: none; margin-top: 1.5rem; border-top: 2px solid var(--border); padding-top: 1.5rem;">
+                    <h3>Add New Pet</h3>
+                    <div class="form-group">
+                        <label for="new-pet-name">Pet Name</label>
+                        <input type="text" id="new-pet-name" />
+                    </div>
+                    <div class="form-group">
+                        <label for="new-pet-breed">Breed</label>
+                        <input type="text" id="new-pet-breed" />
+                    </div>
+                    <div class="form-group">
+                        <label for="new-pet-size">Size</label>
+                        <select id="new-pet-size">
+                            <option value="">Select Size</option>
+                            <option value="Small">Small</option>
+                            <option value="Medium">Medium</option>
+                            <option value="Large">Large</option>
+                        </select>
+                    </div>
+                    <button class="btn-block" onclick="app.addPet()">Save Pet</button>
+                    <button class="btn-secondary btn-block" onclick="app.hidePetForm()">Cancel</button>
+                </div>
+
+                <h3 style="margin-top: 2rem;">Secondary Contacts</h3>
+                <div id="contacts-list"></div>
+                <button class="btn-secondary btn-small" onclick="app.showContactForm()">+ Add Contact</button>
+
+                <div id="contact-form" style="display: none; margin-top: 1.5rem; border-top: 2px solid var(--border); padding-top: 1.5rem;">
+                    <h3>Add Secondary Contact</h3>
+                    <div class="form-group">
+                        <label for="new-contact-name">Name</label>
+                        <input type="text" id="new-contact-name" />
+                    </div>
+                    <div class="form-group">
+                        <label for="new-contact-phone">Phone</label>
+                        <input type="tel" id="new-contact-phone" />
+                    </div>
+                    <div class="form-group">
+                        <label for="new-contact-relationship">Relationship</label>
+                        <input type="text" id="new-contact-relationship" placeholder="e.g., Spouse, Parent, Friend" />
+                    </div>
+                    <button class="btn-block" onclick="app.addContact()">Save Contact</button>
+                    <button class="btn-secondary btn-block" onclick="app.hideContactForm()">Cancel</button>
+                </div>
+
+                <div style="margin-top: 2rem; display: flex; gap: 1rem;">
+                    <button class="btn-block" onclick="app.saveProfile()">Save Changes</button>
+                    <button class="btn-secondary btn-block" onclick="app.showScreen('dashboard')">Cancel</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- BOOK APPOINTMENT SCREEN -->
+        <div id="screen-book" class="screen">
+            <div class="wizard-progress">
+                <div class="wizard-title">Book Appointment</div>
+                <div style="color: var(--light-text); font-size: 0.9rem; margin-bottom: 0.5rem;">
+                    Step <span id="wizard-current">1</span> of 7
+                </div>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="wizard-progress" style="width: 14%;"></div>
+                </div>
+            </div>
+
+            <!-- STEP 1: SELECT PET -->
+            <div class="wizard-step active" data-step="1">
+                <div class="card">
+                    <h2>Select Your Pet</h2>
+                    <div id="pet-selection"></div>
+                </div>
+            </div>
+
+            <!-- STEP 2: SELECT SERVICE -->
+            <div class="wizard-step" data-step="2">
+                <div class="card">
+                    <h2>Select Service</h2>
+                    <table class="rate-table">
+                        <thead>
+                            <tr>
+                                <th>Service</th>
+                                <th>Price</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>Full Groom (Small)</td>
+                                <td>$55</td>
+                            </tr>
+                            <tr>
+                                <td>Full Groom (Medium)</td>
+                                <td>$65</td>
+                            </tr>
+                            <tr>
+                                <td>Full Groom (Large)</td>
+                                <td>$80</td>
+                            </tr>
+                            <tr>
+                                <td>Bath Only (Small)</td>
+                                <td>$35</td>
+                            </tr>
+                            <tr>
+                                <td>Bath Only (Medium)</td>
+                                <td>$42</td>
+                            </tr>
+                            <tr>
+                                <td>Bath Only (Large)</td>
+                                <td>$50</td>
+                            </tr>
+                            <tr>
+                                <td>Nail Trim</td>
+                                <td>$10</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    <p class="rate-note">Final pricing may vary based on coat condition. Tips are appreciated!</p>
+
+                    <div style="margin-top: 1.5rem;">
+                        <label>Choose Service Type:</label>
+                        <div class="grid" style="grid-template-columns: 1fr;">
+                            <div class="grid-item" onclick="app.selectService('Full Groom')">
+                                <span class="grid-item-label">Full Groom</span>
+                                <span class="grid-item-detail">Complete bath & groom</span>
+                            </div>
+                            <div class="grid-item" onclick="app.selectService('Bath Only')">
+                                <span class="grid-item-label">Bath Only</span>
+                                <span class="grid-item-detail">Bath & dry</span>
+                            </div>
+                            <div class="grid-item" onclick="app.selectService('Nail Trim')">
+                                <span class="grid-item-label">Nail Trim</span>
+                                <span class="grid-item-detail">Nails only</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- STEP 3: SELECT WEEK -->
+            <div class="wizard-step" data-step="3">
+                <div class="card">
+                    <h2>Select Week</h2>
+                    <p style="color: var(--light-text); margin-bottom: 1rem;">Choose your preferred week:</p>
+                    <div class="grid" style="grid-template-columns: 1fr;">
+                        <div id="week-selection"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- STEP 4: SELECT DAY -->
+            <div class="wizard-step" data-step="4">
+                <div class="card">
+                    <h2>Select Day</h2>
+                    <p style="color: var(--light-text); margin-bottom: 1rem;">Choose your preferred day:</p>
+                    <div class="week-grid" id="day-selection"></div>
+                </div>
+            </div>
+
+            <!-- STEP 5: SELECT TIME -->
+            <div class="wizard-step" data-step="5">
+                <div class="card">
+                    <h2>Select Time Slot</h2>
+                    <div class="grid" style="grid-template-columns: 1fr;">
+                        <div class="grid-item" onclick="app.selectTimeSlot('Morning 9-12')">
+                            <span class="grid-item-label">Morning</span>
+                            <span class="grid-item-detail">9:00 AM - 12:00 PM</span>
+                        </div>
+                        <div class="grid-item" onclick="app.selectTimeSlot('Afternoon 12-3')">
+                            <span class="grid-item-label">Afternoon</span>
+                            <span class="grid-item-detail">12:00 PM - 3:00 PM</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- STEP 6: MESSAGE -->
+            <div class="wizard-step" data-step="6">
+                <div class="card">
+                    <h2>Add Optional Message</h2>
+                    <p style="color: var(--light-text); margin-bottom: 1rem;">Let Sam know anything about your pet or preferences:</p>
+                    <div class="form-group">
+                        <textarea id="booking-message" placeholder="e.g., My dog gets nervous with nail trims. She prefers the morning." style="min-height: 120px;"></textarea>
+                    </div>
+                </div>
+            </div>
+
+            <!-- STEP 7: REVIEW -->
+            <div class="wizard-step" data-step="7">
+                <div class="card">
+                    <h2>Review Your Request</h2>
+
+                    <div class="review-item">
+                        <div class="review-label">Pet</div>
+                        <div class="review-value" id="review-pet">-</div>
+                    </div>
+
+                    <div class="review-item">
+                        <div class="review-label">Service</div>
+                        <div class="review-value" id="review-service">-</div>
+                    </div>
+
+                    <div class="review-item">
+                        <div class="review-label">Preferred Date</div>
+                        <div class="review-value" id="review-date">-</div>
+                    </div>
+
+                    <div class="review-item">
+                        <div class="review-label">Preferred Time</div>
+                        <div class="review-value" id="review-time">-</div>
+                    </div>
+
+                    <div class="review-item">
+                        <div class="review-label">Location</div>
+                        <div class="review-value" id="review-location">-</div>
+                    </div>
+
+                    <div id="review-message-container" style="display: none;">
+                        <div class="review-item">
+                            <div class="review-label">Your Message</div>
+                            <div class="review-value" id="review-message">-</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- CONFIRMATION SCREEN -->
+            <div id="booking-confirmation" style="display: none;">
+                <div class="card">
+                    <div style="text-align: center;">
+                        <h2 style="color: var(--success);">✓ Request Sent!</h2>
+                        <p style="margin: 1rem 0;">Your request has been sent to Sam!</p>
+                        <p style="color: var(--light-text); margin-bottom: 2rem;">She'll confirm your appointment shortly.</p>
+                        <button class="btn-block" onclick="app.showScreen('dashboard')">Back to Home</button>
+                        <button class="btn-secondary btn-block" onclick="app.showScreen('appointments')">View My Appointments</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- WIZARD BUTTONS -->
+            <div id="wizard-buttons" class="wizard-buttons">
+                <button class="btn-back" onclick="app.prevStep()">Back</button>
+                <button onclick="app.nextStep()" id="btn-next">Next</button>
+            </div>
+        </div>
+
+        <!-- APPOINTMENTS SCREEN -->
+        <div id="screen-appointments" class="screen">
+            <div class="card">
+                <h2>My Appointments</h2>
+                <div id="appointments-list"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script>
+        // Initialize Supabase
+        const supabase = supabase.createClient(
+            'https://pgkwovokciaqnbhpttba.supabase.co',
+            'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBna3dvdm9rY2lhcW5iaHB0dGJhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3NjU4ODUsImV4cCI6MjA5MTM0MTg4NX0.5ZQHpyH17dcCumR-wZdJMuo7BahBXqKmMzA-3U-U504'
+        );
+
+        const app = {
+            // STATE
+            state: {
+                phone: null,
+                clientAccount: null,
+                clientId: null,
+                displayName: null,
+                petList: [],
+                bookingData: {
+                    petId: null,
+                    petName: null,
+                    petSize: null,
+                    service: null,
+                    week: null,
+                    day: null,
+                    date: null,
+                    timeSlot: null,
+                    location: null,
+                    message: null
+                }
+            },
+
+            wizardStep: 1,
+
+            // PIN INPUT HELPERS
+            setupPinInput(containerId, onComplete) {
+                const inputs = document.querySelectorAll(`${containerId} .pin-input`);
+                inputs.forEach((input, index) => {
+                    input.addEventListener('input', (e) => {
+                        if (e.target.value.length === 1) {
+                            if (index < inputs.length - 1) {
+                                inputs[index + 1].focus();
+                            }
+                        }
+                    });
+                    input.addEventListener('keydown', (e) => {
+                        if (e.key === 'Backspace' && e.target.value === '' && index > 0) {
+                            inputs[index - 1].focus();
+                        }
+                    });
+                });
+                window.pinInputs = inputs;
+            },
+
+            getPinValue(containerId = '#pin-form') {
+                const inputs = document.querySelectorAll(`${containerId} .pin-input`);
+                return Array.from(inputs).map(i => i.value).join('');
+            },
+
+            showError(message) {
+                const errorEl = document.getElementById('error-message');
+                errorEl.innerHTML = message;
+                errorEl.style.display = 'block';
+            },
+
+            clearError() {
+                const errorEl = document.getElementById('error-message');
+                errorEl.style.display = 'none';
+            },
+
+            // AUTH FLOW
+            async proceedToPin() {
+                this.clearError();
+                const phone = document.getElementById('login-phone').value.trim();
+                if (!phone) {
+                    this.showError('Please enter your phone number.');
+                    return;
+                }
+                this.state.phone = phone;
+
+                // Check if account exists
+                const { data, error } = await supabase
+                    .from('client_accounts')
+                    .select('*')
+                    .eq('phone', phone)
+                    .single();
+
+                if (error && error.code !== 'PGRST116') {
+                    this.showError('Error checking account: ' + error.message);
+                    return;
+                }
+
+                if (data) {
+                    // Existing account, show PIN entry
+                    document.getElementById('login-form').style.display = 'none';
+                    document.getElementById('pin-form').style.display = 'block';
+                    this.setupPinInput('#pin-form');
+                    document.querySelector('#pin-form .pin-input').focus();
+                } else {
+                    // New account, show create account form
+                    document.getElementById('login-form').style.display = 'none';
+                    document.getElementById('create-pin-form').style.display = 'block';
+                    this.setupPinInput('#create-pin-form');
+                    document.getElementById('create-name').focus();
+                }
+            },
+
+            backToPhone() {
+                this.clearError();
+                document.getElementById('login-form').style.display = 'block';
+                document.getElementById('pin-form').style.display = 'none';
+                document.getElementById('create-pin-form').style.display = 'none';
+                document.getElementById('login-phone').value = this.state.phone;
+            },
+
+            async verifyPin() {
+                this.clearError();
+                const pin = this.getPinValue('#pin-form');
+                if (pin.length !== 4 || !/^\d+$/.test(pin)) {
+                    this.showError('Please enter a valid 4-digit PIN.');
+                    return;
+                }
+
+                const { data, error } = await supabase
+                    .from('client_accounts')
+                    .select('*')
+                    .eq('phone', this.state.phone)
+                    .eq('pin_code', pin)
+                    .single();
+
+                if (error || !data) {
+                    this.showError('Invalid PIN. Please try again.');
+                    // Clear PIN inputs
+                    document.querySelectorAll('#pin-form .pin-input').forEach(i => i.value = '');
+                    document.querySelector('#pin-form .pin-input').focus();
+                    return;
+                }
+
+                this.state.clientAccount = data;
+                this.state.clientId = data.client_id;
+                this.state.displayName = data.display_name;
+                await this.loadPets();
+                this.showScreen('dashboard');
+            },
+
+            async createAccount() {
+                this.clearError();
+                const name = document.getElementById('create-name').value.trim();
+                const pin = this.getPinValue('.create-pin-input');
+
+                if (!name) {
+                    this.showError('Please enter your name.');
+                    return;
+                }
+
+                if (pin.length !== 4 || !/^\d+$/.test(pin)) {
+                    this.showError('Please enter a valid 4-digit PIN.');
+                    return;
+                }
+
+                // Check if phone already exists in clients table
+                const { data: clientData } = await supabase
+                    .from('clients')
+                    .select('id')
+                    .eq('phone', this.state.phone)
+                    .single();
+
+                let clientId = clientData?.id;
+
+                // Create client_accounts entry
+                const { data, error } = await supabase
+                    .from('client_accounts')
+                    .insert({
+                        phone: this.state.phone,
+                        pin_code: pin,
+                        display_name: name,
+                        client_id: clientId
+                    })
+                    .select()
+                    .single();
+
+                if (error) {
+                    this.showError('Error creating account: ' + error.message);
+                    return;
+                }
+
+                this.state.clientAccount = data;
+                this.state.clientId = data.client_id;
+                this.state.displayName = name;
+                await this.loadPets();
+                this.showScreen('dashboard');
+            },
+
+            logout() {
+                this.state = {
+                    phone: null,
+                    clientAccount: null,
+                    clientId: null,
+                    displayName: null,
+                    petList: [],
+                    bookingData: {
+                        petId: null,
+                        petName: null,
+                        petSize: null,
+                        service: null,
+                        week: null,
+                        day: null,
+                        date: null,
+                        timeSlot: null,
+                        location: null,
+                        message: null
+                    }
+                };
+                this.wizardStep = 1;
+                document.getElementById('login-phone').value = '';
+                document.querySelectorAll('.pin-input').forEach(i => i.value = '');
+                document.getElementById('login-form').style.display = 'block';
+                document.getElementById('pin-form').style.display = 'none';
+                document.getElementById('create-pin-form').style.display = 'none';
+                this.showScreen('login');
+            },
+
+            // SCREEN NAVIGATION
+            showScreen(screenName) {
+                document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+                document.getElementById(`screen-${screenName}`).classList.add('active');
+
+                if (screenName === 'dashboard') {
+                    document.getElementById('dash-name').textContent = this.state.displayName || 'Friend';
+                    document.getElementById('navTitle').textContent = this.state.displayName || '';
+                } else if (screenName === 'book') {
+                    this.initializeBooking();
+                } else if (screenName === 'profile') {
+                    this.loadProfile();
+                } else if (screenName === 'appointments') {
+                    this.loadAppointments();
+                }
+            },
+
+            // PROFILE SCREEN
+            async loadProfile() {
+                document.getElementById('profile-name').value = this.state.displayName || '';
+                document.getElementById('profile-phone').value = this.state.phone || '';
+
+                // Load birthday
+                if (this.state.clientAccount?.birthday) {
+                    document.getElementById('profile-birthday').value = this.state.clientAccount.birthday;
+                }
+
+                // Load secondary contacts
+                this.renderContacts();
+
+                // Load pets
+                this.renderPets();
+            },
+
+            renderPets() {
+                const container = document.getElementById('pets-list');
+                if (this.state.petList.length === 0) {
+                    container.innerHTML = '<p style="color: var(--light-text);">No pets yet.</p>';
+                    return;
+                }
+
+                container.innerHTML = this.state.petList.map(pet => `
+                    <div class="pet-item">
+                        <h4>${pet.name}</h4>
+                        <p><strong>Breed:</strong> ${pet.breed || 'N/A'}</p>
+                        <p><strong>Size:</strong> ${pet.size || 'N/A'}</p>
+                    </div>
+                `).join('');
+            },
+
+            renderContacts() {
+                const container = document.getElementById('contacts-list');
+                const contacts = this.state.clientAccount?.secondary_contacts || [];
+
+                if (contacts.length === 0) {
+                    container.innerHTML = '<p style="color: var(--light-text);">No secondary contacts yet.</p>';
+                    return;
+                }
+
+                container.innerHTML = contacts.map((contact, idx) => `
+                    <div class="contact-item">
+                        <div class="contact-info">
+                            <p><strong>${contact.name}</strong></p>
+                            <p>${contact.phone}</p>
+                            <p><small>${contact.relationship}</small></p>
+                        </div>
+                        <button class="btn-small btn-danger" onclick="app.removeContact(${idx})">Remove</button>
+                    </div>
+                `).join('');
+            },
+
+            showPetForm() {
+                document.getElementById('pet-form').style.display = 'block';
+                document.getElementById('new-pet-name').focus();
+            },
+
+            hidePetForm() {
+                document.getElementById('pet-form').style.display = 'none';
+                document.getElementById('new-pet-name').value = '';
+                document.getElementById('new-pet-breed').value = '';
+                document.getElementById('new-pet-size').value = '';
+            },
+
+            async addPet() {
+                const name = document.getElementById('new-pet-name').value.trim();
+                const breed = document.getElementById('new-pet-breed').value.trim();
+                const size = document.getElementById('new-pet-size').value.trim();
+
+                if (!name || !breed || !size) {
+                    alert('Please fill in all pet details.');
+                    return;
+                }
+
+                const { data, error } = await supabase
+                    .from('pets')
+                    .insert({
+                        client_id: this.state.clientId,
+                        name,
+                        breed,
+                        size
+                    })
+                    .select()
+                    .single();
+
+                if (error) {
+                    alert('Error adding pet: ' + error.message);
+                    return;
+                }
+
+                this.state.petList.push(data);
+                this.renderPets();
+                this.hidePetForm();
+            },
+
+            showContactForm() {
+                document.getElementById('contact-form').style.display = 'block';
+                document.getElementById('new-contact-name').focus();
+            },
+
+            hideContactForm() {
+                document.getElementById('contact-form').style.display = 'none';
+                document.getElementById('new-contact-name').value = '';
+                document.getElementById('new-contact-phone').value = '';
+                document.getElementById('new-contact-relationship').value = '';
+            },
+
+            addContact() {
+                const name = document.getElementById('new-contact-name').value.trim();
+                const phone = document.getElementById('new-contact-phone').value.trim();
+                const relationship = document.getElementById('new-contact-relationship').value.trim();
+
+                if (!name || !phone || !relationship) {
+                    alert('Please fill in all contact details.');
+                    return;
+                }
+
+                const contacts = this.state.clientAccount?.secondary_contacts || [];
+                contacts.push({ name, phone, relationship });
+                this.state.clientAccount.secondary_contacts = contacts;
+                this.renderContacts();
+                this.hideContactForm();
+            },
+
+            removeContact(idx) {
+                const contacts = this.state.clientAccount?.secondary_contacts || [];
+                contacts.splice(idx, 1);
+                this.state.clientAccount.secondary_contacts = contacts;
+                this.renderContacts();
+            },
+
+            async saveProfile() {
+                const updates = {
+                    display_name: document.getElementById('profile-name').value.trim(),
+                    birthday: document.getElementById('profile-birthday').value || null,
+                    secondary_contacts: this.state.clientAccount?.secondary_contacts || []
+                };
+
+                const { error } = await supabase
+                    .from('client_accounts')
+                    .update(updates)
+                    .eq('id', this.state.clientAccount.id);
+
+                if (error) {
+                    alert('Error saving profile: ' + error.message);
+                    return;
+                }
+
+                // Update display state
+                this.state.displayName = updates.display_name;
+                this.state.clientAccount = { ...this.state.clientAccount, ...updates };
+
+                alert('Profile updated!');
+                this.showScreen('dashboard');
+            },
+
+            // PET LOADING
+            async loadPets() {
+                const { data, error } = await supabase
+                    .from('pets')
+                    .select('*')
+                    .eq('client_id', this.state.clientId);
+
+                if (error) {
+                    console.error('Error loading pets:', error);
+                    this.state.petList = [];
+                } else {
+                    this.state.petList = data || [];
+                }
+            },
+
+            // BOOKING WIZARD
+            initializeBooking() {
+                this.wizardStep = 1;
+                this.state.bookingData = {
+                    petId: null,
+                    petName: null,
+                    petSize: null,
+                    service: null,
+                    week: null,
+                    day: null,
+                    date: null,
+                    timeSlot: null,
+                    location: null,
+                    message: null
+                };
+                document.getElementById('booking-confirmation').style.display = 'none';
+                this.renderBookingStep();
+                this.renderPetSelection();
+                this.renderWeekSelection();
+            },
+
+            renderBookingStep() {
+                const steps = document.querySelectorAll('.wizard-step');
+                steps.forEach(s => s.classList.remove('active'));
+                document.querySelector(`[data-step="${this.wizardStep}"]`).classList.add('active');
+
+                const percent = (this.wizardStep / 7) * 100;
+                document.getElementById('wizard-progress').style.width = percent + '%';
+                document.getElementById('wizard-current').textContent = this.wizardStep;
+
+                // Update button text
+                const nextBtn = document.querySelector('#btn-next');
+                if (this.wizardStep === 7) {
+                    nextBtn.textContent = 'Submit Request';
+                } else {
+                    nextBtn.textContent = 'Next';
+                }
+
+                // Show/hide back button on first step
+                document.querySelector('.btn-back').style.display = this.wizardStep === 1 ? 'none' : 'block';
+            },
+
+            renderPetSelection() {
+                const container = document.getElementById('pet-selection');
+                if (this.state.petList.length === 0) {
+                    container.innerHTML = '<p style="color: var(--light-text);">No pets yet. Please add a pet in your profile first.</p>';
+                    return;
+                }
+
+                container.innerHTML = this.state.petList.map(pet => `
+                    <div class="grid-item ${this.state.bookingData.petId === pet.id ? 'selected' : ''}"
+                         onclick="app.selectPet('${pet.id}', '${pet.name}', '${pet.size}')">
+                        <span class="grid-item-label">${pet.name}</span>
+                        <span class="grid-item-detail">${pet.breed || 'N/A'} • ${pet.size || 'N/A'}</span>
+                    </div>
+                `).join('');
+            },
+
+            selectPet(petId, petName, petSize) {
+                this.state.bookingData.petId = petId;
+                this.state.bookingData.petName = petName;
+                this.state.bookingData.petSize = petSize;
+                document.querySelectorAll('#pet-selection .grid-item').forEach(el => {
+                    el.classList.remove('selected');
+                });
+                event.target.closest('.grid-item').classList.add('selected');
+            },
+
+            selectService(service) {
+                this.state.bookingData.service = service;
+                document.querySelectorAll('[onclick*="selectService"]').forEach(el => {
+                    el.classList.remove('selected');
+                });
+                event.target.closest('.grid-item').classList.add('selected');
+            },
+
+            renderWeekSelection() {
+                const container = document.getElementById('week-selection');
+                const today = new Date();
+                const weeks = [];
+
+                for (let i = 0; i < 4; i++) {
+                    const weekStart = new Date(today);
+                    weekStart.setDate(today.getDate() + (i * 7));
+                    const weekEnd = new Date(weekStart);
+                    weekEnd.setDate(weekStart.getDate() + 6);
+
+                    const label = `${weekStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${weekEnd.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
+                    weeks.push({ start: weekStart, end: weekEnd, label, idx: i });
+                }
+
+                container.innerHTML = weeks.map(week => `
+                    <div class="grid-item ${this.state.bookingData.week === week.idx ? 'selected' : ''}"
+                         onclick="app.selectWeek(${week.idx}, new Date('${week.start.toISOString()}'), new Date('${week.end.toISOString()}'))">
+                        <span class="grid-item-label">Week ${week.idx + 1}</span>
+                        <span class="grid-item-detail">${week.label}</span>
+                    </div>
+                `).join('');
+            },
+
+            selectWeek(weekIdx, weekStart, weekEnd) {
+                this.state.bookingData.week = weekIdx;
+                this.state.bookingData.weekStart = weekStart;
+                this.state.bookingData.weekEnd = weekEnd;
+                document.querySelectorAll('#week-selection .grid-item').forEach(el => {
+                    el.classList.remove('selected');
+                });
+                event.target.closest('.grid-item').classList.add('selected');
+            },
+
+            async renderDaySelection() {
+                const container = document.getElementById('day-selection');
+                const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
+                const locations = ['Annette', 'Gina', 'Annette', 'Annette', 'Annette/Gina'];
+                const today = new Date(this.state.bookingData.weekStart);
+
+                // Get appointments for the week to count slots
+                const dates = [];
+                for (let i = 0; i < 5; i++) {
+                    const date = new Date(today);
+                    date.setDate(today.getDate() + i);
+                    dates.push(date);
+                }
+
+                const { data: appointments } = await supabase
+                    .from('appointments')
+                    .select('date')
+                    .gte('date', dates[0].toISOString().split('T')[0])
+                    .lte('date', dates[4].toISOString().split('T')[0]);
+
+                const appointmentsByDate = {};
+                (appointments || []).forEach(apt => {
+                    const dateStr = apt.date;
+                    appointmentsByDate[dateStr] = (appointmentsByDate[dateStr] || 0) + 1;
+                });
+
+                container.innerHTML = dayNames.map((day, idx) => {
+                    const date = dates[idx];
+                    const dateStr = date.toISOString().split('T')[0];
+                    const slotsUsed = appointmentsByDate[dateStr] || 0;
+                    const slotsAvailable = Math.max(0, 6 - slotsUsed);
+                    const isFull = slotsAvailable === 0;
+
+                    return `
+                        <button class="day-button ${isFull ? 'full' : ''} ${this.state.bookingData.day === idx ? 'selected' : ''}"
+                                onclick="app.selectDay(${idx}, '${dateStr}', '${locations[idx]}')"
+                                ${isFull ? 'disabled' : ''}>
+                            <span class="day-name">${day}</span>
+                            <span class="day-location">${locations[idx]}</span>
+                            <span class="day-slots">${isFull ? 'Full' : slotsAvailable + ' slots'}</span>
+                        </button>
+                    `;
+                }).join('');
+            },
+
+            selectDay(dayIdx, dateStr, location) {
+                this.state.bookingData.day = dayIdx;
+                this.state.bookingData.date = dateStr;
+                this.state.bookingData.location = location;
+                document.querySelectorAll('.day-button').forEach(el => {
+                    el.classList.remove('selected');
+                });
+                event.target.closest('.day-button').classList.add('selected');
+            },
+
+            selectTimeSlot(slot) {
+                this.state.bookingData.timeSlot = slot;
+                document.querySelectorAll('[onclick*="selectTimeSlot"]').forEach(el => {
+                    el.classList.remove('selected');
+                });
+                event.target.closest('.grid-item').classList.add('selected');
+            },
+
+            async nextStep() {
+                // Validate current step
+                switch (this.wizardStep) {
+                    case 1:
+                        if (!this.state.bookingData.petId) {
+                            alert('Please select a pet.');
+                            return;
+                        }
+                        break;
+                    case 2:
+                        if (!this.state.bookingData.service) {
+                            alert('Please select a service.');
+                            return;
+                        }
+                        break;
+                    case 3:
+                        if (this.state.bookingData.week === null) {
+                            alert('Please select a week.');
+                            return;
+                        }
+                        break;
+                    case 4:
+                        if (this.state.bookingData.day === null) {
+                            alert('Please select a day.');
+                            return;
+                        }
+                        break;
+                    case 5:
+                        if (!this.state.bookingData.timeSlot) {
+                            alert('Please select a time slot.');
+                            return;
+                        }
+                        break;
+                    case 6:
+                        this.state.bookingData.message = document.getElementById('booking-message').value;
+                        break;
+                    case 7:
+                        await this.submitBooking();
+                        return;
+                }
+
+                if (this.wizardStep < 7) {
+                    this.wizardStep++;
+                    if (this.wizardStep === 4) {
+                        await this.renderDaySelection();
+                    }
+                    if (this.wizardStep === 7) {
+                        this.updateReview();
+                    }
+                    this.renderBookingStep();
+                }
+            },
+
+            prevStep() {
+                if (this.wizardStep > 1) {
+                    this.wizardStep--;
+                    this.renderBookingStep();
+                }
+            },
+
+            updateReview() {
+                document.getElementById('review-pet').textContent = this.state.bookingData.petName;
+                document.getElementById('review-service').textContent = this.state.bookingData.service;
+                document.getElementById('review-date').textContent = new Date(this.state.bookingData.date).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+                document.getElementById('review-time').textContent = this.state.bookingData.timeSlot;
+                document.getElementById('review-location').textContent = this.state.bookingData.location;
+
+                if (this.state.bookingData.message) {
+                    document.getElementById('review-message-container').style.display = 'block';
+                    document.getElementById('review-message').textContent = this.state.bookingData.message;
+                } else {
+                    document.getElementById('review-message-container').style.display = 'none';
+                }
+            },
+
+            async submitBooking() {
+                const { error } = await supabase
+                    .from('booking_requests')
+                    .insert({
+                        client_id: this.state.clientId,
+                        client_account_id: this.state.clientAccount.id,
+                        pet_id: this.state.bookingData.petId,
+                        requested_date: this.state.bookingData.date,
+                        requested_time_slot: this.state.bookingData.timeSlot,
+                        preferred_location: this.state.bookingData.location,
+                        service_type: this.state.bookingData.service,
+                        client_message: this.state.bookingData.message || null,
+                        status: 'pending'
+                    });
+
+                if (error) {
+                    alert('Error submitting booking: ' + error.message);
+                    return;
+                }
+
+                // Show confirmation
+                document.getElementById('wizard-buttons').style.display = 'none';
+                document.querySelectorAll('.wizard-step').forEach(s => s.style.display = 'none');
+                document.getElementById('booking-confirmation').style.display = 'block';
+            },
+
+            // APPOINTMENTS SCREEN
+            async loadAppointments() {
+                const { data: bookings, error: bookingsError } = await supabase
+                    .from('booking_requests')
+                    .select('*, pets(name)')
+                    .eq('client_id', this.state.clientId)
+                    .order('requested_date', { ascending: false });
+
+                const { data: appointments, error: appointmentsError } = await supabase
+                    .from('appointments')
+                    .select('*, pets(name)')
+                    .eq('client_id', this.state.clientId)
+                    .order('date', { ascending: false });
+
+                const container = document.getElementById('appointments-list');
+                let html = '';
+
+                // Booking requests
+                if (bookings && bookings.length > 0) {
+                    html += '<h3 style="margin-bottom: 1rem;">Booking Requests</h3>';
+                    html += bookings.map(booking => {
+                        const statusClass = booking.status.toLowerCase();
+                        const statusLabel = booking.status.charAt(0).toUpperCase() + booking.status.slice(1);
+                        return `
+                            <div class="appointment-item ${statusClass}">
+                                <h4>${booking.pets?.name || 'Unknown Pet'} - ${booking.service_type}</h4>
+                                <p><strong>Requested Date:</strong> ${new Date(booking.requested_date).toLocaleDateString()}</p>
+                                <p><strong>Time:</strong> ${booking.requested_time_slot}</p>
+                                <p><strong>Location:</strong> ${booking.preferred_location}</p>
+                                ${booking.client_message ? `<p><strong>Your Message:</strong> ${booking.client_message}</p>` : ''}
+                                ${booking.denial_reason ? `<p><strong>Note:</strong> ${booking.denial_reason}</p>` : ''}
+                                <span class="status">${statusLabel}</span>
+                            </div>
+                        `;
+                    }).join('');
+                }
+
+                // Confirmed appointments
+                if (appointments && appointments.length > 0) {
+                    html += '<h3 style="margin-top: 2rem; margin-bottom: 1rem;">Confirmed Appointments</h3>';
+                    html += appointments.map(apt => {
+                        const statusClass = apt.status.toLowerCase();
+                        return `
+                            <div class="appointment-item ${statusClass}">
+                                <h4>${apt.pets?.name || 'Unknown Pet'} - ${apt.service_type}</h4>
+                                <p><strong>Date:</strong> ${new Date(apt.date).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}</p>
+                                <p><strong>Time:</strong> ${apt.time_slot}</p>
+                                <p><strong>Location:</strong> ${apt.location}</p>
+                                <p><strong>Fee:</strong> $${apt.fee || 'TBD'}</p>
+                                ${apt.notes ? `<p><strong>Notes:</strong> ${apt.notes}</p>` : ''}
+                                <span class="status">${apt.status}</span>
+                            </div>
+                        `;
+                    }).join('');
+                }
+
+                if (!bookings?.length && !appointments?.length) {
+                    html = '<p style="color: var(--light-text); text-align: center; padding: 2rem;">No appointments yet. Ready to book?</p>';
+                }
+
+                container.innerHTML = html;
+            }
+        };
+
+        // Initialize on load
+        window.addEventListener('load', () => {
+            app.setupPinInput('#pin-form');
+            app.showScreen('login');
+        });
+    </script>
+</body>
+</html>

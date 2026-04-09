@@ -7,10 +7,13 @@
 <title>Tidy Tails</title>
 <style>
 * { margin:0; padding:0; box-sizing:border-box; }
-body { font-family: -apple-system, BlinkMacSystemFont, 'SF Pro', sans-serif; background: #f5f2ec; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+body { font-family: Georgia, serif; background: #f5f2ec; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
 .container { max-width: 400px; width: 100%; padding: 40px 24px; text-align: center; }
 .logo { font-size: 48px; margin-bottom: 16px; }
-h1 { font-size: 28px; font-weight: 800; color: #2d4a27; margin-bottom: 4px; }
+.brand { display: flex; align-items: center; justify-content: center; gap: 12px; margin-bottom: 8px; }
+.paw { font-size: 48px; }
+h1 { font-size: 28px; font-weight: 800; color: #2d4a27; margin-bottom: 4px; letter-spacing: 0.5px; text-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+.tagline { color: #666; font-size: 11px; margin-bottom: 12px; letter-spacing: 0.3px; }
 .sub { color: #999; font-size: 13px; margin-bottom: 36px; }
 .link-card { display: block; background: #fff; border-radius: 16px; padding: 20px 24px; margin-bottom: 12px; box-shadow: 0 2px 12px rgba(0,0,0,0.06); text-decoration: none; transition: transform 0.15s, box-shadow 0.15s; }
 .link-card:hover { transform: translateY(-2px); box-shadow: 0 4px 20px rgba(0,0,0,0.1); }
@@ -22,8 +25,11 @@ h1 { font-size: 28px; font-weight: 800; color: #2d4a27; margin-bottom: 4px; }
 </head>
 <body>
 <div class="container">
-  <div class="logo">🐾</div>
+  <div class="brand">
+    <span class="paw">🐾</span>
+  </div>
   <h1>Tidy Tails</h1>
+  <p class="tagline">Professional Dog Grooming — Est. 2023</p>
   <p class="sub">Samantha's Grooming Business Hub</p>
 
   <a href="index.html" class="link-card">
@@ -36,6 +42,12 @@ h1 { font-size: 28px; font-weight: 800; color: #2d4a27; margin-bottom: 4px; }
     <div class="icon">📊</div>
     <h2>Business Report</h2>
     <p>Three-year analysis — revenue trends, client insights, pricing, tips, and 2026 projections.</p>
+  </a>
+
+  <a href="client.html" class="link-card" style="border: 2px solid #4f7942;">
+    <div class="icon">🗓️</div>
+    <h2>Client Booking Portal</h2>
+    <p>For clients — create your profile, book appointments, and check your booking status.</p>
   </a>
 
   <a href="intake.html" class="link-card">

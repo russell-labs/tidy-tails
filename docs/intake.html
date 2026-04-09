@@ -567,9 +567,37 @@
         grid-template-columns: repeat(2, 1fr);
       }
     }
+
+    .sticky-nav {
+      position: sticky;
+      top: 0;
+      z-index: 999;
+      background-color: #f9f6f0;
+      border-bottom: 1px solid #ddd6cc;
+      padding: 8px 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-family: Georgia, serif;
+    }
+
+    .sticky-nav a {
+      color: #4f7942;
+      text-decoration: none;
+      font-size: 0.85rem;
+      transition: color 0.2s;
+    }
+
+    .sticky-nav a:hover {
+      color: #d4a574;
+    }
   </style>
 </head>
 <body>
+  <nav class="sticky-nav">
+    <a href="home.html">← Tidy Tails Hub</a>
+    <a href="index.html">Client App →</a>
+  </nav>
   <div class="container">
     <div class="offline-banner" id="offlineBanner">
       You're offline. Your form will be saved and sent when you reconnect.

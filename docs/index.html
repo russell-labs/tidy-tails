@@ -7,6 +7,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Tidy Tails">
 <title>Tidy Tails</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 :root {
   --g: #4f7942; --g2: #7ab369; --g3: #b8d9a8; --g4: #eaf5e4; --g5: #f2faf0;
@@ -78,6 +79,23 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'SF Pro', 'Segoe UI', san
 .schedule-header { padding: 12px 16px 6px; }
 .schedule-title { font-size: 16px; font-weight: 700; color: var(--text); }
 .schedule-date { font-size: 13px; color: var(--text3); }
+/* Week navigation */
+.week-nav { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; }
+.week-nav button { background: var(--g4); border: none; border-radius: 8px; padding: 8px 12px; font-size: 12px; font-weight: 600; color: var(--g); cursor: pointer; }
+.week-range { font-size: 13px; font-weight: 700; color: var(--text); }
+/* Week calendar */
+.week-calendar { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin: 8px 16px; }
+.week-day { background: var(--card); border-radius: 12px; padding: 10px 8px; text-align: center; cursor: pointer; border: 2px solid transparent; transition: all 0.2s; box-shadow: var(--shadow); }
+.week-day:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+.week-day.selected { border-color: var(--g); background: var(--g5); }
+.week-day.today { border-color: var(--g); border-width: 3px; background: var(--g5); }
+.week-day-name { font-size: 11px; font-weight: 700; color: var(--g); text-transform: uppercase; letter-spacing: 0.5px; }
+.week-day-num { font-size: 16px; font-weight: 700; color: var(--text); margin: 4px 0; }
+.week-location { font-size: 9px; color: var(--text3); margin-bottom: 6px; }
+.week-capacity { display: flex; align-items: center; justify-content: center; gap: 4px; font-size: 11px; font-weight: 600; color: var(--text); }
+.capacity-dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
+.capacity-count { color: var(--text2); }
+/* Day navigation */
 .day-nav { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; }
 .day-nav button { background: var(--g4); border: none; border-radius: 8px; padding: 8px 14px; font-size: 13px; font-weight: 600; color: var(--g); cursor: pointer; }
 .day-nav .current-day { font-size: 15px; font-weight: 700; color: var(--text); }
@@ -131,6 +149,20 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'SF Pro', 'Segoe UI', san
 .modal .btn-secondary { padding: 14px 20px; border-radius: 12px; border: 1.5px solid #ddd; background: var(--card); color: var(--text2); font-size: 15px; font-weight: 600; cursor: pointer; }
 .conflict-warning { background: #fff5f5; border: 1.5px solid #fecaca; border-radius: 10px; padding: 10px 12px; margin-top: 12px; font-size: 12px; color: var(--red); line-height: 1.5; }
 .availability-ok { background: var(--g5); border: 1.5px solid var(--g3); border-radius: 10px; padding: 10px 12px; margin-top: 12px; font-size: 12px; color: var(--g); line-height: 1.5; font-weight: 600; }
+/* Completion Modal */
+.completion-modal h3 { font-size: 18px; font-weight: 700; color: var(--text); margin-bottom: 16px; }
+.completion-modal input[type="number"] { width: 100%; padding: 12px; border: 1.5px solid #e0e0e0; border-radius: 10px; font-size: 14px; font-family: inherit; background: #fafafa; -webkit-appearance: none; appearance: none; }
+.completion-modal input[type="text"][readonly] { background: var(--g5); color: var(--text); border-color: var(--g3); cursor: not-allowed; }
+.payment-toggle { display: flex; gap: 8px; margin-top: 8px; margin-bottom: 8px; }
+.payment-btn { flex: 1; padding: 12px; border-radius: 10px; border: 1.5px solid #e0e0e0; background: #fafafa; color: var(--text2); font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.2s; }
+.payment-btn.active { background: var(--g); color: #fff; border-color: var(--g); }
+.summary-row { background: var(--g5); border-radius: 10px; padding: 12px; margin-top: 12px; }
+.summary-item { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 13px; }
+.summary-item:last-child { margin-bottom: 0; border-top: 1px solid var(--g3); padding-top: 8px; }
+.summary-label { color: var(--text3); font-weight: 500; }
+.summary-value { color: var(--text); font-weight: 700; }
+.complete-btn { width: 100%; padding: 14px; border-radius: 12px; border: none; background: var(--g); color: #fff; font-size: 15px; font-weight: 700; cursor: pointer; margin-top: 16px; }
+.complete-btn:disabled { background: #ccc; cursor: not-allowed; }
 /* Bottom nav */
 .bottom-nav { position: fixed; bottom: 0; left: 50%; transform: translateX(-50%); width: 100%; max-width: 430px; background: var(--card); border-top: 1px solid #e8e4de; display: flex; padding: 6px 0 calc(6px + var(--safe-bottom)); z-index: 100; }
 .nav-item { flex: 1; display: flex; flex-direction: column; align-items: center; padding: 6px 0; cursor: pointer; border: none; background: none; }
@@ -156,11 +188,66 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'SF Pro', 'Segoe UI', san
 .note-item { padding: 8px 0; border-bottom: 1px solid #f0ece6; }
 .note-date { font-size: 10px; color: var(--text3); }
 .note-text { font-size: 13px; color: var(--text2); margin-top: 2px; }
+/* Floating Navigation Bar */
+.floating-nav { position: sticky; top: 0; z-index: 999; background-color: #f9f6f0; border-bottom: 1px solid #ddd6cc; padding: 8px 16px; display: flex; justify-content: space-between; align-items: center; font-family: Georgia, serif; }
+.floating-nav a { color: #4f7942; text-decoration: none; font-size: 0.85rem; font-weight: 500; transition: color 0.2s; }
+.floating-nav a:hover { color: #d4a574; }
 /* Responsive tweaks */
 @media (max-width: 380px) { .stats-row { flex-wrap: wrap; } .stat { min-width: calc(50% - 4px); } }
+/* Toast animations */
+@keyframes slideUp {
+  from { transform: translateX(-50%) translateY(20px); opacity: 0; }
+  to { transform: translateX(-50%) translateY(0); opacity: 1; }
+}
+@keyframes slideDown {
+  from { transform: translateX(-50%) translateY(0); opacity: 1; }
+  to { transform: translateX(-50%) translateY(20px); opacity: 0; }
+}
+/* Booking Requests */
+.booking-requests-section { background: var(--card); border-radius: var(--radius); margin: 8px 16px; box-shadow: var(--shadow); }
+.booking-requests-header { padding: 14px 16px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; border-bottom: 1px solid #f0ece6; }
+.booking-requests-title { font-size: 15px; font-weight: 700; color: var(--text); display: flex; align-items: center; gap: 8px; }
+.booking-requests-badge { background: var(--red); color: #fff; font-size: 10px; padding: 2px 6px; border-radius: 10px; font-weight: 700; }
+.booking-requests-toggle { font-size: 14px; cursor: pointer; color: var(--text3); transition: transform 0.2s; }
+.booking-requests-toggle.collapsed { transform: rotate(-90deg); }
+.booking-request-card { padding: 12px 16px; border-bottom: 1px solid #f0ece6; }
+.booking-request-card:last-child { border-bottom: none; }
+.br-client-info { display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px; }
+.br-client-name { font-size: 14px; font-weight: 700; color: var(--text); }
+.br-status { font-size: 10px; padding: 3px 8px; border-radius: 4px; background: #e6f1fb; color: var(--blue); font-weight: 700; text-transform: uppercase; }
+.br-pet-line { font-size: 12px; color: var(--text3); margin-bottom: 6px; }
+.br-details { font-size: 12px; color: var(--text2); margin-bottom: 6px; line-height: 1.4; }
+.br-suggestion { background: var(--g5); padding: 8px; border-radius: 8px; margin: 8px 0; font-size: 11px; color: var(--g); border-left: 3px solid var(--g); }
+.br-suggestion-title { font-weight: 700; margin-bottom: 2px; }
+.br-client-msg { background: #f9f6f0; padding: 8px; border-radius: 6px; margin: 6px 0; font-size: 11px; color: var(--text2); font-style: italic; }
+.br-actions { display: flex; gap: 6px; margin-top: 10px; }
+.br-action-btn { flex: 1; padding: 8px 10px; border: none; border-radius: 8px; font-size: 11px; font-weight: 700; cursor: pointer; transition: all 0.2s; }
+.br-approve { background: var(--g); color: #fff; }
+.br-approve:hover { opacity: 0.9; }
+.br-hold { background: var(--orange); color: #fff; }
+.br-hold:hover { opacity: 0.9; }
+.br-deny { background: var(--red); color: #fff; }
+.br-deny:hover { opacity: 0.9; }
+.br-call-prompt { font-size: 11px; color: var(--text3); margin-top: 8px; }
+.br-call-link { color: var(--g); font-weight: 600; text-decoration: none; }
+.br-notes-textarea { width: 100%; padding: 8px; margin: 8px 0; border: 1px solid #ddd; border-radius: 6px; font-size: 12px; font-family: inherit; resize: vertical; min-height: 60px; }
+.br-modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.4); display: flex; align-items: flex-end; z-index: 200; }
+.br-modal-content { background: var(--card); width: 100%; max-width: 430px; border-radius: 20px 20px 0 0; padding: 20px 16px 30px; max-height: 80vh; overflow-y: auto; }
+.br-modal-title { font-size: 16px; font-weight: 700; color: var(--text); margin-bottom: 12px; }
+.br-modal-actions { display: flex; gap: 8px; margin-top: 16px; }
+.br-modal-actions button { flex: 1; padding: 12px; border: none; border-radius: 8px; font-weight: 700; cursor: pointer; font-size: 13px; }
+.br-modal-cancel { background: #f0f0f0; color: var(--text2); }
+.br-modal-confirm { background: var(--g); color: #fff; }
+/* Report Button */
+.report-btn { padding: 8px 12px; background: var(--blue); color: #fff; border: none; border-radius: 8px; font-size: 11px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 4px; transition: all 0.2s; white-space: nowrap; }
+.report-btn:hover { opacity: 0.9; }
 </style>
 </head>
 <body>
+<nav class="floating-nav">
+  <a href="home.html">← Tidy Tails Hub</a>
+  <a href="report.html">Business Report →</a>
+</nav>
 <div class="app" id="app"></div>
 <script>
 // ===== CLIENT DATABASE (parsed from your CSV files) =====
@@ -196,7 +283,25 @@ let state = {
     rebookPrompt: true,
   },
   newNote: '',
+  showCompleteModal: false,
+  completeSlot: null,
+  completeForm: {
+    serviceType: '',
+    fee: 0,
+    tip: 0,
+    paymentMethod: 'Cash',
+  },
+  bookingRequests: [],
+  bookingRequestsLoaded: false,
+  showBookingRequestsSection: true,
+  holdNotesModal: { show: false, requestId: null, notes: '' },
+  denyNotesModal: { show: false, requestId: null, reason: '' },
 };
+
+// Supabase configuration
+const SUPABASE_URL = 'https://pgkwovokciaqnbhpttba.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBna3dvdm9rY2lhcW5iaHB0dGJhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3NjU4ODUsImV4cCI6MjA5MTM0MTg4NX0.5ZQHpyH17dcCumR-wZdJMuo7BahBXqKmMzA-3U-U504';
+const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 // Generate a realistic demo schedule
 function generateDemoSchedule() {
@@ -256,6 +361,127 @@ function tierBadge(c) {
   if (v >= 8 && y <= 2) return { text: 'Growing', cls: 'badge-new' };
   if (v <= 3) return { text: 'New', cls: 'badge-new' };
   return { text: 'Regular', cls: 'badge-loyal' };
+}
+
+// Calculate location based on day of week
+function getLocationForDate(dateStr) {
+  const d = new Date(dateStr + 'T12:00:00Z');
+  const dayOfWeek = d.getUTCDay(); // 0=Sun, 1=Mon, ..., 6=Sat
+  // Mon(1), Wed(3), Thu(4), Fri(5) = Annette (main)
+  // Tue(2) = Gina (secondary)
+  // Fri(5) can be either, default to Annette
+  if ([1, 3, 4, 5].includes(dayOfWeek)) return 'main'; // Annette
+  if (dayOfWeek === 2) return 'secondary'; // Gina
+  return 'main';
+}
+
+// Calculate rent percentage based on location and day
+function getRentPercentage(dateStr, location) {
+  const d = new Date(dateStr + 'T12:00:00Z');
+  const dayOfWeek = d.getUTCDay(); // 0=Sun, 1=Mon, ..., 6=Sat
+  const year = d.getUTCFullYear();
+  const month = d.getUTCMonth() + 1;
+  const isAfterMay1 = year > 2025 || (year === 2025 && month > 5);
+
+  if (location === 'main') { // Annette
+    if (dayOfWeek === 1) return 0.35; // Monday
+    if (dayOfWeek === 3) return 0.50; // Wednesday
+    if (dayOfWeek === 4) return 0.35; // Thursday
+    if (dayOfWeek === 5) return 0.50; // Friday
+  } else if (location === 'secondary') { // Gina
+    if (dayOfWeek === 2) return isAfterMay1 ? 0.30 : 0.45; // Tuesday
+    if (dayOfWeek === 5) return isAfterMay1 ? 0.30 : 0.45; // Friday
+  }
+  return 0;
+}
+
+function openCompleteModal(slotIndex) {
+  const date = state.scheduleDate;
+  const loc = state.location;
+  const daySchedule = state.schedule[date];
+  const slots = daySchedule ? (daySchedule[loc] || []) : [];
+
+  if (slotIndex >= 0 && slotIndex < slots.length) {
+    const slot = slots[slotIndex];
+    state.completeSlot = { ...slot, index: slotIndex, date, location: loc };
+    state.completeForm = {
+      serviceType: '',
+      fee: slot.fee || 0,
+      tip: 0,
+      paymentMethod: 'Cash',
+    };
+    state.showCompleteModal = true;
+    render();
+  }
+}
+
+function closeCompleteModal() {
+  state.showCompleteModal = false;
+  state.completeSlot = null;
+  state.completeForm = { serviceType: '', fee: 0, tip: 0, paymentMethod: 'Cash' };
+  render();
+}
+
+function updateCompleteForm(field, value) {
+  if (field === 'fee' || field === 'tip') {
+    state.completeForm[field] = parseFloat(value) || 0;
+  } else {
+    state.completeForm[field] = value;
+  }
+  render();
+}
+
+async function saveCompletion() {
+  if (!state.completeSlot || !state.completeForm.serviceType) {
+    alert('Please select a service type');
+    return;
+  }
+
+  const date = state.completeSlot.date;
+  const loc = state.completeSlot.location;
+  const fee = state.completeForm.fee;
+  const tip = state.completeForm.tip;
+  const rentPct = getRentPercentage(date, loc);
+  const rent = fee * rentPct;
+  const net = fee + tip - rent;
+
+  // Find the client to get IDs
+  const c = CLIENTS.find(x => x.name === state.completeSlot.client);
+  const pet = c ? c.pets.find(p => p.name === state.completeSlot.dog) : null;
+
+  const record = {
+    client_id: null, // Will be NULL for now
+    pet_id: null,    // Will be NULL for now
+    date: date,
+    time_slot: state.completeSlot.time,
+    location: loc === 'main' ? 'Annette' : 'Gina',
+    service_type: state.completeForm.serviceType,
+    fee: fee,
+    tip: tip,
+    rent_paid: rent,
+    net: net,
+    status: 'completed',
+    notes: `local_client_id:${c ? c.id : 'unknown'}, local_pet_id:${pet ? pet.name : 'unknown'}, payment_method:${state.completeForm.paymentMethod}`,
+    created_at: new Date().toISOString(),
+  };
+
+  try {
+    const { data, error } = await supabase
+      .from('appointments')
+      .insert([record]);
+
+    if (error) {
+      console.error('Supabase error:', error);
+      alert('Error saving to database: ' + error.message);
+      return;
+    }
+
+    alert('Appointment completed and saved!');
+    closeCompleteModal();
+  } catch (e) {
+    console.error('Error:', e);
+    alert('Error: ' + e.message);
+  }
 }
 
 function searchClients(query) {
@@ -334,6 +560,137 @@ function formatDateNice(d) {
   return days[date.getDay()] + ', ' + months[date.getMonth()] + ' ' + date.getDate();
 }
 
+function renderCompleteModal() {
+  const slot = state.completeSlot;
+  const form = state.completeForm;
+  if (!slot) return '';
+
+  const fee = form.fee || 0;
+  const tip = form.tip || 0;
+  const rentPct = getRentPercentage(slot.date, slot.location);
+  const rent = fee * rentPct;
+  const net = fee + tip - rent;
+
+  const locationName = slot.location === 'main' ? 'Annette' : 'Gina';
+
+  let html = `<div class="modal-overlay" onclick="closeCompleteModal()">
+    <div class="modal completion-modal" onclick="event.stopPropagation()">
+      <h3>💰 Complete Appointment</h3>
+
+      <label>Client Name</label>
+      <input type="text" value="${slot.client}" readonly style="margin-bottom:8px">
+
+      <label>Pet Name</label>
+      <input type="text" value="${slot.dog}" readonly style="margin-bottom:8px">
+
+      <label>Service Type *</label>
+      <select id="service-type" onchange="updateCompleteForm('serviceType', this.value)" style="margin-bottom:8px">
+        <option value="">Select service...</option>
+        <option value="Full Groom" ${form.serviceType === 'Full Groom' ? 'selected' : ''}>Full Groom</option>
+        <option value="Bath Only" ${form.serviceType === 'Bath Only' ? 'selected' : ''}>Bath Only</option>
+        <option value="Nail Trim" ${form.serviceType === 'Nail Trim' ? 'selected' : ''}>Nail Trim</option>
+        <option value="Other" ${form.serviceType === 'Other' ? 'selected' : ''}>Other</option>
+      </select>
+
+      <label>Fee ($) *</label>
+      <input type="number" id="fee" value="${fee}" onchange="updateCompleteForm('fee', this.value)" style="margin-bottom:8px" min="0" step="0.01">
+
+      <label>Tip ($)</label>
+      <input type="number" id="tip" value="${tip}" onchange="updateCompleteForm('tip', this.value)" style="margin-bottom:8px" min="0" step="0.01">
+
+      <label>Payment Method</label>
+      <div class="payment-toggle">
+        <button class="payment-btn ${form.paymentMethod === 'Cash' ? 'active' : ''}" onclick="updateCompleteForm('paymentMethod', 'Cash')">💵 Cash</button>
+        <button class="payment-btn ${form.paymentMethod === 'Debit' ? 'active' : ''}" onclick="updateCompleteForm('paymentMethod', 'Debit')">💳 Debit</button>
+      </div>
+
+      <label style="margin-top:16px">Location</label>
+      <input type="text" value="${locationName}" readonly style="margin-bottom:8px">
+
+      <label style="margin-top:8px">Rent Split (${(rentPct * 100).toFixed(0)}%)</label>
+      <input type="text" value="${fmt(rent)}" readonly style="margin-bottom:8px">
+
+      <div class="summary-row">
+        <div class="summary-item">
+          <span class="summary-label">Gross Fee</span>
+          <span class="summary-value">${fmt(fee)}</span>
+        </div>
+        <div class="summary-item">
+          <span class="summary-label">Tip</span>
+          <span class="summary-value">${fmt(tip)}</span>
+        </div>
+        <div class="summary-item">
+          <span class="summary-label">Rent to Owner</span>
+          <span class="summary-value">${fmt(rent)}</span>
+        </div>
+        <div class="summary-item">
+          <span class="summary-label">Your Net</span>
+          <span class="summary-value" style="color:var(--g);font-size:14px">${fmt(net)}</span>
+        </div>
+      </div>
+
+      <button class="complete-btn" onclick="saveCompletion()">✓ Save & Complete</button>
+      <button class="modal .btn-secondary" style="width:100%;padding:12px;border-radius:10px;border:1.5px solid #ddd;background:var(--card);color:var(--text2);font-size:14px;font-weight:600;cursor:pointer;margin-top:8px" onclick="closeCompleteModal()">Cancel</button>
+    </div>
+  </div>`;
+
+  return html;
+}
+
+function renderHoldNotesModal() {
+  const req = state.bookingRequests.find(r => r.id === state.holdNotesModal.requestId);
+  if (!req) return '';
+
+  const client = CLIENTS.find(c => c.id === req.client_id) || { name: 'Unknown Client', phones: ['N/A'] };
+  const clientName = client.name || 'Unknown Client';
+  const clientPhone = client.phones ? client.phones[0] : 'N/A';
+
+  return `<div class="br-modal-overlay" onclick="if(event.target===this)closeHoldModal()">
+    <div class="br-modal-content">
+      <div class="br-modal-title">⏸ Put Booking on Hold</div>
+      <div style="font-size:13px;color:var(--text2);margin-bottom:12px">
+        <strong>${clientName}</strong>'s booking for <strong>${req.pet_name}</strong>
+      </div>
+      <div style="background:#fff9e6;padding:10px;border-radius:6px;margin-bottom:12px;font-size:11px;color:var(--text2)">
+        💬 <a href="tel:${clientPhone}" style="color:var(--g);font-weight:600">Call ${clientName}</a> at ${clientPhone} before scheduling
+      </div>
+      <div style="font-size:12px;color:var(--text2);margin-bottom:6px">📝 Add notes (optional):</div>
+      <textarea class="br-notes-textarea" id="hold-notes" placeholder="e.g., Waiting for client callback, need more info about pet temperament, etc." onchange="state.holdNotesModal.notes = this.value">${state.holdNotesModal.notes}</textarea>
+      <div class="br-modal-actions">
+        <button class="br-modal-actions button br-modal-cancel" onclick="closeHoldModal()">Cancel</button>
+        <button class="br-modal-actions button br-modal-confirm" onclick="confirmHold()">Save & Hold</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+function renderDenyReasonModal() {
+  const req = state.bookingRequests.find(r => r.id === state.denyNotesModal.requestId);
+  if (!req) return '';
+
+  const client = CLIENTS.find(c => c.id === req.client_id) || { name: 'Unknown Client', phones: ['N/A'] };
+  const clientName = client.name || 'Unknown Client';
+  const clientPhone = client.phones ? client.phones[0] : 'N/A';
+
+  return `<div class="br-modal-overlay" onclick="if(event.target===this)closeDenyModal()">
+    <div class="br-modal-content">
+      <div class="br-modal-title">✗ Decline Booking Request</div>
+      <div style="font-size:13px;color:var(--text2);margin-bottom:12px">
+        <strong>${clientName}</strong>'s request for <strong>${req.pet_name}</strong>
+      </div>
+      <div style="background:#ffe6e6;padding:10px;border-radius:6px;margin-bottom:12px;font-size:11px;color:var(--red);font-weight:600">
+        📞 Consider calling ${clientName} at ${clientPhone} before declining
+      </div>
+      <div style="font-size:12px;color:var(--text2);margin-bottom:6px">⚠️ Reason for denial (required):</div>
+      <textarea class="br-notes-textarea" id="deny-reason" placeholder="e.g., Fully booked that week, service not available, pet requires special handling we don't offer, etc." onchange="state.denyNotesModal.reason = this.value">${state.denyNotesModal.reason}</textarea>
+      <div class="br-modal-actions">
+        <button class="br-modal-actions button br-modal-cancel" onclick="closeDenyModal()">Cancel</button>
+        <button class="br-modal-actions button br-modal-confirm" onclick="confirmDeny()">Decline & Notify</button>
+      </div>
+    </div>
+  </div>`;
+}
+
 // ===== RENDER =====
 function render() {
   const app = $('#app');
@@ -365,6 +722,21 @@ function render() {
   // Modal
   if (state.showBookModal) {
     html += renderBookModal();
+  }
+
+  // Completion Modal
+  if (state.showCompleteModal && state.completeSlot !== null) {
+    html += renderCompleteModal();
+  }
+
+  // Hold Notes Modal
+  if (state.holdNotesModal.show) {
+    html += renderHoldNotesModal();
+  }
+
+  // Deny Reason Modal
+  if (state.denyNotesModal.show) {
+    html += renderDenyReasonModal();
   }
 
   app.innerHTML = html;
@@ -510,6 +882,81 @@ function renderScheduleView() {
     <div class="schedule-date">${formatDateNice(date)}</div>
   </div>`;
 
+  // Booking Requests Section
+  html += renderBookingRequestsSection();
+
+  // Get the week's dates (Mon-Fri)
+  const selectedDate = new Date(date + 'T00:00:00');
+  const dayOfWeek = selectedDate.getDay(); // 0=Sun, 1=Mon, etc.
+  const diff = selectedDate.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1); // Adjust to get Monday
+  const monday = new Date(selectedDate.setDate(diff));
+
+  const weekDates = [];
+  for (let i = 0; i < 5; i++) {
+    const d = new Date(monday);
+    d.setDate(d.getDate() + i);
+    weekDates.push(d.toISOString().split('T')[0]);
+  }
+
+  // Location assignment for the week (auto-assigned)
+  const locationMap = {
+    0: 'Annette',  // Mon
+    1: 'Gina',     // Tue
+    2: 'Annette',  // Wed
+    3: 'Annette',  // Thu
+    4: 'Annette/Gina' // Fri
+  };
+
+  // Week navigation
+  const weekStart = weekDates[0];
+  const weekEnd = weekDates[4];
+  const weekStartDate = new Date(weekStart + 'T00:00:00');
+  const weekEndDate = new Date(weekEnd + 'T00:00:00');
+  const monthStr = weekStartDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  const endMonthStr = weekEndDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  const yearStr = weekStartDate.getFullYear();
+
+  html += `<div class="week-nav">
+    <button onclick="changeWeek(-1)">← Prev Week</button>
+    <span class="week-range">${monthStr} - ${endMonthStr}, ${yearStr}</span>
+    <button onclick="changeWeek(1)">Next Week →</button>
+  </div>`;
+
+  // Week-at-a-glance calendar
+  html += `<div class="week-calendar">`;
+  weekDates.forEach((d, dayIdx) => {
+    const dayDate = new Date(d + 'T00:00:00');
+    const dayName = dayDate.toLocaleDateString('en-US', { weekday: 'short' });
+    const dayNum = dayDate.getDate();
+    const isToday = d === new Date().toISOString().split('T')[0];
+    const isSelected = d === date;
+
+    // Count booked appointments for this day
+    const daySchedule = state.schedule[d];
+    const mainCount = daySchedule && daySchedule.main ? daySchedule.main.length : 0;
+    const secCount = daySchedule && daySchedule.secondary ? daySchedule.secondary.length : 0;
+    const totalCount = mainCount + secCount;
+
+    // Capacity color: green if < 6, yellow if 6-8, red if >= 9
+    let capacityColor = 'green'; // var(--g)
+    if (totalCount >= 9) capacityColor = 'red'; // var(--red)
+    else if (totalCount >= 6) capacityColor = 'yellow'; // var(--orange)
+
+    const todayClass = isToday ? ' today' : '';
+    const selectedClass = isSelected ? ' selected' : '';
+
+    html += `<div class="week-day${todayClass}${selectedClass}" onclick="jumpToDate('${d}')">
+      <div class="week-day-name">${dayName}</div>
+      <div class="week-day-num">${dayNum}</div>
+      <div class="week-location">${locationMap[dayIdx]}</div>
+      <div class="week-capacity">
+        <span class="capacity-dot" style="background: ${capacityColor === 'green' ? 'var(--g)' : capacityColor === 'yellow' ? 'var(--orange)' : 'var(--red)'}"></span>
+        <span class="capacity-count">${totalCount}</span>
+      </div>
+    </div>`;
+  });
+  html += `</div>`;
+
   // Day navigation
   html += `<div class="day-nav">
     <button onclick="changeDay(-1)">← Prev</button>
@@ -543,9 +990,11 @@ function renderScheduleView() {
   } else {
     // Group by time
     let prevTime = '';
-    slots.forEach(s => {
+    slots.forEach((s, idx) => {
       const showTime = s.time !== prevTime;
       prevTime = s.time;
+      // Show Complete button only for checkin stage
+      const isCheckIn = s.stage === 'checkin';
       html += `<div class="time-slot ${s.separate ? 'slot-alert' : ''}">
         <div class="time-label">${showTime ? s.time : ''}</div>
         <div class="slot-content">
@@ -554,6 +1003,7 @@ function renderScheduleView() {
           <span class="slot-stage ${stageClass(s.stage)}">${stageLabel(s.stage)}</span>
           ${s.notes ? `<div class="alert-text">${s.notes}</div>` : ''}
           ${s.separate ? `<div class="alert-text">⚠ Needs separation from other dogs</div>` : ''}
+          ${isCheckIn ? `<button onclick="openCompleteModal(${idx})" style="margin-top:8px;padding:8px 12px;border-radius:8px;border:none;background:var(--g);color:#fff;font-size:12px;font-weight:700;cursor:pointer">✓ Complete</button>` : ''}
         </div>
       </div>`;
     });
@@ -578,10 +1028,220 @@ function renderScheduleView() {
   return html;
 }
 
+// ===== AUTOMATIONS HELPER FUNCTIONS =====
+function getClientsNeedingEmails() {
+  // For now, since email field isn't in data yet, return empty array
+  // This can be enhanced when email field is added to CLIENTS
+  return [];
+}
+
+function getClientsDueForRebooking() {
+  const now = new Date();
+  const dueClients = [];
+  const defaultFreq = 42; // days (6 weeks)
+
+  CLIENTS.forEach(client => {
+    if (!client.lastVisit || client.pets.length === 0) return;
+
+    const lastVisitDate = parseDate(client.lastVisit);
+    if (!lastVisitDate) return;
+
+    const daysAgo = Math.floor((now - lastVisitDate) / (1000 * 60 * 60 * 24));
+    const daysOverdue = daysAgo - defaultFreq;
+
+    if (daysOverdue > 0) {
+      dueClients.push({
+        id: client.id,
+        name: client.name,
+        petName: client.pets[0].name,
+        lastVisit: client.lastVisit,
+        daysOverdue: daysOverdue
+      });
+    }
+  });
+
+  return dueClients.sort((a, b) => b.daysOverdue - a.daysOverdue);
+}
+
+function getRecentFollowUps() {
+  const now = new Date();
+  const cutoff = new Date(now.getTime() - 48 * 60 * 60 * 1000); // 48 hours ago
+  const recent = [];
+
+  CLIENTS.forEach(client => {
+    if (!client.lastVisit || client.pets.length === 0) return;
+
+    const lastVisitDate = parseDate(client.lastVisit);
+    if (!lastVisitDate || lastVisitDate < cutoff) return;
+
+    recent.push({
+      clientName: client.name,
+      petName: client.pets[0].name,
+      service: client.pets[0].breed || 'Grooming',
+      date: client.lastVisit
+    });
+  });
+
+  return recent;
+}
+
+function parseDate(dateStr) {
+  // Parse format like "22-Dec-25"
+  const parts = dateStr.split('-');
+  if (parts.length !== 3) return null;
+
+  const day = parseInt(parts[0]);
+  const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const month = monthNames.indexOf(parts[1]);
+  const year = 2000 + parseInt(parts[2]);
+
+  if (month === -1) return null;
+
+  return new Date(year, month, day);
+}
+
+function markEmailAsked(clientId) {
+  const asked = JSON.parse(localStorage.getItem('emailsAskedFor') || '[]');
+  if (!asked.includes(clientId)) {
+    asked.push(clientId);
+    localStorage.setItem('emailsAskedFor', JSON.stringify(asked));
+    render();
+  }
+}
+
+function dismissRebookFor(clientId) {
+  const dismissed = JSON.parse(localStorage.getItem('dismissedRebook') || '{}');
+  dismissed[clientId] = Date.now() + (14 * 24 * 60 * 60 * 1000); // 2 weeks
+  localStorage.setItem('dismissedRebook', JSON.stringify(dismissed));
+  render();
+}
+
+function sendReminderToast(clientName) {
+  showToast(`SMS reminder queued for ${clientName}`);
+}
+
+function sendThankYouToast(clientName) {
+  showToast(`Thank you message queued for ${clientName}`);
+}
+
+function showToast(message) {
+  // Create simple toast notification
+  const toast = document.createElement('div');
+  toast.textContent = message;
+  toast.style.cssText = `
+    position: fixed;
+    bottom: 80px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--g);
+    color: white;
+    padding: 12px 20px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    z-index: 1000;
+    animation: slideUp 0.3s ease;
+  `;
+  document.body.appendChild(toast);
+  setTimeout(() => {
+    toast.style.animation = 'slideDown 0.3s ease';
+    setTimeout(() => toast.remove(), 300);
+  }, 3000);
+}
+
 function renderAutomationsView() {
   let html = '';
 
   html += `<div style="padding:12px 20px 6px"><div style="font-size:18px;font-weight:700;color:var(--text)">Automations</div><div style="font-size:12px;color:var(--text3);margin-top:2px">Smart tools to save admin time and improve service</div></div>`;
+
+  // ===== 1. COLLECT EMAILS SECTION =====
+  const clientsNeedingEmails = getClientsNeedingEmails();
+  const askedFor = JSON.parse(localStorage.getItem('emailsAskedFor') || '[]');
+  const stillNeedingEmails = clientsNeedingEmails.filter(c => !askedFor.includes(c.id));
+
+  html += `<div style="padding:0 16px;margin-top:12px">
+    <div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:8px">📧 Collect Emails</div>
+    ${stillNeedingEmails.length === 0 ?
+      `<div style="padding:12px;background:var(--g4);border-radius:12px;font-size:13px;color:var(--text)">All clients have email addresses!</div>` :
+      `<div style="font-size:12px;color:var(--text2);margin-bottom:8px">${stillNeedingEmails.length} client(s) still need email</div>
+      <div style="background:var(--card);border-radius:12px;padding:8px;border:1px solid #e0dcd6">
+        ${stillNeedingEmails.slice(0, 5).map(c => `
+          <div style="padding:10px;border-bottom:1px solid #f0ece6;display:flex;justify-content:space-between;align-items:center">
+            <div>
+              <div style="font-weight:600;color:var(--text);font-size:13px">${c.name}</div>
+              <div style="font-size:11px;color:var(--text3);margin-top:2px">${c.phones[0] || 'No phone'} • Last: ${c.lastVisit || 'N/A'}</div>
+            </div>
+            <button onclick="markEmailAsked(${c.id})" style="padding:6px 10px;background:var(--g4);border:1px solid var(--g);border-radius:6px;font-size:11px;font-weight:600;color:var(--g);cursor:pointer;white-space:nowrap">Mark Asked</button>
+          </div>
+        `).join('')}
+        ${stillNeedingEmails.length > 5 ? `<div style="padding:8px;text-align:center;font-size:11px;color:var(--text3)">...and ${stillNeedingEmails.length - 5} more</div>` : ''}
+      </div>`
+    }
+  </div>`;
+
+  // ===== 2. NEEDS REBOOKING SECTION =====
+  const rebookingNeeded = getClientsDueForRebooking();
+  const dismissedRebook = JSON.parse(localStorage.getItem('dismissedRebook') || '{}');
+  const activeDueClients = rebookingNeeded.filter(c => !dismissedRebook[c.id] || Date.now() < dismissedRebook[c.id]);
+
+  html += `<div style="padding:0 16px;margin-top:12px">
+    <div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:8px">📅 Needs Rebooking</div>
+    ${activeDueClients.length === 0 ?
+      `<div style="padding:12px;background:var(--g4);border-radius:12px;font-size:13px;color:var(--text)">All clients are up to date!</div>` :
+      `<div style="background:var(--card);border-radius:12px;padding:8px;border:1px solid #e0dcd6">
+        ${activeDueClients.slice(0, 5).map(c => `
+          <div style="padding:10px;border-bottom:1px solid #f0ece6">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">
+              <div>
+                <div style="font-weight:600;color:var(--text);font-size:13px">${c.name} • ${c.petName}</div>
+                <div style="font-size:11px;color:var(--red);margin-top:2px;font-weight:600">${c.daysOverdue} days overdue</div>
+              </div>
+              <div style="font-size:11px;color:var(--text3);text-align:right">Last: ${c.lastVisit}</div>
+            </div>
+            <div style="display:flex;gap:6px">
+              <button onclick="sendReminderToast('${c.name}')" style="flex:1;padding:6px;background:var(--g);color:#fff;border:none;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer">Send Reminder</button>
+              <button onclick="dismissRebookFor(${c.id})" style="flex:1;padding:6px;background:#f0f0f0;color:var(--text2);border:none;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer">Dismiss 2w</button>
+            </div>
+          </div>
+        `).join('')}
+        ${activeDueClients.length > 5 ? `<div style="padding:8px;text-align:center;font-size:11px;color:var(--text3)">...and ${activeDueClients.length - 5} more</div>` : ''}
+      </div>`
+    }
+  </div>`;
+
+  // ===== 3. FOLLOW-UP QUEUE SECTION =====
+  const recentAppointments = getRecentFollowUps();
+
+  html += `<div style="padding:0 16px;margin-top:12px">
+    <div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:8px">💬 Follow-Up</div>
+    ${recentAppointments.length === 0 ?
+      `<div style="padding:12px;background:var(--g4);border-radius:12px;font-size:13px;color:var(--text)">No recent appointments to follow up on</div>` :
+      `<div style="background:var(--card);border-radius:12px;padding:8px;border:1px solid #e0dcd6">
+        ${recentAppointments.slice(0, 5).map(c => `
+          <div style="padding:10px;border-bottom:1px solid #f0ece6">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">
+              <div>
+                <div style="font-weight:600;color:var(--text);font-size:13px">${c.clientName}</div>
+                <div style="font-size:11px;color:var(--text3);margin-top:2px">${c.petName} • ${c.service}</div>
+              </div>
+              <div style="font-size:11px;color:var(--text3);text-align:right">${c.date}</div>
+            </div>
+            <button onclick="sendThankYouToast('${c.clientName}')" style="width:100%;padding:6px;background:var(--g);color:#fff;border:none;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer">Send Thank You</button>
+          </div>
+        `).join('')}
+        ${recentAppointments.length > 5 ? `<div style="padding:8px;text-align:center;font-size:11px;color:var(--text3)">...and ${recentAppointments.length - 5} more</div>` : ''}
+      </div>`
+    }
+  </div>`;
+
+  // ===== 4. NO-SHOWS SECTION =====
+  html += `<div style="padding:0 16px;margin-top:12px;margin-bottom:20px">
+    <div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:8px">⚠️ No-Shows</div>
+    <div style="padding:12px;background:var(--g4);border-radius:12px;font-size:13px;color:var(--text)">No recent no-shows — great job!</div>
+  </div>`;
+
+  // ===== OPTIONAL AUTOMATIONS (toggle-able) =====
+  html += `<div style="padding:12px 20px 6px;margin-top:16px"><div style="font-size:14px;font-weight:700;color:var(--text)">Optional Automations</div></div>`;
 
   const autos = [
     { key: 'followUp', title: 'First-Visit Follow-Up', desc: 'Automatically send a text 6 weeks after a new client\'s first visit: "Hi [name], how is [pet] doing since their groom? Would love to book you in again!"', stat: 'Est. value: $1,600/year from recovered clients', icon: '💬' },
@@ -844,6 +1504,13 @@ function changeDay(delta) {
   render();
 }
 
+function changeWeek(delta) {
+  const d = new Date(state.scheduleDate + 'T12:00:00');
+  d.setDate(d.getDate() + (delta * 7));
+  state.scheduleDate = d.toISOString().split('T')[0];
+  render();
+}
+
 function jumpToDate(val) { state.scheduleDate = val; render(); }
 function setLocation(loc) { state.location = loc; render(); }
 function toggleAuto(key) { state.automations[key] = !state.automations[key]; render(); }
@@ -858,7 +1525,280 @@ function saveTemp(clientId, petName) {
   }
 }
 
+// ===== BOOKING REQUESTS =====
+async function loadBookingRequests() {
+  if (state.bookingRequestsLoaded) return;
+  try {
+    const { data, error } = await supabase
+      .from('booking_requests')
+      .select('*')
+      .eq('status', 'pending')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('Error loading booking requests:', error);
+      state.bookingRequests = [];
+    } else {
+      state.bookingRequests = data || [];
+    }
+    state.bookingRequestsLoaded = true;
+    render();
+  } catch (e) {
+    console.error('Exception loading booking requests:', e);
+    state.bookingRequests = [];
+  }
+}
+
+function renderBookingRequestsSection() {
+  if (!state.showBookingRequestsSection) return '';
+
+  const pendingCount = state.bookingRequests.filter(r => r.status === 'pending').length;
+  const isCollapsed = !state.showBookingRequestsSection;
+
+  let html = '';
+  if (pendingCount > 0) {
+    html += `<div class="booking-requests-section">
+      <div class="booking-requests-header" onclick="toggleBookingRequestsSection()">
+        <div class="booking-requests-title">
+          📋 Booking Requests
+          ${pendingCount > 0 ? `<span class="booking-requests-badge">${pendingCount}</span>` : ''}
+        </div>
+        <span class="booking-requests-toggle">▼</span>
+      </div>`;
+
+    if (!isCollapsed) {
+      state.bookingRequests.forEach(req => {
+        html += renderBookingRequestCard(req);
+      });
+    }
+
+    html += '</div>';
+  }
+
+  return html;
+}
+
+function renderBookingRequestCard(req) {
+  let html = `<div class="booking-request-card">`;
+
+  // Try to get client and pet info from local data
+  const client = CLIENTS.find(c => c.id === req.client_id);
+  const clientName = client ? client.name : 'Unknown Client';
+  const clientPhone = client ? (client.phones ? client.phones[0] : 'N/A') : 'N/A';
+
+  html += `<div class="br-client-info">
+    <div class="br-client-name">${clientName}</div>
+    <span class="br-status">${req.status}</span>
+  </div>`;
+
+  // Pet info - try to find in client pets or use fallback
+  let petName = 'Unknown Pet';
+  let petBreed = 'Unknown';
+  if (client && req.pet_id) {
+    const pet = client.pets.find(p => p.id === req.pet_id);
+    if (pet) {
+      petName = pet.name;
+      petBreed = pet.breed || 'Unknown';
+    }
+  } else if (req.pet_name) {
+    petName = req.pet_name;
+    petBreed = req.pet_breed || 'Unknown';
+  }
+  html += `<div class="br-pet-line">🐾 ${petName} · ${petBreed}</div>`;
+
+  // Booking details
+  const reqDate = req.requested_date ? new Date(req.requested_date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : 'TBD';
+  const reqTime = req.requested_time_slot || 'Flexible';
+  const service = req.service_type || 'Standard Groom';
+
+  html += `<div class="br-details">
+    📅 ${reqDate} at ${reqTime}<br>
+    ✨ ${service}<br>
+    📍 ${req.preferred_location || 'Any location'}
+  </div>`;
+
+  // AI Suggestion
+  if (req.ai_suggested_slot) {
+    const suggestion = req.ai_suggested_slot;
+    const suggestedDay = suggestion.day || 'TBD';
+    const suggestedTime = suggestion.time || 'TBD';
+    const slotsUsed = suggestion.slots_used || 0;
+    const maxSlots = suggestion.max_slots || 6;
+
+    html += `<div class="br-suggestion">
+      <div class="br-suggestion-title">✨ Recommended Slot</div>
+      ${suggestedDay} at ${suggestedTime} — ${slotsUsed}/${maxSlots} slots filled
+    </div>`;
+  }
+
+  // Client message
+  if (req.client_message) {
+    html += `<div class="br-client-msg">💬 "${req.client_message}"</div>`;
+  }
+
+  // Action buttons
+  html += `<div class="br-actions">
+    <button class="br-action-btn br-approve" onclick="approveBookingRequest(${req.id})">✓ Approve</button>
+    <button class="br-action-btn br-hold" onclick="showHoldModal(${req.id})">⏸ Hold</button>
+    <button class="br-action-btn br-deny" onclick="showDenyModal(${req.id})">✗ Deny</button>
+  </div>`;
+
+  // Call prompt for hold
+  if (req.status === 'pending') {
+    html += `<div class="br-call-prompt">
+      💬 <a href="tel:${clientPhone}" class="br-call-link">Call ${clientName}</a> at ${clientPhone}
+    </div>`;
+  }
+
+  html += '</div>';
+  return html;
+}
+
+function toggleBookingRequestsSection() {
+  state.showBookingRequestsSection = !state.showBookingRequestsSection;
+  render();
+}
+
+function showHoldModal(requestId) {
+  state.holdNotesModal.show = true;
+  state.holdNotesModal.requestId = requestId;
+  state.holdNotesModal.notes = '';
+  render();
+}
+
+function closeHoldModal() {
+  state.holdNotesModal.show = false;
+  state.holdNotesModal.requestId = null;
+  state.holdNotesModal.notes = '';
+  render();
+}
+
+function showDenyModal(requestId) {
+  state.denyNotesModal.show = true;
+  state.denyNotesModal.requestId = requestId;
+  state.denyNotesModal.reason = '';
+  render();
+}
+
+function closeDenyModal() {
+  state.denyNotesModal.show = false;
+  state.denyNotesModal.requestId = null;
+  state.denyNotesModal.reason = '';
+  render();
+}
+
+async function approveBookingRequest(requestId) {
+  try {
+    // Update booking request status to approved
+    const { error: updateError } = await supabase
+      .from('booking_requests')
+      .update({ status: 'approved', reviewed_at: new Date().toISOString() })
+      .eq('id', requestId);
+
+    if (updateError) {
+      console.error('Error approving request:', updateError);
+      alert('Error approving request');
+      return;
+    }
+
+    // Get the request details to create an appointment
+    const req = state.bookingRequests.find(r => r.id === requestId);
+    if (req) {
+      const { error: createError } = await supabase
+        .from('appointments')
+        .insert({
+          client_id: req.client_id,
+          pet_id: req.pet_id,
+          booking_date: req.requested_date || new Date().toISOString().split('T')[0],
+          time_slot: req.requested_time_slot || '9:00',
+          location: req.preferred_location || 'main',
+          service_type: req.service_type || 'Standard Groom',
+          status: 'confirmed',
+          created_at: new Date().toISOString(),
+        });
+
+      if (createError) {
+        console.error('Error creating appointment:', createError);
+      }
+    }
+
+    // Reload booking requests
+    state.bookingRequestsLoaded = false;
+    await loadBookingRequests();
+    showToast('✓ Booking approved!');
+  } catch (e) {
+    console.error('Exception approving request:', e);
+    alert('Error approving request');
+  }
+}
+
+async function confirmHold() {
+  const { requestId, notes } = state.holdNotesModal;
+  if (!requestId) return;
+
+  try {
+    const { error } = await supabase
+      .from('booking_requests')
+      .update({ admin_notes: notes, reviewed_at: new Date().toISOString() })
+      .eq('id', requestId);
+
+    if (error) {
+      console.error('Error holding request:', error);
+      alert('Error saving notes');
+      return;
+    }
+
+    // Get client phone for call reminder
+    const req = state.bookingRequests.find(r => r.id === requestId);
+    const client = CLIENTS.find(c => c.id === req.client_id);
+    const phone = client ? (client.phones ? client.phones[0] : 'N/A') : 'N/A';
+
+    closeHoldModal();
+    showToast(`⏸ Request on hold. Call ${client ? client.name : 'client'} at ${phone}`);
+  } catch (e) {
+    console.error('Exception holding request:', e);
+    alert('Error saving notes');
+  }
+}
+
+async function confirmDeny() {
+  const { requestId, reason } = state.denyNotesModal;
+  if (!requestId || !reason.trim()) {
+    alert('Please enter a reason for denial');
+    return;
+  }
+
+  try {
+    const req = state.bookingRequests.find(r => r.id === requestId);
+    const client = CLIENTS.find(c => c.id === req.client_id);
+    const clientName = client ? client.name : 'Client';
+    const clientPhone = client ? (client.phones ? client.phones[0] : 'N/A') : 'N/A';
+
+    const { error } = await supabase
+      .from('booking_requests')
+      .update({ status: 'denied', denial_reason: reason, reviewed_at: new Date().toISOString() })
+      .eq('id', requestId);
+
+    if (error) {
+      console.error('Error denying request:', error);
+      alert('Error processing denial');
+      return;
+    }
+
+    closeDenyModal();
+    showToast(`✗ Request denied. Consider calling ${clientName} at ${clientPhone}`);
+
+    // Reload booking requests
+    state.bookingRequestsLoaded = false;
+    await loadBookingRequests();
+  } catch (e) {
+    console.error('Exception denying request:', e);
+    alert('Error processing denial');
+  }
+}
+
 // ===== INIT =====
+loadBookingRequests();
 render();
 </script>
 </body>
