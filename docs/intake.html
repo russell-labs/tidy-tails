@@ -545,6 +545,43 @@
       cursor: pointer;
     }
 
+    .day-checkboxes {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+
+    .day-check {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      background: #fff;
+      border: 2px solid #ddd6cc;
+      border-radius: 8px;
+      padding: 0.5rem 0.75rem;
+      font-size: 0.95rem;
+      cursor: pointer;
+      transition: all 0.2s;
+      margin: 0;
+    }
+
+    .day-check:has(input:checked) {
+      border-color: var(--primary);
+      background: #eaf5e4;
+    }
+
+    .day-check input[type="checkbox"] {
+      width: auto;
+      margin: 0;
+      accent-color: var(--primary);
+    }
+
+    .size-desc {
+      font-size: 0.75rem;
+      color: #888;
+      margin-top: 1px;
+    }
+
     @media (max-width: 480px) {
       .container {
         box-shadow: none;
@@ -664,25 +701,27 @@
           </select>
         </div>
         <div class="form-group">
-          <label for="preferredDay" class="required">Preferred Day</label>
-          <select id="preferredDay" required>
-            <option value="">Select a day...</option>
-            <option value="Monday">Monday</option>
-            <option value="Tuesday">Tuesday</option>
-            <option value="Wednesday">Wednesday</option>
-            <option value="Thursday">Thursday</option>
-            <option value="Friday">Friday</option>
-            <option value="Saturday">Saturday</option>
-            <option value="Sunday">Sunday</option>
-          </select>
+          <label class="required">Preferred Day(s)</label>
+          <p style="font-size: 0.85rem; color: #888; margin-bottom: 0.5rem;">Select all that work for you</p>
+          <div class="day-checkboxes" id="preferredDays">
+            <label class="day-check"><input type="checkbox" name="preferredDay" value="Monday"> Monday</label>
+            <label class="day-check"><input type="checkbox" name="preferredDay" value="Tuesday"> Tuesday</label>
+            <label class="day-check"><input type="checkbox" name="preferredDay" value="Wednesday"> Wednesday</label>
+            <label class="day-check"><input type="checkbox" name="preferredDay" value="Thursday"> Thursday</label>
+            <label class="day-check"><input type="checkbox" name="preferredDay" value="Friday"> Friday</label>
+          </div>
         </div>
         <div class="form-group">
           <label for="preferredFrequency" class="required">Grooming Frequency</label>
           <select id="preferredFrequency" required>
             <option value="">Select frequency...</option>
+            <option value="2">Every 2 weeks</option>
+            <option value="3">Every 3 weeks</option>
             <option value="4">Every 4 weeks</option>
             <option value="6">Every 6 weeks</option>
+            <option value="7">Every 7 weeks</option>
             <option value="8">Every 8 weeks</option>
+            <option value="12">Every 12 weeks</option>
           </select>
         </div>
       </div>
@@ -874,8 +913,9 @@
             showError('Please select a preferred location');
             return false;
           }
-          if (!document.getElementById('preferredDay').value) {
-            showError('Please select a preferred day');
+          const checkedDays = document.querySelectorAll('input[name="preferredDay"]:checked');
+          if (checkedDays.length === 0) {
+            showError('Please select at least one preferred day');
             return false;
           }
           if (!document.getElementById('preferredFrequency').value) {
@@ -916,9 +956,10 @@
           break;
 
         case 4:
+          const selectedDays = Array.from(document.querySelectorAll('input[name="preferredDay"]:checked')).map(cb => cb.value);
           formData.scheduling = {
             preferred_location: document.getElementById('preferredLocation').value,
-            preferred_day: document.getElementById('preferredDay').value,
+            preferred_day: selectedDays.join(', '),
             preferred_frequency_weeks: parseInt(document.getElementById('preferredFrequency').value)
           };
           break;
@@ -964,6 +1005,7 @@
                   <label for="size-small-${petId}">
                     <div class="size-icon">🐕</div>
                     <div class="size-label">Small</div>
+                    <div class="size-desc">Under 20 lbs</div>
                   </label>
                 </div>
                 <div class="size-option">
@@ -971,6 +1013,7 @@
                   <label for="size-medium-${petId}">
                     <div class="size-icon">🐕</div>
                     <div class="size-label">Medium</div>
+                    <div class="size-desc">20–50 lbs</div>
                   </label>
                 </div>
                 <div class="size-option">
@@ -978,6 +1021,7 @@
                   <label for="size-large-${petId}">
                     <div class="size-icon">🐕</div>
                     <div class="size-label">Large</div>
+                    <div class="size-desc">50–90 lbs</div>
                   </label>
                 </div>
                 <div class="size-option">
@@ -985,6 +1029,7 @@
                   <label for="size-xl-${petId}">
                     <div class="size-icon">🐕</div>
                     <div class="size-label">XL</div>
+                    <div class="size-desc">Over 90 lbs</div>
                   </label>
                 </div>
               </div>
