@@ -561,8 +561,13 @@
         }
 
         // Set initial date range to Jan 1 - today of current year
-        setDateRange(currentYear);
-        toDateInput.value = formatDateForInput(today);
+        // Default to 2025 (most recent year with data) instead of current year
+        const defaultYear = 2025;
+        setDateRange(defaultYear);
+        // Highlight the correct year button
+        yearBtns.forEach(b => {
+            b.classList.toggle('active', parseInt(b.dataset.year) === defaultYear);
+        });
 
         // Year button handlers
         yearBtns.forEach(btn => {
