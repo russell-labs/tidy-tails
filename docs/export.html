@@ -652,7 +652,7 @@
 
                     // Determine payment methods from notes
                     const notes = apt.notes || '';
-                    const paymentMethod = notes.includes('payment_method: cash') ? 'cash' : 'debit';
+                    const paymentMethod = notes.includes('payment:cash') ? 'cash' : 'debit';
 
                     // Calculate fees based on payment method
                     let feePaidCash = 0;
@@ -926,9 +926,29 @@
             }
         }
 
+        // Auto-preview when dates change
+        async function autoPreview() {
+            const from = fromDateInput.value;
+            const to = toDateInput.value;
+            if (from && to) {
+                const rows = await fetchAppointments(from, to);
+                displayPreview(rows);
+            }
+        }
+
         // Event listeners
         exportBtn.addEventListener('click', exportToExcel);
         allYearsBtn.addEventListener('click', exportAllYears);
+
+        // Auto-load preview on page load and date changes
+        yearBtns.forEach(btn => {
+            btn.addEventListener('click', () => setTimeout(autoPreview, 100));
+        });
+        fromDateInput.addEventListener('change', () => setTimeout(autoPreview, 100));
+        toDateInput.addEventListener('change', () => setTimeout(autoPreview, 100));
+
+        // Initial preview load
+        setTimeout(autoPreview, 500);
     </script>
 </body>
 </html>
