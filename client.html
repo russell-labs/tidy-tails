@@ -1046,10 +1046,36 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script>
         // Initialize Supabase
-        const sb = window.supabase.createClient(
-            'https://pgkwovokciaqnbhpttba.supabase.co',
-            'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBna3dvdm9rY2lhcW5iaHB0dGJhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3NjU4ODUsImV4cCI6MjA5MTM0MTg4NX0.5ZQHpyH17dcCumR-wZdJMuo7BahBXqKmMzA-3U-U504'
-        );
+        const SUPABASE_URL = 'https://pgkwovokciaqnbhpttba.supabase.co';
+        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBna3dvdm9rY2lhcW5iaHB0dGJhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3NjU4ODUsImV4cCI6MjA5MTM0MTg4NX0.5ZQHpyH17dcCumR-wZdJMuo7BahBXqKmMzA-3U-U504';
+        const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+        // SMS alert destination (Sam's cell — must be verified in Twilio while on free tier)
+        const SAM_PHONE = '+17053453746'; // Sam's verified Twilio caller ID
+
+        // Shared SMS helper — calls the Supabase Edge Function which proxies to Twilio
+        async function sendSMS(to, message) {
+          try {
+            const res = await fetch(`${SUPABASE_URL}/functions/v1/send-sms`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${SUPABASE_KEY}`,
+                'apikey': SUPABASE_KEY,
+              },
+              body: JSON.stringify({ to, message }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok || !data.success) {
+              console.warn('SMS failed:', data);
+              return { ok: false, error: data.error || `HTTP ${res.status}` };
+            }
+            return { ok: true, sid: data.sid };
+          } catch (err) {
+            console.warn('SMS error:', err);
+            return { ok: false, error: err.message };
+          }
+        }
 
         const app = {
             // STATE
@@ -1720,6 +1746,12 @@
                     alert('Error submitting booking: ' + error.message);
                     return;
                 }
+
+                // Fire-and-forget SMS alert to Sam about the new request
+                const clientName = `${this.state.clientAccount?.first_name || ''} ${this.state.clientAccount?.last_name || ''}`.trim() || 'A client';
+                const dateStr = new Date(this.state.bookingData.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+                const requestMsg = `🐾 New booking request: ${clientName} wants ${this.state.bookingData.service} for ${this.state.bookingData.petName} on ${dateStr} (${this.state.bookingData.timeSlot}) at ${this.state.bookingData.location}. Review in the admin app.`;
+                sendSMS(SAM_PHONE, requestMsg);
 
                 // Show confirmation
                 document.getElementById('wizard-buttons').style.display = 'none';
