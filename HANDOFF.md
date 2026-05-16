@@ -7,7 +7,7 @@ Single source of truth for "whose turn is it, and what are they doing?" on Tidy 
 - **Whose turn**: Russell — review the v2 Ship 2.2 auth + RLS plan and the committed scaffold, then choose next lane
 - **Focus**: v2 Ship 2.1 read-only scaffold committed (`2e9a5cb`). Ship 2.2 (auth + RLS) plan written this session — flag-day cutover chosen. Open data lane is the hardened Phase 2 dedup SQL awaiting Russell's review. Open product lane is Ship 2.2 execution, gated on V1_HARDENED and the Ship 2.2 plan prerequisites.
 - **Reason**: CC built the v2 read-only scaffold on 2026-05-15 — fast client/pet search, client detail, allergy-first pet safety cards, appointment history, lapsed clients, vaccination status, revenue, PWA shell. Read-only by construction: anonymized fixtures default, live Supabase `SELECT`-only behind `NEXT_PUBLIC_USE_LIVE_DATA`, groom-logging + SMS UIs present but write-disabled. `npm run build` clean; browser-verified every page with no console errors. Zero live DB writes, no SQL, no SMS, no v1 changes, no deploy. Scaffold addendum: `_reports/2026-05-15-v2-ship-2.1-scaffold-addendum.md`.
-- **Updated**: 2026-05-15 (CC session — Ship 2.2 auth + RLS plan)
+- **Updated**: 2026-05-16 (CC — Ship 2.2 security-only migration scope ratified)
 - **Updated by**: CC
 
 ## Sam's review pipeline — operational reference
@@ -71,7 +71,7 @@ Single source of truth for "whose turn is it, and what are they doing?" on Tidy 
 3. **Russell**: backfill your own (Russell Cole / Kiwi) appointments — Supabase has the client row but zero appts despite ledger showing 1 visit (2024-06-06, $60) and card showing 4 visits. Manual or Phase 3.
 4. **Queued**: Phase 3 new client INSERTs (7 clients + 8 pets) after Phase 2.
 5. **Queued**: Phase 4 Codex enrichment (Typical_Fee, Color, Sex, Special_Notes) after Phase 3.
-6. **Russell**: review the v2 scaffold (`cd v2 && npm install && npm run dev`) and the Ship 2.2 auth + RLS plan (`_reports/2026-05-15-v2-ship-2.2-auth-rls-plan.md`). Answer design-lock open questions Q2–Q6 (vaccination scope, lapsed threshold, SMS template, v2 URL, parallel-run length) — they gate Ship 2.4/2.5/2.6. Ratify (or override) the Ship 2.2 migration-scope narrowing flagged in the plan §1.
+6. **Russell**: review the v2 scaffold (`cd v2 && npm install && npm run dev`) and the Ship 2.2 auth + RLS plan (`_reports/2026-05-15-v2-ship-2.2-auth-rls-plan.md`). Answer design-lock open questions Q2–Q6 (vaccination scope, lapsed threshold, SMS template, v2 URL, parallel-run length) — they gate Ship 2.4/2.5/2.6.
 7. **Queued**: Ship 2.2 execution. Plan written 2026-05-15 (`_reports/2026-05-15-v2-ship-2.2-auth-rls-plan.md`) — flag-day cutover. Hard-gated on the plan's five prerequisites: Samantha's `auth.users` account, a written/ratified backup procedure (`dump_supabase.py` does not exist), v2 feature-complete, a rehearsed rollback migration, and a fresh backup. App-side auth (2.2a) is buildable now; the RLS migration (2.2b) runs at cutover. No v2 write path until then.
 8. **Queued**: more contact-card batches (cards 80–268+ not yet processed).
 
@@ -82,7 +82,7 @@ Single source of truth for "whose turn is it, and what are they doing?" on Tidy 
 ## Open decisions
 
 - **v1 naming collision (Russell-only).** Cowork recommends keeping `v1-final-state-spec.md` as the canonical Koya filename and adding a Naming Clarification template to `.koya/MODES.md` for any future BUILD venture with a shipped MVP. This mirrors what shipped in Tidy Tails today (see "Naming clarification" section at the top of `v1-final-state-spec.md`). Pending Russell signoff in the parallel Koya session.
-- **R-1 fix path — RESOLVED 2026-05-15.** v2 Ship 2.2 closes R-1 with `auth.uid()`-scoped RLS policies plus a `groomer_id` FK (design-lock spec §3.3). Migration sequencing decided: flag-day cutover, no anon bridge (logged in `docs/DECISIONS.md`). Migration-scope narrowing (security-only) is proposed in the Ship 2.2 plan §1, pending Russell's ratification in plan review.
+- **R-1 fix path — RESOLVED 2026-05-15.** v2 Ship 2.2 closes R-1 with `auth.uid()`-scoped RLS policies plus a `groomer_id` FK (design-lock spec §3.3). Migration sequencing decided: flag-day cutover, no anon bridge. Migration scope ratified by Russell 2026-05-16: security-only (`groomer_id` + RLS + drop `client_overview`); feature schema ships as separate migrations. All logged in `docs/DECISIONS.md`.
 - **Repo strategy for v2.0 — RESOLVED 2026-05-15.** v2 lives in the `v2/` subdirectory of the same repo. Logged in `docs/DECISIONS.md`.
 - **Commit `v2/`? — RESOLVED 2026-05-15.** Russell approved; the scaffold was committed as `2e9a5cb` (`Ship Tidy Tails v2 read-only scaffold`). `docs/home.html` was deliberately excluded — it carries an unrelated uncommitted v1 heading-color change (purple → pink) for Russell to confirm or revert separately.
 - **Pricing model if licensed (Russell-only, deferred to LICENSEABLE_READY).** Free for Samantha forever vs paid tier for other groomers. Candidate $19-$29/mo flat from the Pawfinity recon. Not committed.

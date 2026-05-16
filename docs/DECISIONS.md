@@ -56,12 +56,12 @@
 - SELECT-only bridge during the parallel run (rejected by Russell: v1 would go read-only for the week *and* R-1's read-hole would stay open — complexity for little gain).
 - Full permissive anon bridge (rejected: leaves R-1 entirely open during the parallel run).
 
-## [2026-05-15] v2 Ship 2.2 migration scope — security only (PROPOSED, pending ratification)
+## [2026-05-15] v2 Ship 2.2 migration scope — security only (RATIFIED 2026-05-16)
 
-**Decision (proposed):** The Ship 2.2 migration is narrowed to security only — `groomer_id` columns, the RLS policy rewrite, and dropping `client_overview`. Feature schema (the `vaccinations` table, `clients`/`pets` enrichment columns, optional `audit_events`) moves to the ships that build those features (2.3+). This supersedes design-lock spec §3.6's "single bundled migration" per spec §0. Status: proposed in `_reports/2026-05-15-v2-ship-2.2-auth-rls-plan.md` §1; Russell ratifies in plan review.
+**Decision:** The Ship 2.2 migration is narrowed to security only — `groomer_id` columns, the RLS policy rewrite, and dropping `client_overview`. Feature schema (the `vaccinations` table, `clients`/`pets` enrichment columns, optional `audit_events`) ships as **separate migrations**, in the ships that build those features (2.3+). This supersedes design-lock spec §3.6's "single bundled migration" per spec §0. Proposed in `_reports/2026-05-15-v2-ship-2.2-auth-rls-plan.md` §1 on 2026-05-15; ratified by Russell on 2026-05-16.
 
-**Rationale:** A security migration with a small, well-understood surface has a far simpler and safer rollback than one also carrying feature columns and a new table. Both migrations still land before cutover; splitting them shrinks the rollback surface of the security-critical one.
+**Rationale:** A security migration with a small, well-understood surface has a far simpler and safer rollback than one also carrying feature columns and a new table. Keeping feature-schema migrations separate shrinks the rollback surface of the security-critical one. The security migration and the feature migrations still all land before cutover.
 
 **Alternatives considered:**
-- Single bundled migration per spec §3.6 (not rejected — left to Russell; if preferred, it overrides this entry).
+- Single bundled migration per spec §3.6 (rejected on ratification: a larger migration surface makes the security-critical rollback riskier; no offsetting benefit).
 
