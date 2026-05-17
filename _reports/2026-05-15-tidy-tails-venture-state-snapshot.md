@@ -1,8 +1,8 @@
 ---
-when: 2026-05-15 (updated 2026-05-17 after Phase 3 INSERTs COMMIT)
+when: 2026-05-15 (updated 2026-05-17 after Phase 3.5 appointment backfills COMMIT)
 who: Cowork
 purpose: Current venture state snapshot for KoyaOS ingestion. Covers live product, database, reconciliation progress, open risks, and pending execution gates. Read alongside CLAUDE.md, HANDOFF.md, and the source registry.
-status: current as of 2026-05-17 (post-Phase-3 INSERTs COMMIT)
+status: current as of 2026-05-17 (post-Phase-3.5 appointment backfills COMMIT)
 venture: tidy-tails
 supabase_project: pgkwovokciaqnbhpttba
 ---
@@ -29,9 +29,9 @@ Samantha runs her full grooming business on v1: booking, intake, client lookup, 
 
 | Table | Count | Source |
 |---|---|---|
-| clients | 137 | Post-Phase-3 COMMIT live (2026-05-17). Was 131 pre-Phase-3, 268 pre-Phase-2. |
-| pets | 188 | Post-Phase-3 COMMIT live (2026-05-17). Was 181 pre-Phase-3, 352 pre-Phase-2. |
-| appointments | 730 | Unchanged through Phases 1, 2, and 3 (load-bearing invariant). |
+| clients | 137 | Post-Phase-3 COMMIT live (2026-05-17); unchanged by Phase 3.5. Was 131 pre-Phase-3, 268 pre-Phase-2. |
+| pets | 188 | Post-Phase-3 COMMIT live (2026-05-17); unchanged by Phase 3.5. Was 181 pre-Phase-3, 352 pre-Phase-2. |
+| appointments | 735 | Post-Phase-3.5 COMMIT live (2026-05-17). Was 730 pre-Phase-3.5 (held through Phases 1-3 as a load-bearing invariant). Phase 3.5 added 5 historical backfills (Whiskey×3 + Kiwi×2). |
 
 The original 268 clients were bulk-imported from Excel in a 2-minute window on 2026-04-09 (21:26–21:28). The double-import created 115 duplicate phone groups; Phase 1B's Backway phone normalization consolidated this to 114 groups (101 two-row, 13 four-row = 140 ghost rows in the post-Phase-1 baseline).
 
@@ -98,10 +98,17 @@ GitHub Pages auto-deploys on merge to `main`. Any query-shape or table-name chan
 - Scope executed: 6 client INSERTs + 7 pet INSERTs (Korrie Silver client + Gavi pet held out per the rollback-test G5 catch).
 - Post-run: 137 clients, 188 pets, 730 appointments. Landry/Laundry 4 rows untouched. Korrie holdout 1 row untouched. Dependent tables 0/0/0. 0 orphan appointment FKs. All gates and invariants passed.
 
-**Phase 3.5 — Historical appointment backfills (planning only; not executed)**
+**Phase 3.5 — Historical appointment backfills**
 - Plan: `_reports/2026-05-16-phase-3.5-appointment-backfills-plan.md`
-- Status: planning only; depends on Phase 3 (now COMMITTED) for FK targets and a Sam-readback for date-ambiguous entries before SQL is drafted.
-- Scope (strong-evidence): 3 Whiskey appointments (Mary Anca) + 2 Russell Cole / Kiwi appointments. Date-ambiguous deferrals: Kiwi 2024-07-??, Ruby 2024-08-??, Coco 2023-12-14.
+- SQL: `_reports/2026-05-17-phase-3.5-appointment-backfills.sql` (9 pre-write gates G1-G9 + 7 post-write invariants I1-I7, default ROLLBACK)
+- Execution report: `_reports/2026-05-17-phase-3.5-execution-report.md`
+- **Status: COMMITTED 2026-05-17 — verified clean**
+- Scope executed: 5 historical appointment INSERTs (Whiskey×3 + Kiwi×2). Conservative NULL policy: time_slot/location/service_type/tip/rent_paid/net/status set to NULL where Codex was silent (bypasses column defaults to preserve "unknown" as a distinct value). notes carry the Codex grooming description plus a `[Phase 3.5 backfill 2026-05-17]` tag.
+- Post-run: 137 clients, 188 pets, 735 appointments. Landry 4 untouched, Korrie holdout 1 untouched. 0 orphan appointment FKs.
+- Schema discovery in the same loop: the live `appointments` table has 14 columns, not the 7 v2 design-lock spec §6.1 originally listed. Spec corrected.
+
+**Phase 3.5.1 — Date-ambiguous appointment backfills (planning candidate)**
+- Status: not written. Holds 3 rows: Kiwi 2024-07-??, Ruby / Nancy Cauchi 2024-08-??, Coco / Gardy 2023-12-14 (year ambiguous). Each blocked on Sam reading the original cards.
 - Scope: 7 new clients + 8 pets. Mary Anca, Nancy Cauchi, Gardy, Ashley Nichols, Mary Nichols (+ Merlyn), Korrie Silver / Gavi, Christina Kitchen / Winston.
 
 **Phase 4 — Codex pet enrichment**

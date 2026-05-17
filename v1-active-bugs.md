@@ -88,18 +88,25 @@ Rolling list of open findings. Sister to `v1-final-state-spec.md`. Severity: S1 
 
 ## B5 — Russell Cole / Kiwi appointments missing from Supabase
 
-**Status:** Open
+**Status:** Partially closed (Phase 3.5 backfilled 2 of 4 card-back visits 2026-05-17; 2 remain)
 **Severity:** S3 (Low)
-**Source:** HANDOFF.md, _reports/2026-05-15-tidy-tails-venture-state-snapshot.md, financial ledgers
+**Source:** HANDOFF.md, _reports/2026-05-15-tidy-tails-venture-state-snapshot.md, _reports/2026-05-17-phase-3.5-execution-report.md, financial ledgers
 
-**Description:** Russell Cole's client row exists in Supabase (`clients` table) but has zero appointment records. The financial ledger shows at least 1 visit (2024-06-06, $60). Russell's contact card shows 4 visits. The $60 delta between ledger gross ($57,881.25) and Supabase gross ($57,821.25) corresponds to this missing appointment.
+**Description:** Russell Cole's client row exists in Supabase (`clients` table) but had zero appointment records as of 2026-04-09 import. The financial ledger shows at least 1 visit (2024-06-06, $50). Russell's contact card shows 4 visits.
 
 **Expected:** All grooming visits for Russell Cole / Kiwi are in the `appointments` table.
-**Actual:** 0 appointments in Supabase; 1 in the ledger, 4 on the card.
+**Actual (2026-05-17 post-Phase-3.5):** 2 appointments now on file in Supabase (2024-06-06 $50 and 2024-12-05 $50, both backfilled with Phase 3.5 conservative NULL policy — service_type/status/location/tip/rent_paid/net all NULL pending Sam confirmation). 2 card-back visits remain unbackfilled.
 
-**Fix:** Manual backfill of the known ledger visit (2024-06-06, $60), plus reconciliation of the remaining card visits. Low priority — affects reporting accuracy only; no operational impact for Samantha.
+**Progress:**
 
-**Milestone:** Phase 3 or manual backfill
+- **Phase 3.5 SQL COMMITTED 2026-05-17.** Two of the four card-back visits inserted under Russell's client_id `2fd5cb57-0a4a-46bf-8684-a90c5721bc42` and Kiwi's pet_id `e1fb8585-7cb1-4caa-8132-a25a97f6842a`. Both rows carry `notes` ending with the `[Phase 3.5 backfill 2026-05-17]` tag.
+- **Remaining work (Phase 3.5.1 candidate):**
+  - Kiwi 2024-07-?? visit — Codex P015 row 2; exact day partial. Russell or Sam reads back the original IMG_0935/0936 card to resolve.
+  - 4th card-back visit — Russell to re-confirm card content; if real, add to the 3.5.1 patch.
+
+**Fix:** Phase 3.5.1 follow-up patch once Russell/Sam confirms the partial-date and the 4th-visit details. Low priority — affects reporting accuracy only; no operational impact for Samantha.
+
+**Milestone:** Phase 3.5.1
 
 ---
 
