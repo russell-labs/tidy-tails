@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { AddAppointment } from "@/components/AddAppointment";
 import { AppointmentHistory } from "@/components/AppointmentHistory";
 import { BackLink } from "@/components/BackLink";
 import { ClientActions } from "@/components/ClientActions";
 import { PetCard } from "@/components/PetCard";
-import { getClientRecord, loadVaccinations } from "@/lib/data/repo";
+import { dataMode, getClientRecord, loadVaccinations } from "@/lib/data/repo";
 import { lastAppointment } from "@/lib/derive";
 import { digitsOnly, formatPhone, fullName } from "@/lib/format";
 
@@ -56,7 +57,8 @@ export default async function ClientDetailPage({
         </div>
       </header>
 
-      <div className="mt-4">
+      <div className="mt-4 flex flex-col gap-2.5">
+        <AddAppointment client={client} pets={pets} mode={dataMode()} />
         <ClientActions client={client} pets={pets} />
       </div>
 
