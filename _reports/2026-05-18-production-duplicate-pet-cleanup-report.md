@@ -26,6 +26,14 @@ Manifest status: `complete`
 Key role: `service_role`  
 Warnings: none
 
+Post-cleanup backup of the cleaned production state:
+
+`/Users/russellcole/Developer/RussellLabs/venture-ops/backups/tidy-tails/2026-05-18-post-duplicate-pet-cleanup/`
+
+Manifest status: `complete`  
+Key role: `service_role`  
+Warnings: none
+
 ## Before / After
 
 | Table | Before | After | Delta |
