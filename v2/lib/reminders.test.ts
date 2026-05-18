@@ -18,6 +18,7 @@ function appt(date: string): Appointment {
     client_id: "c1",
     pet_id: "p1",
     date,
+    time_slot: null,
     service: null,
     price: null,
     tip: null,

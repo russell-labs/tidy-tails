@@ -295,8 +295,7 @@ function ModeNote({
   }
   return (
     <p className="rounded-lg bg-warn-soft px-3 py-2 text-xs font-medium text-warn">
-      Pet editing is switched off. You can review changes, but nothing will be
-      saved.
+      Production mode - the server will confirm the write gate before saving.
     </p>
   );
 }

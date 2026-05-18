@@ -37,6 +37,7 @@ export type Appointment = {
   client_id: string;
   pet_id: string;
   date: string; // ISO date (YYYY-MM-DD)
+  time_slot: string | null; // free-text appointment time, when recorded
   service: string | null; // null when the live row has no service_type (e.g. backfills)
   price: number | null; // null when the live row has no fee recorded
   tip: number | null; // null when the row has no tip recorded

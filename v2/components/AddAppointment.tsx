@@ -3,6 +3,8 @@
 import { useActionState, useState } from "react";
 import { createBooking, type BookingState } from "@/lib/actions/appointments";
 import {
+  availableBookingTimeSlots,
+  bookedTimesForDate,
   SERVICE_TYPES,
   validateBookingInput,
   type BookingErrors,
@@ -126,6 +128,8 @@ function BookingForm({
 
   const selectedPet = pets.find((p) => p.id === petId) ?? pets[0];
   const ownerName = fullName(client.first_name, client.last_name);
+  const slots = date ? availableBookingTimeSlots(appointments, date) : [];
+  const bookedTimes = date ? bookedTimesForDate(appointments, date) : [];
 
   function onPetChange(id: string) {
     setPetId(id);
@@ -227,13 +231,51 @@ function BookingForm({
           <Field
             label="Time"
             error={errors.time_slot}
-            hint="Calendar slots are coming next. For now, type the time Sam chooses."
+            hint={
+              date
+                ? "Tap an open slot or type a custom time."
+                : "Choose a date first to see open slots."
+            }
           >
+            {date ? (
+              <div className="mb-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                {slots.map((slot) => (
+                  <button
+                    key={slot.time}
+                    type="button"
+                    onClick={() => {
+                      if (!slot.available) return;
+                      setTime(slot.time);
+                      setErrors((current) => ({
+                        ...current,
+                        time_slot: undefined,
+                      }));
+                    }}
+                    disabled={!slot.available}
+                    aria-pressed={time === slot.time}
+                    className={`rounded-lg border px-2.5 py-2 text-sm font-semibold ${
+                      time === slot.time
+                        ? "border-brand bg-brand text-white"
+                        : slot.available
+                          ? "border-line bg-surface text-ink active:bg-brand-soft"
+                          : "border-line bg-canvas text-ink-faint line-through"
+                    }`}
+                  >
+                    {slot.time}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+            {bookedTimes.length > 0 ? (
+              <p className="mb-2 rounded-lg bg-warn-soft px-3 py-2 text-xs font-medium text-warn">
+                Already booked that day: {bookedTimes.join(", ")}
+              </p>
+            ) : null}
             <input
               type="text"
               value={time}
               onChange={(e) => setTime(e.target.value)}
-              placeholder="e.g. 10:00 or morning"
+              placeholder="e.g. 10:00am or morning"
               className={fieldClass}
             />
           </Field>

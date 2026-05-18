@@ -44,6 +44,7 @@ const appointments: Appointment[] = [
     client_id: "c1",
     pet_id: "p1",
     date: "2026-04-10",
+    time_slot: "10:30am",
     service: "Full groom",
     price: 60,
     tip: 10,

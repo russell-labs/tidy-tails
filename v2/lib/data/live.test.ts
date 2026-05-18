@@ -115,12 +115,14 @@ describe("mapAppointmentRow — live appointments row → Appointment", () => {
       client_id: "c-1",
       pet_id: "p-1",
       date: "2026-04-10",
+      time_slot: "10:30am",
       service_type: "full_groom",
       fee: 80,
       tip: 15,
     };
     const appt = mapAppointmentRow(row);
     expect(appt.service).toBe("Full groom");
+    expect(appt.time_slot).toBe("10:30am");
     expect(appt.price).toBe(80);
     expect(appt.tip).toBe(15);
   });
@@ -140,6 +142,10 @@ describe("mapAppointmentRow — live appointments row → Appointment", () => {
 
   it("maps a null tip to null — never to $0", () => {
     expect(mapAppointmentRow({ tip: null }).tip).toBeNull();
+  });
+
+  it("maps a null time_slot to null", () => {
+    expect(mapAppointmentRow({ time_slot: null }).time_slot).toBeNull();
   });
 
   it("trims a timestamp date down to an ISO date", () => {

@@ -25,6 +25,7 @@ function appt(
     client_id: "c",
     pet_id: "p",
     date,
+    time_slot: null,
     service,
     price,
     tip,

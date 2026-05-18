@@ -125,6 +125,7 @@ function buildAppointments(): Appointment[] {
         client_id: pet.client_id,
         pet_id: petId,
         date,
+        time_slot: null,
         service: SERVICES[i % SERVICES.length],
         price: base + ((i % 3) - 1) * 5,
         tip: i % 4 === 0 ? 10 : null,

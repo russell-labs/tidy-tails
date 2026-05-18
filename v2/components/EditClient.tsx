@@ -253,7 +253,7 @@ function ModeNote({
     >
       {writesEnabled
         ? "Production mode - confirming will update this household."
-        : "Household editing is switched off. You can review changes, but nothing will be saved."}
+        : "Production mode - the server will confirm the write gate before saving."}
     </p>
   );
 }

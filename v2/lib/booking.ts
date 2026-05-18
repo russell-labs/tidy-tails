@@ -8,7 +8,7 @@
 // (components/AddAppointment.tsx) reuses the validator client-side for the
 // review step — one validator, both paths. Unit-tested in booking.test.ts.
 
-import type { Pet } from "./data/types";
+import type { Appointment, Pet } from "./data/types";
 
 // The four CHECK-constrained service_type enum codes in the live schema.
 export const SERVICE_TYPES = [
@@ -18,6 +18,22 @@ export const SERVICE_TYPES = [
   "other",
 ] as const;
 export type ServiceType = (typeof SERVICE_TYPES)[number];
+
+// First-pass day-book slots. This is not external calendar sync; it makes the
+// booking sheet calendar-aware against appointments already stored in Tidy
+// Tails, so Sam can tap an open slot instead of typing from a blank field.
+export const BOOKING_TIME_SLOTS = [
+  "9:00am",
+  "10:30am",
+  "12:00pm",
+  "1:30pm",
+  "3:00pm",
+] as const;
+
+export type BookingTimeSlot = {
+  time: string;
+  available: boolean;
+};
 
 // Raw booking form input — every field arrives as a string (or absent).
 export type BookingInput = {
@@ -35,7 +51,7 @@ export type ValidatedBooking = {
   client_id: string;
   pet_id: string;
   date: string;
-  time_slot: string | null;
+  time_slot: string;
   service_type: ServiceType | null;
   fee: number | null;
   notes: string | null;
@@ -70,11 +86,49 @@ function optionalText(v: string | undefined): string | null {
   return t === "" ? null : t;
 }
 
+function normalizeTimeForCompare(raw: string | null | undefined): string {
+  return (raw ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "")
+    .replace(/\./g, "");
+}
+
+export function bookedTimesForDate(
+  appointments: Appointment[],
+  date: string,
+): string[] {
+  const seen = new Set<string>();
+  const booked: string[] = [];
+  for (const appointment of appointments) {
+    if (appointment.date !== date || !appointment.time_slot) continue;
+    const key = normalizeTimeForCompare(appointment.time_slot);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    booked.push(appointment.time_slot);
+  }
+  return booked;
+}
+
+export function availableBookingTimeSlots(
+  appointments: Appointment[],
+  date: string,
+): BookingTimeSlot[] {
+  const booked = new Set(
+    bookedTimesForDate(appointments, date).map(normalizeTimeForCompare),
+  );
+  return BOOKING_TIME_SLOTS.map((time) => ({
+    time,
+    available: !booked.has(normalizeTimeForCompare(time)),
+  }));
+}
+
 /**
  * Validate raw booking form input. `today` is injected so the date sanity
  * bounds are deterministic in tests. The date is required and bounded to one
  * year back / two years forward of today — a typo guard against a wrong year,
- * not a business rule. Everything else is optional, normalized to value-or-null.
+ * not a business rule. A time is required so new bookings are actionable in the
+ * day book; service/fee/notes remain optional, normalized to value-or-null.
  */
 export function validateBookingInput(
   raw: Partial<BookingInput>,
@@ -102,8 +156,10 @@ export function validateBookingInput(
     errors.date = "That date looks too far off — check the year.";
   }
 
-  const time_slot = optionalText(raw.time_slot);
-  if (time_slot && time_slot.length > TIME_SLOT_MAX) {
+  const time_slot = (raw.time_slot ?? "").trim();
+  if (!time_slot) {
+    errors.time_slot = "Choose a time.";
+  } else if (time_slot.length > TIME_SLOT_MAX) {
     errors.time_slot = "That time is too long.";
   }
 

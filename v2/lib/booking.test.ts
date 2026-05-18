@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
-import type { Pet } from "./data/types";
+import type { Appointment, Pet } from "./data/types";
 import {
+  availableBookingTimeSlots,
+  bookedTimesForDate,
   buildAppointmentInsert,
   findOwnedPet,
   validateBookingInput,
@@ -27,10 +29,31 @@ function pet(id: string, clientId: string): Pet {
   };
 }
 
+function appointment(overrides: Partial<Appointment>): Appointment {
+  return {
+    id: "a1",
+    client_id: "c1",
+    pet_id: "p1",
+    date: "2026-06-01",
+    time_slot: null,
+    service: null,
+    price: null,
+    tip: null,
+    notes: null,
+    created_at: "2026-01-01",
+    ...overrides,
+  };
+}
+
 describe("validateBookingInput — required fields", () => {
-  it("accepts a minimal booking (client, pet, date) with optionals empty", () => {
+  it("accepts a minimal booking (client, pet, date, time) with optionals empty", () => {
     const r = validateBookingInput(
-      { client_id: "c1", pet_id: "p1", date: "2026-06-01" },
+      {
+        client_id: "c1",
+        pet_id: "p1",
+        date: "2026-06-01",
+        time_slot: "10:30am",
+      },
       TODAY,
     );
     expect(r.ok).toBe(true);
@@ -39,7 +62,7 @@ describe("validateBookingInput — required fields", () => {
         client_id: "c1",
         pet_id: "p1",
         date: "2026-06-01",
-        time_slot: null,
+        time_slot: "10:30am",
         service_type: null,
         fee: null,
         notes: null,
@@ -53,15 +76,27 @@ describe("validateBookingInput — required fields", () => {
     if (!r.ok) expect(r.errors.date).toBeTruthy();
   });
 
+  it("rejects a missing time", () => {
+    const r = validateBookingInput(
+      { client_id: "c1", pet_id: "p1", date: "2026-06-01" },
+      TODAY,
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.errors.time_slot).toBe("Choose a time.");
+  });
+
   it("rejects a missing client_id", () => {
-    const r = validateBookingInput({ pet_id: "p1", date: "2026-06-01" }, TODAY);
+    const r = validateBookingInput(
+      { pet_id: "p1", date: "2026-06-01", time_slot: "10:30am" },
+      TODAY,
+    );
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.errors.client_id).toBeTruthy();
   });
 
   it("rejects a missing pet_id", () => {
     const r = validateBookingInput(
-      { client_id: "c1", date: "2026-06-01" },
+      { client_id: "c1", date: "2026-06-01", time_slot: "10:30am" },
       TODAY,
     );
     expect(r.ok).toBe(false);
@@ -123,7 +158,13 @@ describe("validateBookingInput — optional fields", () => {
 
   it("accepts a fee of 0", () => {
     const r = validateBookingInput(
-      { client_id: "c1", pet_id: "p1", date: "2026-06-01", fee: "0" },
+      {
+        client_id: "c1",
+        pet_id: "p1",
+        date: "2026-06-01",
+        time_slot: "10:30am",
+        fee: "0",
+      },
       TODAY,
     );
     expect(r.ok).toBe(true);
@@ -132,7 +173,13 @@ describe("validateBookingInput — optional fields", () => {
 
   it("rejects a negative fee", () => {
     const r = validateBookingInput(
-      { client_id: "c1", pet_id: "p1", date: "2026-06-01", fee: "-5" },
+      {
+        client_id: "c1",
+        pet_id: "p1",
+        date: "2026-06-01",
+        time_slot: "10:30am",
+        fee: "-5",
+      },
       TODAY,
     );
     expect(r.ok).toBe(false);
@@ -141,7 +188,13 @@ describe("validateBookingInput — optional fields", () => {
 
   it("rejects a non-numeric fee", () => {
     const r = validateBookingInput(
-      { client_id: "c1", pet_id: "p1", date: "2026-06-01", fee: "lots" },
+      {
+        client_id: "c1",
+        pet_id: "p1",
+        date: "2026-06-01",
+        time_slot: "10:30am",
+        fee: "lots",
+      },
       TODAY,
     );
     expect(r.ok).toBe(false);
@@ -154,6 +207,7 @@ describe("validateBookingInput — optional fields", () => {
         client_id: "c1",
         pet_id: "p1",
         date: "2026-06-01",
+        time_slot: "10:30am",
         service_type: "deluxe_spa",
       },
       TODAY,
@@ -185,7 +239,7 @@ describe("buildAppointmentInsert — payload + null policy", () => {
       client_id: "c1",
       pet_id: "p1",
       date: "2026-06-01",
-      time_slot: null,
+      time_slot: "10:30am",
       service_type: null,
       fee: null,
       notes: null,
@@ -194,7 +248,7 @@ describe("buildAppointmentInsert — payload + null policy", () => {
       client_id: "c1",
       pet_id: "p1",
       date: "2026-06-01",
-      time_slot: null,
+      time_slot: "10:30am",
       service_type: null,
       fee: null,
       notes: null,
@@ -224,7 +278,7 @@ describe("buildAppointmentInsert — payload + null policy", () => {
       client_id: "c1",
       pet_id: "p1",
       date: "2026-06-01",
-      time_slot: null,
+      time_slot: "10:30am",
       service_type: null,
       fee: null,
       notes: null,
@@ -232,5 +286,34 @@ describe("buildAppointmentInsert — payload + null policy", () => {
     for (const k of ["id", "created_at", "tip", "rent_paid", "location", "net"]) {
       expect(payload).not.toHaveProperty(k);
     }
+  });
+});
+
+describe("booking time slots", () => {
+  it("lists booked free-text times for the selected date only", () => {
+    expect(
+      bookedTimesForDate(
+        [
+          appointment({ date: "2026-06-01", time_slot: "10:30am" }),
+          appointment({ date: "2026-06-01", time_slot: " 10:30 AM " }),
+          appointment({ date: "2026-06-02", time_slot: "3:00pm" }),
+          appointment({ date: "2026-06-01", time_slot: null }),
+        ],
+        "2026-06-01",
+      ),
+    ).toEqual(["10:30am"]);
+  });
+
+  it("marks default day-book slots unavailable when already booked", () => {
+    const slots = availableBookingTimeSlots(
+      [appointment({ date: "2026-06-01", time_slot: "10:30 AM" })],
+      "2026-06-01",
+    );
+    expect(slots.find((slot) => slot.time === "10:30am")).toMatchObject({
+      available: false,
+    });
+    expect(slots.find((slot) => slot.time === "9:00am")).toMatchObject({
+      available: true,
+    });
   });
 });
