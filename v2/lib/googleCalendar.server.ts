@@ -1,5 +1,6 @@
 import "server-only";
 
+import { createHash, randomBytes } from "crypto";
 import { cookies } from "next/headers";
 import { createServerSupabase, getCurrentUser } from "@/lib/supabase/server";
 import { isGoogleCalendarSyncEnabled } from "@/lib/writeGate";
@@ -39,6 +40,7 @@ type TokenResponse = {
 };
 
 const STATE_COOKIE = "tt_google_calendar_oauth_state";
+const VERIFIER_COOKIE = "tt_google_calendar_oauth_verifier";
 const CALENDAR_ID = "primary";
 
 function appUrl(): string {
@@ -64,8 +66,8 @@ function googleClientConfig() {
 }
 
 export function isGoogleCalendarConfigured(): boolean {
-  const { clientId, clientSecret, tokenSecret } = googleClientConfig();
-  return Boolean(clientId && clientSecret && tokenSecret);
+  const { clientId, tokenSecret } = googleClientConfig();
+  return Boolean(clientId && tokenSecret);
 }
 
 function nowPlus(seconds: number | undefined): string | null {
@@ -87,6 +89,22 @@ async function tokenRequest(body: URLSearchParams): Promise<TokenResponse> {
   return json;
 }
 
+function base64Url(buffer: Buffer): string {
+  return buffer
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/g, "");
+}
+
+function makeCodeVerifier(): string {
+  return base64Url(randomBytes(64));
+}
+
+function codeChallenge(verifier: string): string {
+  return base64Url(createHash("sha256").update(verifier).digest());
+}
+
 export async function createGoogleCalendarAuthUrl(): Promise<string> {
   const user = await getCurrentUser();
   if (!user) throw new Error("Sign in before connecting Google Calendar.");
@@ -96,8 +114,16 @@ export async function createGoogleCalendarAuthUrl(): Promise<string> {
   }
 
   const state = crypto.randomUUID();
+  const verifier = makeCodeVerifier();
   const cookieStore = await cookies();
   cookieStore.set(STATE_COOKIE, state, {
+    httpOnly: true,
+    maxAge: 10 * 60,
+    path: "/",
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+  });
+  cookieStore.set(VERIFIER_COOKIE, verifier, {
     httpOnly: true,
     maxAge: 10 * 60,
     path: "/",
@@ -114,6 +140,8 @@ export async function createGoogleCalendarAuthUrl(): Promise<string> {
   url.searchParams.set("access_type", "offline");
   url.searchParams.set("prompt", "consent");
   url.searchParams.set("include_granted_scopes", "true");
+  url.searchParams.set("code_challenge", codeChallenge(verifier));
+  url.searchParams.set("code_challenge_method", "S256");
   return url.toString();
 }
 
@@ -129,8 +157,10 @@ export async function handleGoogleCalendarCallback({
 
   const cookieStore = await cookies();
   const expected = cookieStore.get(STATE_COOKIE)?.value;
+  const verifier = cookieStore.get(VERIFIER_COOKIE)?.value;
   cookieStore.delete(STATE_COOKIE);
-  if (!code || !state || !expected || state !== expected) {
+  cookieStore.delete(VERIFIER_COOKIE);
+  if (!code || !state || !expected || state !== expected || !verifier) {
     return { ok: false, message: "Google Calendar sign-in expired. Try again." };
   }
 
@@ -144,7 +174,8 @@ export async function handleGoogleCalendarCallback({
       new URLSearchParams({
         code,
         client_id: clientId,
-        client_secret: clientSecret,
+        ...(clientSecret ? { client_secret: clientSecret } : {}),
+        code_verifier: verifier,
         redirect_uri: googleRedirectUri(),
         grant_type: "authorization_code",
       }),
@@ -245,14 +276,14 @@ async function readConnectionRow(): Promise<ConnectionRow | null> {
 
 async function refreshAccessToken(row: ConnectionRow): Promise<string> {
   const { clientId, clientSecret, tokenSecret } = googleClientConfig();
-  if (!clientId || !clientSecret || !tokenSecret) {
+  if (!clientId || !tokenSecret) {
     throw new Error("Google Calendar is not configured.");
   }
   const refreshToken = decryptRefreshToken(row, tokenSecret);
   const token = await tokenRequest(
     new URLSearchParams({
       client_id: clientId,
-      client_secret: clientSecret,
+      ...(clientSecret ? { client_secret: clientSecret } : {}),
       refresh_token: refreshToken,
       grant_type: "refresh_token",
     }),
