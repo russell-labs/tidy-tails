@@ -2,6 +2,8 @@ import { describe, it, expect } from "vitest";
 import type { Appointment } from "./data/types";
 import {
   lastAppointment,
+  lastKnownPrice,
+  lastKnownService,
   revenueInRange,
   usualPrice,
   usualService,
@@ -69,6 +71,26 @@ describe("lastAppointment — last-visit derivation", () => {
     const todayVisit = appt("2026-05-18", "Full groom", 80);
     const list = [appt("2026-04-01", "Bath & tidy", 50), todayVisit];
     expect(lastAppointment(list, "2026-05-18")).toBe(todayVisit);
+  });
+});
+
+describe("booking defaults — most recent known values", () => {
+  it("uses the most recent non-null price", () => {
+    const list = [
+      appt("2026-01-01", "Full groom", 50),
+      appt("2026-04-10", null, 60),
+      appt("2026-05-01", null, null),
+    ];
+    expect(lastKnownPrice(list)).toBe(60);
+  });
+
+  it("uses the most recent non-null service", () => {
+    const list = [
+      appt("2026-01-01", "Bath & tidy", 50),
+      appt("2026-04-10", null, 60),
+      appt("2026-05-01", "Full groom", 80),
+    ];
+    expect(lastKnownService(list)).toBe("Full groom");
   });
 });
 

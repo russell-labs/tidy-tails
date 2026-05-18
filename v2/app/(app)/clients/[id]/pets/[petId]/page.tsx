@@ -6,6 +6,7 @@ import { AppointmentHistory } from "@/components/AppointmentHistory";
 import { BackLink } from "@/components/BackLink";
 import { VaccinationList } from "@/components/VaccinationList";
 import { loadDataset } from "@/lib/data/repo";
+import { lastKnownPrice } from "@/lib/derive";
 import { formatDate, formatMoney, fullName } from "@/lib/format";
 
 export async function generateMetadata({
@@ -41,6 +42,7 @@ export default async function PetDetailPage({
 
   const petAppointments = appointments.filter((a) => a.pet_id === pet.id);
   const petVaccinations = vaccinations.filter((v) => v.pet_id === pet.id);
+  const inferredTypicalFee = pet.typical_fee ?? lastKnownPrice(petAppointments);
 
   return (
     <main className="px-4 py-4">
@@ -91,7 +93,16 @@ export default async function PetDetailPage({
           Details
         </h2>
         <dl className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface text-sm">
-          <Detail label="Typical fee" value={pet.typical_fee != null ? formatMoney(pet.typical_fee) : "Not set"} />
+          <Detail
+            label="Typical fee"
+            value={
+              inferredTypicalFee != null
+                ? `${formatMoney(inferredTypicalFee)}${
+                    pet.typical_fee == null ? " from history" : ""
+                  }`
+                : "Not set"
+            }
+          />
           <Detail label="Date of birth" value={pet.date_of_birth ? formatDate(pet.date_of_birth) : "Not recorded"} />
           <Detail label="Color" value={pet.color ?? "Not recorded"} />
         </dl>

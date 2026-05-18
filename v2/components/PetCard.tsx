@@ -22,6 +22,7 @@ export function PetCard({
   lastVisit: Appointment | null;
 }) {
   const vaxState = petVaccinationState(vaccinations);
+  const displayFee = pet.typical_fee ?? lastVisit?.price ?? null;
 
   return (
     <Link
@@ -67,12 +68,13 @@ export function PetCard({
         ) : (
           <StatusPill tone="neutral">No vaccine records</StatusPill>
         )}
-        {pet.typical_fee != null ? (
+        {displayFee != null ? (
           <span className="text-xs text-ink-soft">
             Typical fee{" "}
             <span className="font-semibold text-ink">
-              {formatMoney(pet.typical_fee)}
+              {formatMoney(displayFee)}
             </span>
+            {pet.typical_fee == null ? " from history" : ""}
           </span>
         ) : null}
         {lastVisit ? (

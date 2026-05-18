@@ -119,9 +119,7 @@ export async function logGroom(
     return {
       status: "gated",
       summary,
-      message:
-        "Live groom logging isn't switched on yet — it turns on soon after " +
-        "launch. Nothing was saved.",
+      message: "Groom logging isn't switched on yet. Nothing was saved.",
     };
   }
 

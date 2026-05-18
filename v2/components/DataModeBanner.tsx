@@ -1,14 +1,14 @@
 import { dataMode } from "@/lib/data/repo";
 
 // A thin always-visible strip so the operator always knows whether they are
-// looking at anonymized demo data or a live (read-only) read of real records.
+// looking at anonymized demo data or the real production book.
 export function DataModeBanner() {
   const mode = dataMode();
 
   if (mode === "live") {
     return (
-      <div className="bg-warn-soft px-4 py-1.5 text-center text-xs font-semibold text-warn">
-        Live data · read-only — no changes are saved
+      <div className="bg-brand-soft px-4 py-1.5 text-center text-xs font-semibold text-brand-ink">
+        Live data · production book
       </div>
     );
   }

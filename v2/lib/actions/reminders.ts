@@ -118,7 +118,6 @@ export async function prepareReminder(
     status: "gated",
     summary,
     message:
-      "Live reminder sending isn't switched on yet — it turns on soon after " +
-      "launch. No text was sent.",
+      "Reminder sending isn't switched on yet. No text was sent.",
   };
 }

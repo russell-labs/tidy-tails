@@ -12,7 +12,7 @@ import {
 
 export const metadata: Metadata = { title: "Reports" };
 
-const LAPSED_THRESHOLD_DAYS = 90;
+const DEFAULT_LAPSED_THRESHOLD_DAYS = 90;
 
 function parseMonth(raw: string | undefined): { year: number; month: number } {
   const now = new Date();
@@ -35,21 +35,58 @@ function pad(n: number): string {
 export default async function ReportsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ month?: string }>;
+  searchParams: Promise<{
+    month?: string;
+    period?: string;
+    threshold?: string;
+    lapsed?: string;
+  }>;
 }) {
-  const { month: monthParam } = await searchParams;
+  const {
+    month: monthParam,
+    period: periodParam,
+    threshold: thresholdParam,
+    lapsed: lapsedParam,
+  } = await searchParams;
   const { year, month } = parseMonth(monthParam);
   const { clients, pets, appointments, vaccinations } = await loadDataset();
+  const threshold = parseThreshold(thresholdParam);
+  const period =
+    periodParam === "ytd" || periodParam === "all" ? periodParam : "month";
+  const lapsedView =
+    lapsedParam === "never" || lapsedParam === "all" ? lapsedParam : "overdue";
 
-  const from = `${year}-${pad(month + 1)}-01`;
-  const to = `${year}-${pad(month + 1)}-${pad(new Date(year, month + 1, 0).getDate())}`;
+  const monthFrom = `${year}-${pad(month + 1)}-01`;
+  const monthTo = `${year}-${pad(month + 1)}-${pad(new Date(year, month + 1, 0).getDate())}`;
+  const today = new Date().toISOString().slice(0, 10);
+  const appointmentDates = appointments.map((a) => a.date).sort();
+  const firstAppointmentDate = appointmentDates[0] ?? today;
+  const lastAppointmentDate = appointmentDates.at(-1) ?? today;
+  const from =
+    period === "all"
+      ? firstAppointmentDate
+      : period === "ytd"
+        ? `${new Date().getFullYear()}-01-01`
+        : monthFrom;
+  const to =
+    period === "all" ? lastAppointmentDate : period === "ytd" ? today : monthTo;
   const monthLabel = new Date(year, month, 1).toLocaleDateString("en-CA", {
     month: "long",
     year: "numeric",
   });
+  const rangeLabel =
+    period === "all"
+      ? "All time"
+      : period === "ytd"
+        ? `${new Date().getFullYear()} year to date`
+        : monthLabel;
   const revenue = revenueInRange(appointments, from, to);
 
-  const lapsed = lapsedClients(clients, appointments, pets, LAPSED_THRESHOLD_DAYS);
+  const lapsed = lapsedClients(clients, appointments, pets, threshold);
+  const overdue = lapsed.filter((row) => row.daysSince != null);
+  const never = lapsed.filter((row) => row.daysSince == null);
+  const visibleLapsed =
+    lapsedView === "all" ? lapsed : lapsedView === "never" ? never : overdue;
 
   const vaxAlerts = vaccinations
     .map((v) => ({ v, state: vaccinationState(v) }))
@@ -74,7 +111,7 @@ export default async function ReportsPage({
           </h2>
           <div className="flex items-center gap-1">
             <Link
-              href={`/reports?month=${monthKey(year, month, -1)}`}
+              href={`/reports?period=month&month=${monthKey(year, month, -1)}&threshold=${threshold}&lapsed=${lapsedView}`}
               aria-label="Previous month"
               className="rounded-lg border border-line bg-surface px-2 py-1 text-ink-soft"
             >
@@ -84,7 +121,7 @@ export default async function ReportsPage({
               {monthLabel}
             </span>
             <Link
-              href={`/reports?month=${monthKey(year, month, 1)}`}
+              href={`/reports?period=month&month=${monthKey(year, month, 1)}&threshold=${threshold}&lapsed=${lapsedView}`}
               aria-label="Next month"
               className="rounded-lg border border-line bg-surface px-2 py-1 text-ink-soft"
             >
@@ -98,22 +135,61 @@ export default async function ReportsPage({
           <StatTile label="Gross" value={formatMoney(revenue.gross)} />
           <StatTile label="Average" value={formatMoney(revenue.average)} />
         </div>
+        <div className="mt-3 grid grid-cols-3 gap-1.5">
+          <PeriodLink active={period === "month"} href={`/reports?period=month&month=${monthKey(year, month, 0)}&threshold=${threshold}&lapsed=${lapsedView}`}>
+            Month
+          </PeriodLink>
+          <PeriodLink active={period === "ytd"} href={`/reports?period=ytd&threshold=${threshold}&lapsed=${lapsedView}`}>
+            Year
+          </PeriodLink>
+          <PeriodLink active={period === "all"} href={`/reports?period=all&threshold=${threshold}&lapsed=${lapsedView}`}>
+            All
+          </PeriodLink>
+        </div>
+        <p className="mt-2 text-xs text-ink-faint">
+          Showing {rangeLabel}.{" "}
+          {revenue.count === 0
+            ? "No appointments are recorded in this range."
+            : "Gross uses appointments with a recorded fee."}
+        </p>
       </section>
 
       {/* Lapsed clients ----------------------------------------------------- */}
       <section className="mt-7">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-faint">
-          Lapsed clients
+          Follow-up list
         </h2>
         <p className="mb-2 text-xs text-ink-faint">
-          No visit in {LAPSED_THRESHOLD_DAYS}+ days · {lapsed.length} client
-          {lapsed.length === 1 ? "" : "s"}
+          No visit in {threshold}+ days · {overdue.length} overdue ·{" "}
+          {never.length} with no visit history
         </p>
-        {lapsed.length === 0 ? (
+        <div className="mb-3 grid grid-cols-3 gap-1.5">
+          <PeriodLink active={lapsedView === "overdue"} href={`/reports?period=${period}&month=${monthKey(year, month, 0)}&threshold=${threshold}&lapsed=overdue`}>
+            Overdue
+          </PeriodLink>
+          <PeriodLink active={lapsedView === "never"} href={`/reports?period=${period}&month=${monthKey(year, month, 0)}&threshold=${threshold}&lapsed=never`}>
+            No visits
+          </PeriodLink>
+          <PeriodLink active={lapsedView === "all"} href={`/reports?period=${period}&month=${monthKey(year, month, 0)}&threshold=${threshold}&lapsed=all`}>
+            All
+          </PeriodLink>
+        </div>
+        <div className="mb-3 flex flex-wrap gap-1.5">
+          {[60, 90, 120, 180].map((days) => (
+            <PeriodLink
+              key={days}
+              active={threshold === days}
+              href={`/reports?period=${period}&month=${monthKey(year, month, 0)}&threshold=${days}&lapsed=${lapsedView}`}
+            >
+              {days}d
+            </PeriodLink>
+          ))}
+        </div>
+        {visibleLapsed.length === 0 ? (
           <p className="text-sm text-ink-faint">Everyone has been seen recently.</p>
         ) : (
           <ul className="flex flex-col gap-2">
-            {lapsed.map((row) => (
+            {visibleLapsed.map((row) => (
               <li key={row.client.id}>
                 <Link
                   href={`/clients/${row.client.id}`}
@@ -194,8 +270,8 @@ export default async function ReportsPage({
       </section>
 
       <p className="mt-7 text-center text-xs text-ink-faint">
-        Reports are read-only. CSV export and an adjustable lapsed threshold
-        arrive with the Settings write flows.
+        Use the chips above to change the range and lapsed threshold. CSV export
+        comes later.
       </p>
     </main>
   );
@@ -208,4 +284,32 @@ function StatTile({ label, value }: { label: string; value: string }) {
       <p className="mt-0.5 text-xs text-ink-soft">{label}</p>
     </div>
   );
+}
+
+function PeriodLink({
+  active,
+  href,
+  children,
+}: {
+  active: boolean;
+  href: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <Link
+      href={href}
+      className={`rounded-lg border px-2 py-1.5 text-center text-xs font-semibold ${
+        active
+          ? "border-brand bg-brand text-white"
+          : "border-line bg-surface text-ink-soft"
+      }`}
+    >
+      {children}
+    </Link>
+  );
+}
+
+function parseThreshold(raw: string | undefined): number {
+  const n = Number(raw);
+  return [60, 90, 120, 180].includes(n) ? n : DEFAULT_LAPSED_THRESHOLD_DAYS;
 }

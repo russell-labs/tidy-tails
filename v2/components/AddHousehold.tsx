@@ -462,8 +462,8 @@ function ModeNote({ mode }: { mode: "fixtures" | "live" }) {
   if (mode === "live") {
     return (
       <p className="rounded-lg bg-warn-soft px-3 py-2 text-xs font-medium text-warn">
-        Live mode — adding a household is switched off until the security
-        cutover. Confirming will not save anything.
+        New household creation is not turned on yet. You can review the
+        household, but it will not be saved.
       </p>
     );
   }
@@ -486,7 +486,7 @@ function ResultScreen({
   const headline =
     state.status === "demo"
       ? "Demo only — nothing was saved"
-      : "Not saved — client/pet creation is switched off until the security cutover.";
+      : "Not saved — client/pet creation is switched off.";
   const detail =
     state.status === "demo"
       ? "This is anonymized practice data, so the household was not created. The whole flow above is real — it starts saving once live writes are enabled."

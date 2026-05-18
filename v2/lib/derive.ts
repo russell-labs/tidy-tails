@@ -78,6 +78,22 @@ export function usualPrice(appointments: Appointment[]): number | null {
     : prices[mid];
 }
 
+/** Most recent non-null price, used as the editable default for a new booking. */
+export function lastKnownPrice(appointments: Appointment[]): number | null {
+  for (const appointment of sortByDateDesc(appointments)) {
+    if (appointment.price != null) return appointment.price;
+  }
+  return null;
+}
+
+/** Most recent non-null service, used as the editable default for a new booking. */
+export function lastKnownService(appointments: Appointment[]): string | null {
+  for (const appointment of sortByDateDesc(appointments)) {
+    if (appointment.service != null) return appointment.service;
+  }
+  return null;
+}
+
 export type LapsedClient = {
   client: Client;
   pets: Pet[];

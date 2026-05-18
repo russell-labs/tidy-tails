@@ -174,7 +174,7 @@ function ReminderForm({
 
       {step === "form" ? (
         <>
-          {upcoming ? (
+      {upcoming ? (
             <p className="rounded-lg bg-brand-soft px-3 py-2 text-xs font-medium text-brand-ink">
               Reminder for{" "}
               <span className="font-semibold">
@@ -184,8 +184,8 @@ function ReminderForm({
             </p>
           ) : (
             <p className="rounded-lg bg-canvas px-3 py-2 text-xs text-ink-soft">
-              No upcoming appointment to remind about — you can still write and
-              prepare a message below.
+              No upcoming appointment is on file. This draft is a follow-up to
+              help book the next visit.
             </p>
           )}
 
@@ -254,8 +254,8 @@ function ModeNote({ mode }: { mode: "fixtures" | "live" }) {
   if (mode === "live") {
     return (
       <p className="rounded-lg bg-warn-soft px-3 py-2 text-xs font-medium text-warn">
-        Live mode — reminder sending is switched off until the security cutover.
-        Confirming will not send anything.
+        Reminder sending is not turned on yet. You can review the text, but it
+        will not be sent.
       </p>
     );
   }
@@ -278,10 +278,10 @@ function ResultScreen({
   const headline =
     state.status === "demo"
       ? "Demo only — no text was sent"
-      : "Not sent — reminder sending is switched off until the security cutover.";
+      : "Not sent — reminder sending is switched off.";
   const detail =
     state.status === "demo"
-      ? "This is anonymized practice data, so no text was sent. The whole flow above is real — it starts sending once the security cutover is approved and you confirm."
+      ? "This is anonymized practice data, so no text was sent. The whole flow above is real — it starts sending once reminder sending is enabled and you confirm."
       : state.message;
 
   return (

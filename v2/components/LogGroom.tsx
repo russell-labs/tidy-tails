@@ -2,11 +2,12 @@
 
 import { useActionState, useState } from "react";
 import { logGroom, type GroomState } from "@/lib/actions/grooms";
-import { SERVICE_TYPES } from "@/lib/booking";
+import { SERVICE_TYPES, type ServiceType } from "@/lib/booking";
+import { lastKnownPrice, lastKnownService } from "@/lib/derive";
 import { validateGroomLog, type GroomLogErrors } from "@/lib/groom";
 import { serviceLabel } from "@/lib/data/live";
-import type { Client, Pet } from "@/lib/data/types";
-import { formatMoney, fullName } from "@/lib/format";
+import type { Appointment, Client, Pet } from "@/lib/data/types";
+import { formatMoney, formatReviewDate, fullName } from "@/lib/format";
 import { Sheet } from "./Sheet";
 
 // Log Groom — record a completed groom: form → review → result. Nothing is
@@ -20,10 +21,12 @@ const labelClass = "text-sm font-medium text-ink-soft";
 export function LogGroom({
   client,
   pets,
+  appointments,
   mode,
 }: {
   client: Client;
   pets: Pet[];
+  appointments: Appointment[];
   mode: "fixtures" | "live";
 }) {
   const [open, setOpen] = useState(false);
@@ -67,6 +70,7 @@ export function LogGroom({
           key={formKey}
           client={client}
           pets={pets}
+          appointments={appointments}
           mode={mode}
           onDone={close}
         />
@@ -78,11 +82,13 @@ export function LogGroom({
 function GroomForm({
   client,
   pets,
+  appointments,
   mode,
   onDone,
 }: {
   client: Client;
   pets: Pet[];
+  appointments: Appointment[];
   mode: "fixtures" | "live";
   onDone: () => void;
 }) {
@@ -100,10 +106,9 @@ function GroomForm({
   // A completed groom defaults to today — the common case is logging it right
   // after the visit. UTC slice matches the server's UTC `new Date()` validator.
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
-  const [serviceType, setServiceType] = useState("");
-  const [fee, setFee] = useState(
-    pets[0].typical_fee != null ? String(pets[0].typical_fee) : "",
-  );
+  const initialDefaults = groomDefaults(pets[0], appointments);
+  const [serviceType, setServiceType] = useState(initialDefaults.serviceType);
+  const [fee, setFee] = useState(initialDefaults.fee);
   const [notes, setNotes] = useState("");
 
   const selectedPet = pets.find((p) => p.id === petId) ?? pets[0];
@@ -112,7 +117,10 @@ function GroomForm({
   function onPetChange(id: string) {
     setPetId(id);
     const p = pets.find((x) => x.id === id);
-    setFee(p?.typical_fee != null ? String(p.typical_fee) : "");
+    if (!p) return;
+    const defaults = groomDefaults(p, appointments);
+    setServiceType(defaults.serviceType);
+    setFee(defaults.fee);
   }
 
   function toReview() {
@@ -201,10 +209,10 @@ function GroomForm({
             />
           </Field>
 
-          <Field label="Service (optional)" error={errors.service_type}>
+          <Field label="Service" error={errors.service_type}>
             <select
               value={serviceType}
-              onChange={(e) => setServiceType(e.target.value)}
+              onChange={(e) => setServiceType(e.target.value as ServiceType | "")}
               className={fieldClass}
             >
               <option value="">Not set</option>
@@ -216,7 +224,7 @@ function GroomForm({
             </select>
           </Field>
 
-          <Field label="Fee (optional)" error={errors.fee}>
+          <Field label="Fee" error={errors.fee} hint="Prefilled from the pet's last charged fee when available.">
             <input
               type="text"
               inputMode="decimal"
@@ -254,7 +262,7 @@ function GroomForm({
           </p>
 
           <dl className="flex flex-col gap-1.5 rounded-xl border border-line bg-canvas px-3.5 py-3 text-sm">
-            <ReviewRow label="Date" value={date} />
+            <ReviewRow label="Date" value={formatReviewDate(date)} />
             <ReviewRow
               label="Service"
               value={
@@ -295,8 +303,8 @@ function ModeNote({ mode }: { mode: "fixtures" | "live" }) {
   if (mode === "live") {
     return (
       <p className="rounded-lg bg-warn-soft px-3 py-2 text-xs font-medium text-warn">
-        Live mode — groom logging is switched off until the security cutover.
-        Confirming will not save anything.
+        Groom logging is not turned on yet. You can review the groom, but it
+        will not be saved.
       </p>
     );
   }
@@ -375,7 +383,7 @@ function ResultScreen({
       </p>
 
       <dl className="flex flex-col gap-1.5 rounded-xl border border-line bg-canvas px-3.5 py-3 text-sm">
-        <ReviewRow label="Date" value={summary.date} />
+        <ReviewRow label="Date" value={formatReviewDate(summary.date)} />
         <ReviewRow label="Service" value={summary.service ?? "Not set"} />
         <ReviewRow
           label="Fee"
@@ -397,16 +405,19 @@ function ResultScreen({
 function Field({
   label,
   error,
+  hint,
   children,
 }: {
   label: string;
   error?: string;
+  hint?: string;
   children: React.ReactNode;
 }) {
   return (
     <label className="flex flex-col gap-1.5">
       <span className={labelClass}>{label}</span>
       {children}
+      {hint ? <span className="text-xs text-ink-faint">{hint}</span> : null}
       {error ? <span className="text-xs text-danger-ink">{error}</span> : null}
     </label>
   );
@@ -419,4 +430,28 @@ function ReviewRow({ label, value }: { label: string; value: string }) {
       <dd className="text-right font-medium text-ink">{value}</dd>
     </div>
   );
+}
+
+function groomDefaults(
+  pet: Pet,
+  appointments: Appointment[],
+): { serviceType: ServiceType | ""; fee: string } {
+  const petAppointments = appointments.filter((a) => a.pet_id === pet.id);
+  const recentPrice = lastKnownPrice(petAppointments);
+  const recentService = lastKnownService(petAppointments);
+  return {
+    serviceType: serviceCodeFromLabel(recentService),
+    fee:
+      recentPrice != null
+        ? String(recentPrice)
+        : pet.typical_fee != null
+          ? String(pet.typical_fee)
+          : "",
+  };
+}
+
+function serviceCodeFromLabel(label: string | null): ServiceType | "" {
+  if (!label) return "";
+  const match = SERVICE_TYPES.find((code) => serviceLabel(code) === label);
+  return match ?? "";
 }

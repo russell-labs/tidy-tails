@@ -17,14 +17,28 @@ export function Sheet({
 }) {
   useEffect(() => {
     if (!open) return;
+    const scrollY = window.scrollY;
+    const previous = {
+      overflow: document.body.style.overflow,
+      position: document.body.style.position,
+      top: document.body.style.top,
+      width: document.body.style.width,
+    };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
     };
     window.addEventListener("keydown", onKey);
     document.body.style.overflow = "hidden";
+    document.body.style.position = "fixed";
+    document.body.style.top = `-${scrollY}px`;
+    document.body.style.width = "100%";
     return () => {
       window.removeEventListener("keydown", onKey);
-      document.body.style.overflow = "";
+      document.body.style.overflow = previous.overflow;
+      document.body.style.position = previous.position;
+      document.body.style.top = previous.top;
+      document.body.style.width = previous.width;
+      window.scrollTo(0, scrollY);
     };
   }, [open, onClose]);
 
@@ -43,7 +57,7 @@ export function Sheet({
         onClick={onClose}
         className="absolute inset-0 bg-ink/40"
       />
-      <div className="relative mx-auto flex max-h-[88dvh] w-full max-w-md flex-col rounded-t-2xl bg-surface shadow-2xl">
+      <div className="relative mx-auto flex max-h-[88dvh] w-full max-w-md flex-col overscroll-contain rounded-t-2xl bg-surface shadow-2xl">
         <header className="flex items-center justify-between border-b border-line px-5 py-3.5">
           <h2 className="text-base font-bold text-ink">{title}</h2>
           <button
@@ -67,7 +81,9 @@ export function Sheet({
             </svg>
           </button>
         </header>
-        <div className="overflow-y-auto px-5 py-4 nav-safe">{children}</div>
+        <div className="overscroll-contain overflow-y-auto px-5 py-4 nav-safe">
+          {children}
+        </div>
       </div>
     </div>
   );

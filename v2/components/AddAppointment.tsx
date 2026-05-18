@@ -6,10 +6,12 @@ import {
   SERVICE_TYPES,
   validateBookingInput,
   type BookingErrors,
+  type ServiceType,
 } from "@/lib/booking";
+import { lastKnownPrice, lastKnownService } from "@/lib/derive";
 import { serviceLabel } from "@/lib/data/live";
-import type { Client, Pet } from "@/lib/data/types";
-import { formatMoney, fullName } from "@/lib/format";
+import type { Appointment, Client, Pet } from "@/lib/data/types";
+import { formatMoney, formatReviewDate, fullName } from "@/lib/format";
 import { Sheet } from "./Sheet";
 
 // M2 — "Add appointment" booking flow: form → review → result. The wedge
@@ -23,10 +25,12 @@ const labelClass = "text-sm font-medium text-ink-soft";
 export function AddAppointment({
   client,
   pets,
+  appointments,
   mode,
 }: {
   client: Client;
   pets: Pet[];
+  appointments: Appointment[];
   mode: "fixtures" | "live";
 }) {
   const [open, setOpen] = useState(false);
@@ -74,6 +78,7 @@ export function AddAppointment({
           key={formKey}
           client={client}
           pets={pets}
+          appointments={appointments}
           mode={mode}
           onDone={close}
         />
@@ -85,11 +90,13 @@ export function AddAppointment({
 function BookingForm({
   client,
   pets,
+  appointments,
   mode,
   onDone,
 }: {
   client: Client;
   pets: Pet[];
+  appointments: Appointment[];
   mode: "fixtures" | "live";
   onDone: () => void;
 }) {
@@ -107,10 +114,9 @@ function BookingForm({
   const [petId, setPetId] = useState(pets[0].id);
   const [date, setDate] = useState("");
   const [time, setTime] = useState("");
-  const [serviceType, setServiceType] = useState("");
-  const [fee, setFee] = useState(
-    pets[0].typical_fee != null ? String(pets[0].typical_fee) : "",
-  );
+  const initialDefaults = bookingDefaults(pets[0], appointments);
+  const [serviceType, setServiceType] = useState(initialDefaults.serviceType);
+  const [fee, setFee] = useState(initialDefaults.fee);
   const [notes, setNotes] = useState("");
 
   const selectedPet = pets.find((p) => p.id === petId) ?? pets[0];
@@ -119,7 +125,10 @@ function BookingForm({
   function onPetChange(id: string) {
     setPetId(id);
     const p = pets.find((x) => x.id === id);
-    setFee(p?.typical_fee != null ? String(p.typical_fee) : "");
+    if (!p) return;
+    const defaults = bookingDefaults(p, appointments);
+    setServiceType(defaults.serviceType);
+    setFee(defaults.fee);
   }
 
   function toReview() {
@@ -210,7 +219,11 @@ function BookingForm({
             />
           </Field>
 
-          <Field label="Time (optional)" error={errors.time_slot}>
+          <Field
+            label="Time"
+            error={errors.time_slot}
+            hint="Calendar slots are coming next. For now, type the time Sam chooses."
+          >
             <input
               type="text"
               value={time}
@@ -220,10 +233,10 @@ function BookingForm({
             />
           </Field>
 
-          <Field label="Service (optional)" error={errors.service_type}>
+          <Field label="Service" error={errors.service_type}>
             <select
               value={serviceType}
-              onChange={(e) => setServiceType(e.target.value)}
+              onChange={(e) => setServiceType(e.target.value as ServiceType | "")}
               className={fieldClass}
             >
               <option value="">Not set</option>
@@ -235,7 +248,7 @@ function BookingForm({
             </select>
           </Field>
 
-          <Field label="Fee (optional)" error={errors.fee}>
+          <Field label="Fee" error={errors.fee} hint="Prefilled from the pet's last charged fee when available.">
             <input
               type="text"
               inputMode="decimal"
@@ -273,7 +286,7 @@ function BookingForm({
           </p>
 
           <dl className="flex flex-col gap-1.5 rounded-xl border border-line bg-canvas px-3.5 py-3 text-sm">
-            <ReviewRow label="Date" value={date} />
+            <ReviewRow label="Date" value={formatReviewDate(date)} />
             <ReviewRow label="Time" value={time || "No time set"} />
             <ReviewRow
               label="Service"
@@ -313,8 +326,8 @@ function ModeNote({ mode }: { mode: "fixtures" | "live" }) {
   if (mode === "live") {
     return (
       <p className="rounded-lg bg-warn-soft px-3 py-2 text-xs font-medium text-warn">
-        Live mode — booking writes are switched off until the security cutover.
-        Confirming will not save anything.
+        Booking is not turned on yet. You can review the appointment, but it
+        will not be saved.
       </p>
     );
   }
@@ -393,7 +406,7 @@ function ResultScreen({
       </p>
 
       <dl className="flex flex-col gap-1.5 rounded-xl border border-line bg-canvas px-3.5 py-3 text-sm">
-        <ReviewRow label="Date" value={summary.date} />
+        <ReviewRow label="Date" value={formatReviewDate(summary.date)} />
         <ReviewRow label="Time" value={summary.time ?? "No time set"} />
         <ReviewRow label="Service" value={summary.service ?? "Not set"} />
         <ReviewRow
@@ -416,16 +429,19 @@ function ResultScreen({
 function Field({
   label,
   error,
+  hint,
   children,
 }: {
   label: string;
   error?: string;
+  hint?: string;
   children: React.ReactNode;
 }) {
   return (
     <label className="flex flex-col gap-1.5">
       <span className={labelClass}>{label}</span>
       {children}
+      {hint ? <span className="text-xs text-ink-faint">{hint}</span> : null}
       {error ? <span className="text-xs text-danger-ink">{error}</span> : null}
     </label>
   );
@@ -438,4 +454,28 @@ function ReviewRow({ label, value }: { label: string; value: string }) {
       <dd className="text-right font-medium text-ink">{value}</dd>
     </div>
   );
+}
+
+function bookingDefaults(
+  pet: Pet,
+  appointments: Appointment[],
+): { serviceType: ServiceType | ""; fee: string } {
+  const petAppointments = appointments.filter((a) => a.pet_id === pet.id);
+  const recentPrice = lastKnownPrice(petAppointments);
+  const recentService = lastKnownService(petAppointments);
+  return {
+    serviceType: serviceCodeFromLabel(recentService),
+    fee:
+      recentPrice != null
+        ? String(recentPrice)
+        : pet.typical_fee != null
+          ? String(pet.typical_fee)
+          : "",
+  };
+}
+
+function serviceCodeFromLabel(label: string | null): ServiceType | "" {
+  if (!label) return "";
+  const match = SERVICE_TYPES.find((code) => serviceLabel(code) === label);
+  return match ?? "";
 }

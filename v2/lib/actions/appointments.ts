@@ -120,9 +120,7 @@ export async function createBooking(
     return {
       status: "gated",
       summary,
-      message:
-        "Live booking writes aren't switched on yet — they turn on soon " +
-        "after launch. Nothing was saved.",
+      message: "Booking writes aren't switched on yet. Nothing was saved.",
     };
   }
 

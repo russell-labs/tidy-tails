@@ -114,8 +114,6 @@ export async function saveIntake(
   return {
     status: "gated",
     summary,
-    message:
-      "Live client and pet creation isn't switched on yet — it turns on " +
-      "soon after launch. Nothing was saved.",
+    message: "Client and pet creation isn't switched on yet. Nothing was saved.",
   };
 }

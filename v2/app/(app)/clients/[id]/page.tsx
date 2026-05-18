@@ -62,8 +62,18 @@ export default async function ClientDetailPage({
       </header>
 
       <div className="mt-4 flex flex-col gap-2.5">
-        <AddAppointment client={client} pets={pets} mode={dataMode()} />
-        <LogGroom client={client} pets={pets} mode={dataMode()} />
+        <AddAppointment
+          client={client}
+          pets={pets}
+          appointments={appointments}
+          mode={dataMode()}
+        />
+        <LogGroom
+          client={client}
+          pets={pets}
+          appointments={appointments}
+          mode={dataMode()}
+        />
         <ClientActions
           client={client}
           pets={pets}

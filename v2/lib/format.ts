@@ -21,6 +21,11 @@ export function formatDate(iso: string): string {
   });
 }
 
+/** "Jun 29, 2026" — compact but unambiguous for review screens. */
+export function formatReviewDate(iso: string): string {
+  return formatDate(iso);
+}
+
 /** "May 8" — year dropped when it matches the current year. */
 export function formatDateShort(iso: string): string {
   const d = new Date(iso + "T00:00:00");
