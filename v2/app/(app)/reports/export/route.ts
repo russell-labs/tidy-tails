@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createBookkeeperWorkbookBuffer } from "@/lib/bookkeeperExport";
 import { loadDataset } from "@/lib/data/repo";
 import { getCurrentUser } from "@/lib/supabase/server";
 
@@ -13,15 +14,6 @@ function parseMonth(raw: string | null): { year: number; month: number } {
 
 function pad(n: number): string {
   return String(n).padStart(2, "0");
-}
-
-function csvCell(value: string | number | null | undefined): string {
-  const raw = value == null ? "" : String(value);
-  return `"${raw.replaceAll('"', '""')}"`;
-}
-
-function csvRow(values: Array<string | number | null | undefined>): string {
-  return values.map(csvCell).join(",");
 }
 
 function rangeFromParams(request: NextRequest, dates: string[]) {
@@ -59,61 +51,20 @@ export async function GET(request: NextRequest) {
     request,
     appointments.map((a) => a.date),
   );
-  const clientsById = new Map(clients.map((client) => [client.id, client]));
-  const petsById = new Map(pets.map((pet) => [pet.id, pet]));
-  const rows = appointments
-    .filter((appointment) => appointment.date >= from && appointment.date <= to)
-    .sort((a, b) => a.date.localeCompare(b.date));
+  const workbook = await createBookkeeperWorkbookBuffer({
+    clients,
+    pets,
+    appointments,
+    from,
+    to,
+    period,
+  });
 
-  const lines = [
-    csvRow([
-      "Date",
-      "Client Name",
-      "Phone",
-      "Pet Name",
-      "Breed",
-      "work",
-      "wage",
-      "Fee",
-      "Tip",
-      "Total Collected",
-      "wages pd cash",
-      "Fee Paid Cash",
-      "Fee Paid Debit",
-      "Service",
-      "Notes",
-    ]),
-    ...rows.map((appointment) => {
-      const client = clientsById.get(appointment.client_id);
-      const pet = petsById.get(appointment.pet_id);
-      const fee = appointment.price ?? 0;
-      const tip = appointment.tip ?? 0;
-      return csvRow([
-        appointment.date,
-        client
-          ? `${client.first_name} ${client.last_name}`.trim()
-          : appointment.client_id,
-        client?.phone ?? "",
-        pet?.name ?? appointment.pet_id,
-        pet?.breed ?? "",
-        "",
-        "",
-        appointment.price,
-        appointment.tip,
-        fee + tip,
-        "",
-        "",
-        "",
-        appointment.service,
-        appointment.notes,
-      ]);
-    }),
-  ];
-
-  return new NextResponse(`\uFEFF${lines.join("\n")}\n`, {
+  return new NextResponse(workbook, {
     headers: {
-      "Content-Disposition": `attachment; filename="tidy-tails-${period}-${from}-to-${to}.csv"`,
-      "Content-Type": "text/csv; charset=utf-8",
+      "Content-Disposition": `attachment; filename="tidy-tails-${period}-${from}-to-${to}.xlsx"`,
+      "Content-Type":
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     },
   });
 }

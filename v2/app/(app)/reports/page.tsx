@@ -294,10 +294,10 @@ export default async function ReportsPage({
           href={`/reports/export?period=${period}&month=${monthKey(year, month, 0)}&threshold=${threshold}&lapsed=${lapsedView}`}
           className="font-semibold text-brand"
         >
-          Download bookkeeper CSV
+          Download bookkeeper Excel
         </Link>
         {" · "}
-        Opens in Excel. Includes fees, tips, and total collected for this range.
+        Includes fees, tips, and total collected for this range.
       </p>
     </main>
   );
