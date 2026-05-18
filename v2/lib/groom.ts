@@ -17,6 +17,7 @@ export type GroomLogInput = {
   date: string;
   service_type: string;
   fee: string;
+  tip: string;
   notes: string;
 };
 
@@ -27,6 +28,7 @@ export type ValidatedGroomLog = {
   date: string;
   service_type: ServiceType | null;
   fee: number | null;
+  tip: number | null;
   notes: string | null;
 };
 
@@ -111,6 +113,17 @@ export function validateGroomLog(
     }
   }
 
+  const tipRaw = (raw.tip ?? "").trim();
+  let tip: number | null = null;
+  if (tipRaw) {
+    const n = Number(tipRaw);
+    if (!Number.isFinite(n) || n < 0) {
+      errors.tip = "Tip must be a number that isn't negative.";
+    } else {
+      tip = n;
+    }
+  }
+
   const notes = optionalText(raw.notes);
   if (notes && notes.length > NOTES_MAX) {
     errors.notes = "Those notes are too long.";
@@ -120,7 +133,7 @@ export function validateGroomLog(
 
   return {
     ok: true,
-    value: { client_id, pet_id, date, service_type, fee, notes },
+    value: { client_id, pet_id, date, service_type, fee, tip, notes },
   };
 }
 
@@ -132,6 +145,7 @@ export type GroomInsert = {
   date: string;
   service_type: ServiceType | null;
   fee: number | null;
+  tip: number | null;
   notes: string | null;
   status: "completed";
 };
@@ -139,7 +153,7 @@ export type GroomInsert = {
 /**
  * Build the appointments INSERT payload from a validated completed groom.
  * `status` is "completed" — this records a visit that already happened. `id`,
- * `created_at`, `tip`, `rent_paid` take their DB defaults; `time_slot` /
+ * `created_at`, `rent_paid` take their DB defaults; `time_slot` /
  * `location` / `net` are deliberately left unset (NULL) — unknown when logging a
  * groom, never fabricated (the Phase 3.5 conservative-NULL policy).
  */
@@ -150,6 +164,7 @@ export function buildGroomInsert(g: ValidatedGroomLog): GroomInsert {
     date: g.date,
     service_type: g.service_type,
     fee: g.fee,
+    tip: g.tip,
     notes: g.notes,
     status: "completed",
   };

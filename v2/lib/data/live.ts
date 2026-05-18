@@ -92,6 +92,7 @@ export function mapAppointmentRow(r: Row): Appointment {
     date: str(r.date).slice(0, 10),
     service: serviceLabel(r.service_type), // live column is `service_type`
     price: numOrNull(r.fee), // live column is `fee`
+    tip: numOrNull(r.tip),
     notes: strOrNull(r.notes),
     created_at: str(r.created_at),
   };

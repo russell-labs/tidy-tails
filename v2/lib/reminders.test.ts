@@ -20,6 +20,7 @@ function appt(date: string): Appointment {
     date,
     service: null,
     price: null,
+    tip: null,
     notes: null,
     created_at: date,
   };

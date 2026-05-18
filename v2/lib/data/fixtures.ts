@@ -127,6 +127,7 @@ function buildAppointments(): Appointment[] {
         date,
         service: SERVICES[i % SERVICES.length],
         price: base + ((i % 3) - 1) * 5,
+        tip: i % 4 === 0 ? 10 : null,
         notes: i === 0 && pet.allergies ? "Used hypoallergenic products only." : null,
         created_at: date,
       });

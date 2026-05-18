@@ -11,6 +11,10 @@ import { dataMode, getClientRecord, loadVaccinations } from "@/lib/data/repo";
 import { groupPetsForDisplay, lastAppointment } from "@/lib/derive";
 import { digitsOnly, formatPhone, fullName } from "@/lib/format";
 import { readOperatorSettings } from "@/lib/operatorSettings.server";
+import {
+  isAddAppointmentWriteEnabled,
+  isLogGroomWriteEnabled,
+} from "@/lib/writeGate";
 
 export async function generateMetadata({
   params,
@@ -73,12 +77,14 @@ export default async function ClientDetailPage({
           pets={displayedPets}
           appointments={appointments}
           mode={dataMode()}
+          writesEnabled={isAddAppointmentWriteEnabled()}
         />
         <LogGroom
           client={client}
           pets={displayedPets}
           appointments={appointments}
           mode={dataMode()}
+          writesEnabled={isLogGroomWriteEnabled()}
         />
         <ClientActions
           client={client}

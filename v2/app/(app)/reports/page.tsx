@@ -156,19 +156,21 @@ export default async function ReportsPage({
 
         <div className="mt-2 grid grid-cols-2 gap-2">
           <StatTile
-            label="Gross"
-            value={formatMoney(revenue.gross)}
+            label="Total collected"
+            value={formatMoney(revenue.total)}
             className="col-span-2"
             valueClassName="text-[clamp(1.9rem,9vw,2.4rem)]"
           />
-          <StatTile label="Appointments" value={String(revenue.count)} />
-          <StatTile label="Average" value={formatMoney(revenue.average)} />
+          <StatTile label="Fees" value={formatMoney(revenue.fees)} />
+          <StatTile label="Tips" value={formatMoney(revenue.tips)} />
+          <StatTile label="Visits" value={String(revenue.count)} />
+          <StatTile label="Avg total" value={formatMoney(revenue.averageTotal)} />
         </div>
         <p className="mt-2 text-xs text-ink-faint">
           Showing {rangeLabel}.{" "}
           {revenue.count === 0
             ? "No appointments are recorded in this range; try All or Year."
-            : "Gross uses appointments with a recorded fee."}
+            : "Totals use recorded app history only; active card clients are still being added."}
         </p>
       </section>
 
@@ -288,8 +290,14 @@ export default async function ReportsPage({
       </section>
 
       <p className="mt-7 text-center text-xs text-ink-faint">
-        Use the chips above to change the range and lapsed threshold. CSV export
-        comes later.
+        <Link
+          href={`/reports/export?period=${period}&month=${monthKey(year, month, 0)}&threshold=${threshold}&lapsed=${lapsedView}`}
+          className="font-semibold text-brand"
+        >
+          Download bookkeeper CSV
+        </Link>
+        {" · "}
+        Opens in Excel. Includes fees, tips, and total collected for this range.
       </p>
     </main>
   );

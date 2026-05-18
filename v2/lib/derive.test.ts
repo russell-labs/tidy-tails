@@ -18,6 +18,7 @@ function appt(
   date: string,
   service: string | null,
   price: number | null,
+  tip: number | null = null,
 ): Appointment {
   return {
     id: `a-${apptSeq++}`,
@@ -26,6 +27,7 @@ function appt(
     date,
     service,
     price,
+    tip,
     notes: null,
     created_at: date,
   };
@@ -268,30 +270,36 @@ describe("usualPrice — typical price (median)", () => {
 });
 
 describe("revenueInRange — totals over a date window", () => {
-  it("sums gross, counts visits, and averages over the window", () => {
+  it("sums fees, tips, total collected, counts visits, and averages over the window", () => {
     const list = [
-      appt("2026-04-15", "Full groom", 80),
-      appt("2026-04-20", "Full groom", 100),
-      appt("2026-06-01", "Full groom", 999), // outside the window
+      appt("2026-04-15", "Full groom", 80, 10),
+      appt("2026-04-20", "Full groom", 100, 15),
+      appt("2026-06-01", "Full groom", 999, 999), // outside the window
     ];
     expect(revenueInRange(list, "2026-04-01", "2026-04-30")).toEqual({
       count: 2,
-      gross: 180,
-      average: 90,
+      fees: 180,
+      tips: 25,
+      total: 205,
+      averageFee: 90,
+      averageTotal: 102.5,
     });
   });
 
-  it("skips null prices in gross but still counts the visit", () => {
+  it("skips null prices in fees but still counts the visit and tip", () => {
     const list = [
-      appt("2026-04-10", "Full groom", 80),
-      appt("2026-04-12", null, null), // a visit with no fee recorded
-      appt("2026-04-14", "Full groom", 100),
+      appt("2026-04-10", "Full groom", 80, 10),
+      appt("2026-04-12", null, null, 5), // a visit with no fee recorded
+      appt("2026-04-14", "Full groom", 100, null),
     ];
-    // gross sums the 2 priced visits; count is all 3; average is over the priced.
+    // fees average over priced visits; total average covers all visits.
     expect(revenueInRange(list, "2026-04-01", "2026-04-30")).toEqual({
       count: 3,
-      gross: 180,
-      average: 90,
+      fees: 180,
+      tips: 15,
+      total: 195,
+      averageFee: 90,
+      averageTotal: 65,
     });
   });
 });

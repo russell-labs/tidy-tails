@@ -221,14 +221,19 @@ export function petVaccinationState(records: Vaccination[]): VaxState {
 
 export type RevenueSummary = {
   count: number;
-  gross: number;
-  average: number;
+  fees: number;
+  tips: number;
+  total: number;
+  averageFee: number;
+  averageTotal: number;
 };
 
 /**
  * Totals for appointments whose date falls within [from, to] inclusive.
- * `count` is every visit in the window; `gross` and `average` use only the
- * visits that have a recorded price, so a fee-less row never reads as $0.
+ * `count` is every visit in the window. Fees and tips are kept separate so the
+ * app can match Sam's Excel books: groom fee, optional tip, total collected.
+ * A missing fee/tip never reads as a fabricated row-level $0, but totals treat
+ * missing values as absent amounts.
  */
 export function revenueInRange(
   appointments: Appointment[],
@@ -237,11 +242,16 @@ export function revenueInRange(
 ): RevenueSummary {
   const inRange = appointments.filter((a) => a.date >= from && a.date <= to);
   const priced = inRange.filter((a) => a.price != null);
-  const gross = priced.reduce((sum, a) => sum + (a.price ?? 0), 0);
+  const fees = priced.reduce((sum, a) => sum + (a.price ?? 0), 0);
+  const tips = inRange.reduce((sum, a) => sum + (a.tip ?? 0), 0);
+  const total = fees + tips;
   return {
     count: inRange.length,
-    gross,
-    average: priced.length ? gross / priced.length : 0,
+    fees,
+    tips,
+    total,
+    averageFee: priced.length ? fees / priced.length : 0,
+    averageTotal: inRange.length ? total / inRange.length : 0,
   };
 }
 

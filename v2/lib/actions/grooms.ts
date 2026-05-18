@@ -38,6 +38,7 @@ export type GroomSummary = {
   date: string;
   service: string | null; // user-facing label
   fee: number | null;
+  tip: number | null;
 };
 
 export type GroomState =
@@ -68,6 +69,7 @@ export async function logGroom(
     date: String(formData.get("date") ?? ""),
     service_type: String(formData.get("service_type") ?? ""),
     fee: String(formData.get("fee") ?? ""),
+    tip: String(formData.get("tip") ?? ""),
     notes: String(formData.get("notes") ?? ""),
   };
 
@@ -106,6 +108,7 @@ export async function logGroom(
     date: payload.date,
     service: serviceLabel(payload.service_type),
     fee: payload.fee,
+    tip: payload.tip,
   };
 
   if (dataMode() === "fixtures") {

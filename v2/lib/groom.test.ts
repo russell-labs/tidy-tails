@@ -18,6 +18,7 @@ describe("validateGroomLog — required fields", () => {
         date: "2026-05-10",
         service_type: null,
         fee: null,
+        tip: null,
         notes: null,
       });
     }
@@ -96,6 +97,7 @@ describe("validateGroomLog — optional fields", () => {
         date: "2026-05-10",
         service_type: "full_groom",
         fee: "72.50",
+        tip: "12.50",
         notes: "Matted behind the ears — trimmed short",
       },
       TODAY,
@@ -104,6 +106,7 @@ describe("validateGroomLog — optional fields", () => {
     if (r.ok) {
       expect(r.value.service_type).toBe("full_groom");
       expect(r.value.fee).toBe(72.5);
+      expect(r.value.tip).toBe(12.5);
       expect(r.value.notes).toBe("Matted behind the ears — trimmed short");
     }
   });
@@ -124,6 +127,33 @@ describe("validateGroomLog — optional fields", () => {
     );
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.errors.fee).toBeTruthy();
+  });
+
+  it("accepts a tip of 0", () => {
+    const r = validateGroomLog(
+      { client_id: "c1", pet_id: "p1", date: "2026-05-10", tip: "0" },
+      TODAY,
+    );
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.value.tip).toBe(0);
+  });
+
+  it("rejects a negative tip", () => {
+    const r = validateGroomLog(
+      { client_id: "c1", pet_id: "p1", date: "2026-05-10", tip: "-5" },
+      TODAY,
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.errors.tip).toBeTruthy();
+  });
+
+  it("rejects a non-numeric tip", () => {
+    const r = validateGroomLog(
+      { client_id: "c1", pet_id: "p1", date: "2026-05-10", tip: "thanks" },
+      TODAY,
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.errors.tip).toBeTruthy();
   });
 
   it("rejects a non-numeric fee", () => {
@@ -181,6 +211,7 @@ describe("buildGroomInsert — payload + null policy", () => {
       date: "2026-05-10",
       service_type: null,
       fee: null,
+      tip: null,
       notes: null,
     });
     expect(payload).toEqual({
@@ -189,6 +220,7 @@ describe("buildGroomInsert — payload + null policy", () => {
       date: "2026-05-10",
       service_type: null,
       fee: null,
+      tip: null,
       notes: null,
       status: "completed",
     });
@@ -201,27 +233,29 @@ describe("buildGroomInsert — payload + null policy", () => {
       date: "2026-05-10",
       service_type: "bath_only",
       fee: 40,
+      tip: 10,
       notes: "calm visit",
     });
     expect(payload.service_type).toBe("bath_only");
     expect(payload.fee).toBe(40);
+    expect(payload.tip).toBe(10);
     expect(payload.notes).toBe("calm visit");
     expect(payload.status).toBe("completed");
   });
 
-  it("never sets id, created_at, tip, rent_paid, time_slot, location, or net — DB defaults / conservative NULL", () => {
+  it("never sets id, created_at, rent_paid, time_slot, location, or net — DB defaults / conservative NULL", () => {
     const payload = buildGroomInsert({
       client_id: "c1",
       pet_id: "p1",
       date: "2026-05-10",
       service_type: null,
       fee: null,
+      tip: null,
       notes: null,
     });
     for (const k of [
       "id",
       "created_at",
-      "tip",
       "rent_paid",
       "time_slot",
       "location",

@@ -109,7 +109,7 @@ describe("mapPetRow — live pets row → Pet", () => {
 });
 
 describe("mapAppointmentRow — live appointments row → Appointment", () => {
-  it("maps service_type to a label and fee to price", () => {
+  it("maps service_type to a label, fee to price, and tip to tip", () => {
     const row: Row = {
       id: "a-1",
       client_id: "c-1",
@@ -117,10 +117,12 @@ describe("mapAppointmentRow — live appointments row → Appointment", () => {
       date: "2026-04-10",
       service_type: "full_groom",
       fee: 80,
+      tip: 15,
     };
     const appt = mapAppointmentRow(row);
     expect(appt.service).toBe("Full groom");
     expect(appt.price).toBe(80);
+    expect(appt.tip).toBe(15);
   });
 
   it("reads a numeric fee returned as a string", () => {
@@ -134,6 +136,10 @@ describe("mapAppointmentRow — live appointments row → Appointment", () => {
 
   it("maps a null fee to a null price — never to $0", () => {
     expect(mapAppointmentRow({ fee: null }).price).toBeNull();
+  });
+
+  it("maps a null tip to null — never to $0", () => {
+    expect(mapAppointmentRow({ tip: null }).tip).toBeNull();
   });
 
   it("trims a timestamp date down to an ISO date", () => {

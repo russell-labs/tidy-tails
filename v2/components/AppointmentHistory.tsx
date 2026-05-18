@@ -9,6 +9,7 @@ function Row({
   appointment: Appointment;
   petName?: string;
 }) {
+  const total = (appointment.price ?? 0) + (appointment.tip ?? 0);
   return (
     <li className="flex items-start justify-between gap-3 px-3.5 py-3">
       <div className="min-w-0">
@@ -29,9 +30,18 @@ function Row({
           </p>
         ) : null}
       </div>
-      <span className="shrink-0 text-sm font-semibold text-ink">
-        {formatMoney(appointment.price)}
-      </span>
+      <div className="shrink-0 text-right">
+        <p className="text-sm font-semibold text-ink">
+          {appointment.price != null || appointment.tip != null
+            ? formatMoney(total)
+            : formatMoney(null)}
+        </p>
+        {appointment.tip ? (
+          <p className="text-xs text-ink-faint">
+            incl. {formatMoney(appointment.tip)} tip
+          </p>
+        ) : null}
+      </div>
     </li>
   );
 }
@@ -52,7 +62,7 @@ export function AppointmentHistory({
   const sorted = sortByDateDesc(appointments);
   // Skip fee-less visits so the all-time total never reads low by treating an
   // unrecorded fee as $0.
-  const total = sorted.reduce((sum, a) => sum + (a.price ?? 0), 0);
+  const total = sorted.reduce((sum, a) => sum + (a.price ?? 0) + (a.tip ?? 0), 0);
   const head = sorted.slice(0, 10);
   const rest = sorted.slice(10);
 

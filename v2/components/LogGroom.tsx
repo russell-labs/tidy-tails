@@ -23,11 +23,13 @@ export function LogGroom({
   pets,
   appointments,
   mode,
+  writesEnabled,
 }: {
   client: Client;
   pets: Pet[];
   appointments: Appointment[];
   mode: "fixtures" | "live";
+  writesEnabled: boolean;
 }) {
   const [open, setOpen] = useState(false);
   // Remount the form on each close so a reopened sheet starts fresh.
@@ -72,6 +74,7 @@ export function LogGroom({
           pets={pets}
           appointments={appointments}
           mode={mode}
+          writesEnabled={writesEnabled}
           onDone={close}
         />
       </Sheet>
@@ -84,12 +87,14 @@ function GroomForm({
   pets,
   appointments,
   mode,
+  writesEnabled,
   onDone,
 }: {
   client: Client;
   pets: Pet[];
   appointments: Appointment[];
   mode: "fixtures" | "live";
+  writesEnabled: boolean;
   onDone: () => void;
 }) {
   const [state, formAction, pending] = useActionState<GroomState, FormData>(
@@ -109,6 +114,7 @@ function GroomForm({
   const initialDefaults = groomDefaults(pets[0], appointments);
   const [serviceType, setServiceType] = useState(initialDefaults.serviceType);
   const [fee, setFee] = useState(initialDefaults.fee);
+  const [tip, setTip] = useState("");
   const [notes, setNotes] = useState("");
 
   const selectedPet = pets.find((p) => p.id === petId) ?? pets[0];
@@ -121,6 +127,7 @@ function GroomForm({
     const defaults = groomDefaults(p, appointments);
     setServiceType(defaults.serviceType);
     setFee(defaults.fee);
+    setTip("");
   }
 
   function toReview() {
@@ -130,6 +137,7 @@ function GroomForm({
       date,
       service_type: serviceType,
       fee,
+      tip,
       notes,
     });
     if (!v.ok) {
@@ -167,9 +175,10 @@ function GroomForm({
       <input type="hidden" name="date" value={date} />
       <input type="hidden" name="service_type" value={serviceType} />
       <input type="hidden" name="fee" value={fee} />
+      <input type="hidden" name="tip" value={tip} />
       <input type="hidden" name="notes" value={notes} />
 
-      <ModeNote mode={mode} />
+      <ModeNote mode={mode} writesEnabled={writesEnabled} />
 
       {formError ? (
         <p className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger-ink">
@@ -235,6 +244,17 @@ function GroomForm({
             />
           </Field>
 
+          <Field label="Tip" error={errors.tip}>
+            <input
+              type="text"
+              inputMode="decimal"
+              value={tip}
+              onChange={(e) => setTip(e.target.value)}
+              placeholder="0.00"
+              className={fieldClass}
+            />
+          </Field>
+
           <Field label="Notes (optional)" error={errors.notes}>
             <input
               type="text"
@@ -273,6 +293,14 @@ function GroomForm({
               label="Fee"
               value={fee.trim() ? formatMoney(Number(fee)) : "No fee set"}
             />
+            <ReviewRow
+              label="Tip"
+              value={tip.trim() ? formatMoney(Number(tip)) : "No tip set"}
+            />
+            <ReviewRow
+              label="Total"
+              value={formatMoney((Number(fee) || 0) + (Number(tip) || 0))}
+            />
             {notes.trim() ? <ReviewRow label="Notes" value={notes} /> : null}
           </dl>
 
@@ -299,8 +327,21 @@ function GroomForm({
   );
 }
 
-function ModeNote({ mode }: { mode: "fixtures" | "live" }) {
+function ModeNote({
+  mode,
+  writesEnabled,
+}: {
+  mode: "fixtures" | "live";
+  writesEnabled: boolean;
+}) {
   if (mode === "live") {
+    if (writesEnabled) {
+      return (
+        <p className="rounded-lg bg-brand-soft px-3 py-2 text-xs font-medium text-brand-ink">
+          Production mode — confirming will save one completed groom.
+        </p>
+      );
+    }
     return (
       <p className="rounded-lg bg-warn-soft px-3 py-2 text-xs font-medium text-warn">
         Groom logging is not turned on yet. You can review the groom, but it
@@ -388,6 +429,14 @@ function ResultScreen({
         <ReviewRow
           label="Fee"
           value={summary.fee != null ? formatMoney(summary.fee) : "No fee set"}
+        />
+        <ReviewRow
+          label="Tip"
+          value={summary.tip != null ? formatMoney(summary.tip) : "No tip set"}
+        />
+        <ReviewRow
+          label="Total"
+          value={formatMoney((summary.fee ?? 0) + (summary.tip ?? 0))}
         />
       </dl>
 
