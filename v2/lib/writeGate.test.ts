@@ -5,6 +5,7 @@ import {
   isReminderSendEnabled,
   isAddPetWriteEnabled,
   isAddHouseholdWriteEnabled,
+  isEditPetWriteEnabled,
 } from "./writeGate";
 
 // The post-cutover write kill-switches. Each of v2's four write surfaces is
@@ -22,6 +23,7 @@ const SURFACES = [
   ["Log Groom", isLogGroomWriteEnabled, "TIDYTAILS_ENABLE_LOG_GROOM_WRITE"],
   ["Reminder send", isReminderSendEnabled, "TIDYTAILS_ENABLE_REMINDER_SEND"],
   ["Add Pet", isAddPetWriteEnabled, "TIDYTAILS_ENABLE_ADD_PET_WRITE"],
+  ["Edit Pet", isEditPetWriteEnabled, "TIDYTAILS_ENABLE_EDIT_PET_WRITE"],
   [
     "Add Household",
     isAddHouseholdWriteEnabled,
@@ -81,6 +83,7 @@ describe("write-gate isolation — one flag never enables another", () => {
     expect(isAddAppointmentWriteEnabled()).toBe(true);
     expect(isLogGroomWriteEnabled()).toBe(false);
     expect(isAddPetWriteEnabled()).toBe(false);
+    expect(isEditPetWriteEnabled()).toBe(false);
     expect(isReminderSendEnabled()).toBe(false);
     expect(isAddHouseholdWriteEnabled()).toBe(false);
   });
@@ -90,6 +93,7 @@ describe("write-gate isolation — one flag never enables another", () => {
     expect(isLogGroomWriteEnabled()).toBe(true);
     expect(isAddAppointmentWriteEnabled()).toBe(false);
     expect(isAddPetWriteEnabled()).toBe(false);
+    expect(isEditPetWriteEnabled()).toBe(false);
     expect(isReminderSendEnabled()).toBe(false);
     expect(isAddHouseholdWriteEnabled()).toBe(false);
   });

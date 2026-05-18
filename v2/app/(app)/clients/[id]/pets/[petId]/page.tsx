@@ -4,10 +4,12 @@ import { notFound } from "next/navigation";
 import { AllergyAlert } from "@/components/AllergyAlert";
 import { AppointmentHistory } from "@/components/AppointmentHistory";
 import { BackLink } from "@/components/BackLink";
+import { EditPet } from "@/components/EditPet";
 import { VaccinationList } from "@/components/VaccinationList";
-import { loadDataset } from "@/lib/data/repo";
+import { dataMode, loadDataset } from "@/lib/data/repo";
 import { lastKnownPrice, matchingPetRows } from "@/lib/derive";
 import { formatDate, formatMoney, fullName } from "@/lib/format";
+import { isEditPetWriteEnabled } from "@/lib/writeGate";
 
 export async function generateMetadata({
   params,
@@ -67,6 +69,12 @@ export default async function PetDetailPage({
         >
           Owner: {fullName(client.first_name, client.last_name)}
         </Link>
+        <EditPet
+          client={client}
+          pet={pet}
+          mode={dataMode()}
+          writesEnabled={isEditPetWriteEnabled()}
+        />
       </header>
 
       {pet.allergies ? (

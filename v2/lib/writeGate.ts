@@ -1,7 +1,7 @@
 // Server-side write kill-switches for the post-cutover write flips.
 //
 // Each of v2's write surfaces — Add Appointment, Log Groom, Add Pet,
-// Reminder send, Add Household — is gated by a PRIVATE, server-only environment flag. The flag
+// Edit Pet, Reminder send, Add Household — is gated by a PRIVATE, server-only environment flag. The flag
 // names are deliberately NOT prefixed `NEXT_PUBLIC_`, so their values never
 // reach the browser bundle: a flip is a server-side decision only.
 //
@@ -41,6 +41,11 @@ export function isReminderSendEnabled(): boolean {
 /** Add Pet live writes — `TIDYTAILS_ENABLE_ADD_PET_WRITE`. */
 export function isAddPetWriteEnabled(): boolean {
   return isFlagEnabled(process.env.TIDYTAILS_ENABLE_ADD_PET_WRITE);
+}
+
+/** Edit Pet live writes — `TIDYTAILS_ENABLE_EDIT_PET_WRITE`. */
+export function isEditPetWriteEnabled(): boolean {
+  return isFlagEnabled(process.env.TIDYTAILS_ENABLE_EDIT_PET_WRITE);
 }
 
 /** Add Household live writes — `TIDYTAILS_ENABLE_ADD_HOUSEHOLD_WRITE`. */
