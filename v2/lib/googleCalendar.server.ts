@@ -165,7 +165,7 @@ export async function handleGoogleCalendarCallback({
   }
 
   const { clientId, clientSecret, tokenSecret } = googleClientConfig();
-  if (!clientId || !clientSecret || !tokenSecret) {
+  if (!clientId || !tokenSecret) {
     return { ok: false, message: "Google Calendar is not configured." };
   }
 
