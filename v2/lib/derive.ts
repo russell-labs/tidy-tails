@@ -101,9 +101,27 @@ export type PetDisplayGroup = {
 };
 
 function petDisplayKey(pet: Pet): string {
-  return [pet.name, pet.breed ?? ""]
-    .map((part) => part.trim().toLowerCase().replace(/\s+/g, " "))
-    .join("::");
+  return [
+    normalizePetName(pet.name),
+    normalizeBreedForDuplicateDetection(pet.breed),
+  ].join("::");
+}
+
+function normalizePetName(name: string): string {
+  return name.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function normalizeBreedForDuplicateDetection(breed: string | null): string {
+  const value = (breed ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .replace(/\bsheppard\b/g, "shepherd")
+    .replace(/\bgerman shepherd\b/g, "shepherd")
+    .replace(/\bg\\.?\s*pyrennes\b/g, "great pyrenees")
+    .replace(/\bpyrennes\b/g, "pyrenees");
+
+  return value;
 }
 
 function primaryPetForGroup(pets: Pet[], appointments: Appointment[]): Pet {

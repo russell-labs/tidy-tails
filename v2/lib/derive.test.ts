@@ -150,6 +150,21 @@ describe("pet display grouping — duplicate imported rows", () => {
     expect(matchingPetRows(oldMilo, [oldMilo, newMilo, other]).map((p) => p.id))
       .toEqual(["1", "2"]);
   });
+
+  it("treats obvious breed aliases as the same pet", () => {
+    const shepherd = pet("1", "Baron", "Sheppard");
+    const germanShepherd = pet("2", "Baron", "German Shepherd");
+    const vizsla = pet("3", "Baron", "Vizsla");
+
+    const groups = groupPetsForDisplay(
+      [shepherd, germanShepherd, vizsla],
+      [petAppt("2", "2025-05-07")],
+    );
+
+    expect(groups).toHaveLength(2);
+    expect(matchingPetRows(shepherd, [shepherd, germanShepherd, vizsla]).map((p) => p.id))
+      .toEqual(["1", "2"]);
+  });
 });
 
 describe("usualService — most common service", () => {
