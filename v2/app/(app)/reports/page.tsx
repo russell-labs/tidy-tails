@@ -110,11 +110,25 @@ export default async function ReportsPage({
 
       {/* Revenue ------------------------------------------------------------ */}
       <section className="mt-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-faint">
-            Revenue
-          </h2>
-          <div className="flex items-center gap-1">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-faint">
+          Revenue
+        </h2>
+
+        <div className="mt-2 grid grid-cols-3 gap-1.5">
+          <PeriodLink active={period === "month"} href={`/reports?period=month&month=${monthKey(year, month, 0)}&threshold=${threshold}&lapsed=${lapsedView}`}>
+            Month
+          </PeriodLink>
+          <PeriodLink active={period === "ytd"} href={`/reports?period=ytd&threshold=${threshold}&lapsed=${lapsedView}`}>
+            Year
+          </PeriodLink>
+          <PeriodLink active={period === "all"} href={`/reports?period=all&threshold=${threshold}&lapsed=${lapsedView}`}>
+            All
+          </PeriodLink>
+        </div>
+
+        <div className="mt-3">
+          {period === "month" ? (
+            <div className="flex items-center justify-center gap-2">
             <Link
               href={`/reports?period=month&month=${monthKey(year, month, -1)}&threshold=${threshold}&lapsed=${lapsedView}`}
               aria-label="Previous month"
@@ -132,24 +146,23 @@ export default async function ReportsPage({
             >
               ›
             </Link>
-          </div>
+            </div>
+          ) : (
+            <p className="text-sm font-semibold text-ink">
+              {rangeLabel}
+            </p>
+          )}
         </div>
 
-        <div className="mt-2 grid grid-cols-3 gap-2">
+        <div className="mt-2 grid grid-cols-2 gap-2">
+          <StatTile
+            label="Gross"
+            value={formatMoney(revenue.gross)}
+            className="col-span-2"
+            valueClassName="text-[clamp(1.9rem,9vw,2.4rem)]"
+          />
           <StatTile label="Appointments" value={String(revenue.count)} />
-          <StatTile label="Gross" value={formatMoney(revenue.gross)} />
           <StatTile label="Average" value={formatMoney(revenue.average)} />
-        </div>
-        <div className="mt-3 grid grid-cols-3 gap-1.5">
-          <PeriodLink active={period === "month"} href={`/reports?period=month&month=${monthKey(year, month, 0)}&threshold=${threshold}&lapsed=${lapsedView}`}>
-            Month
-          </PeriodLink>
-          <PeriodLink active={period === "ytd"} href={`/reports?period=ytd&threshold=${threshold}&lapsed=${lapsedView}`}>
-            Year
-          </PeriodLink>
-          <PeriodLink active={period === "all"} href={`/reports?period=all&threshold=${threshold}&lapsed=${lapsedView}`}>
-            All
-          </PeriodLink>
         </div>
         <p className="mt-2 text-xs text-ink-faint">
           Showing {rangeLabel}.{" "}
@@ -282,10 +295,22 @@ export default async function ReportsPage({
   );
 }
 
-function StatTile({ label, value }: { label: string; value: string }) {
+function StatTile({
+  label,
+  value,
+  className = "",
+  valueClassName = "text-lg",
+}: {
+  label: string;
+  value: string;
+  className?: string;
+  valueClassName?: string;
+}) {
   return (
-    <div className="rounded-xl border border-line bg-surface px-3 py-3 text-center">
-      <p className="text-lg font-bold text-ink">{value}</p>
+    <div className={`rounded-xl border border-line bg-surface px-3 py-3 text-center ${className}`}>
+      <p className={`break-words font-bold leading-tight text-ink ${valueClassName}`}>
+        {value}
+      </p>
       <p className="mt-0.5 text-xs text-ink-soft">{label}</p>
     </div>
   );
