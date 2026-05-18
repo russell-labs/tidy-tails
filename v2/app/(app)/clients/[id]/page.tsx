@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { AddAppointment } from "@/components/AddAppointment";
+import { AddPet } from "@/components/AddPet";
 import { AppointmentHistory } from "@/components/AppointmentHistory";
 import { BackLink } from "@/components/BackLink";
 import { ClientActions } from "@/components/ClientActions";
@@ -89,9 +90,12 @@ export default async function ClientDetailPage({
       ) : null}
 
       <section className="mt-6">
-        <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-ink-faint">
-          {pets.length === 1 ? "Pet" : `Pets · ${pets.length}`}
-        </h2>
+        <div className="mb-2 flex items-center justify-between gap-3">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-faint">
+            {pets.length === 1 ? "Pet" : `Pets · ${pets.length}`}
+          </h2>
+          <AddPet client={client} mode={dataMode()} />
+        </div>
         {pets.length === 0 ? (
           <p className="text-sm text-ink-faint">No pets on file.</p>
         ) : (

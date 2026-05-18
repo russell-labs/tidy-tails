@@ -3,6 +3,7 @@ import {
   isAddAppointmentWriteEnabled,
   isLogGroomWriteEnabled,
   isReminderSendEnabled,
+  isAddPetWriteEnabled,
   isAddHouseholdWriteEnabled,
 } from "./writeGate";
 
@@ -20,6 +21,7 @@ const SURFACES = [
   ],
   ["Log Groom", isLogGroomWriteEnabled, "TIDYTAILS_ENABLE_LOG_GROOM_WRITE"],
   ["Reminder send", isReminderSendEnabled, "TIDYTAILS_ENABLE_REMINDER_SEND"],
+  ["Add Pet", isAddPetWriteEnabled, "TIDYTAILS_ENABLE_ADD_PET_WRITE"],
   [
     "Add Household",
     isAddHouseholdWriteEnabled,
@@ -78,6 +80,7 @@ describe("write-gate isolation — one flag never enables another", () => {
     vi.stubEnv("TIDYTAILS_ENABLE_ADD_APPOINTMENT_WRITE", "on");
     expect(isAddAppointmentWriteEnabled()).toBe(true);
     expect(isLogGroomWriteEnabled()).toBe(false);
+    expect(isAddPetWriteEnabled()).toBe(false);
     expect(isReminderSendEnabled()).toBe(false);
     expect(isAddHouseholdWriteEnabled()).toBe(false);
   });
@@ -86,6 +89,7 @@ describe("write-gate isolation — one flag never enables another", () => {
     vi.stubEnv("TIDYTAILS_ENABLE_LOG_GROOM_WRITE", "on");
     expect(isLogGroomWriteEnabled()).toBe(true);
     expect(isAddAppointmentWriteEnabled()).toBe(false);
+    expect(isAddPetWriteEnabled()).toBe(false);
     expect(isReminderSendEnabled()).toBe(false);
     expect(isAddHouseholdWriteEnabled()).toBe(false);
   });
