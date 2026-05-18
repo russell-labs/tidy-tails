@@ -8,7 +8,7 @@ import { ClientActions } from "@/components/ClientActions";
 import { LogGroom } from "@/components/LogGroom";
 import { PetCard } from "@/components/PetCard";
 import { dataMode, getClientRecord, loadVaccinations } from "@/lib/data/repo";
-import { lastAppointment } from "@/lib/derive";
+import { groupPetsForDisplay, lastAppointment } from "@/lib/derive";
 import { digitsOnly, formatPhone, fullName } from "@/lib/format";
 
 export async function generateMetadata({
@@ -37,7 +37,9 @@ export default async function ClientDetailPage({
   const { client, pets, appointments } = record;
   const allVaccinations = await loadVaccinations();
   const petsById = Object.fromEntries(pets.map((p) => [p.id, p.name]));
-  const duplicatePetNames = petNameDuplicates(pets.map((p) => p.name));
+  const petGroups = groupPetsForDisplay(pets, appointments);
+  const displayedPets = petGroups.map((group) => group.pet);
+  const combinedGroups = petGroups.filter((group) => group.pets.length > 1);
 
   return (
     <main className="px-4 py-4">
@@ -66,13 +68,13 @@ export default async function ClientDetailPage({
       <div className="mt-4 flex flex-col gap-2.5">
         <AddAppointment
           client={client}
-          pets={pets}
+          pets={displayedPets}
           appointments={appointments}
           mode={dataMode()}
         />
         <LogGroom
           client={client}
-          pets={pets}
+          pets={displayedPets}
           appointments={appointments}
           mode={dataMode()}
         />
@@ -90,12 +92,15 @@ export default async function ClientDetailPage({
         </p>
       ) : null}
 
-      {duplicatePetNames.length > 0 ? (
+      {combinedGroups.length > 0 ? (
         <div className="mt-4 rounded-xl bg-warn-soft px-3.5 py-3 text-sm text-warn">
-          <p className="font-semibold">Possible duplicate pet records</p>
+          <p className="font-semibold">History combined from duplicate records</p>
           <p className="mt-1 text-xs leading-relaxed">
-            This household has repeated pet names:{" "}
-            {duplicatePetNames.join(", ")}. Check history before booking.
+            {combinedGroups
+              .map((group) => `${group.pet.name} x${group.pets.length}`)
+              .join(", ")}{" "}
+            were imported as split rows. They are shown once here with combined
+            history.
           </p>
         </div>
       ) : null}
@@ -103,23 +108,24 @@ export default async function ClientDetailPage({
       <section className="mt-6">
         <div className="mb-2 flex items-center justify-between gap-3">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-faint">
-            {pets.length === 1 ? "Pet" : `Pets · ${pets.length}`}
+            {petGroups.length === 1 ? "Pet" : `Pets · ${petGroups.length}`}
           </h2>
           <AddPet client={client} mode={dataMode()} />
         </div>
-        {pets.length === 0 ? (
+        {petGroups.length === 0 ? (
           <p className="text-sm text-ink-faint">No pets on file.</p>
         ) : (
           <div className="flex flex-col gap-3">
-            {pets.map((pet) => (
+            {petGroups.map((group) => (
               <PetCard
-                key={pet.id}
-                pet={pet}
+                key={group.pet.id}
+                pet={group.pet}
                 clientId={client.id}
-                vaccinations={allVaccinations.filter((v) => v.pet_id === pet.id)}
-                lastVisit={lastAppointment(
-                  appointments.filter((a) => a.pet_id === pet.id),
+                vaccinations={allVaccinations.filter((v) =>
+                  group.pets.some((pet) => pet.id === v.pet_id),
                 )}
+                lastVisit={lastAppointment(group.appointments)}
+                recordCount={group.pets.length}
               />
             ))}
           </div>
@@ -134,18 +140,4 @@ export default async function ClientDetailPage({
       </section>
     </main>
   );
-}
-
-function petNameDuplicates(names: string[]): string[] {
-  const counts = new Map<string, { label: string; count: number }>();
-  for (const name of names) {
-    const key = name.trim().toLowerCase();
-    if (!key) continue;
-    const current = counts.get(key) ?? { label: name.trim(), count: 0 };
-    current.count += 1;
-    counts.set(key, current);
-  }
-  return [...counts.values()]
-    .filter((entry) => entry.count > 1)
-    .map((entry) => `${entry.label} x${entry.count}`);
 }

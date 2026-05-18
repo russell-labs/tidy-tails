@@ -6,7 +6,7 @@ import { AppointmentHistory } from "@/components/AppointmentHistory";
 import { BackLink } from "@/components/BackLink";
 import { VaccinationList } from "@/components/VaccinationList";
 import { loadDataset } from "@/lib/data/repo";
-import { lastKnownPrice } from "@/lib/derive";
+import { lastKnownPrice, matchingPetRows } from "@/lib/derive";
 import { formatDate, formatMoney, fullName } from "@/lib/format";
 
 export async function generateMetadata({
@@ -40,8 +40,13 @@ export default async function PetDetailPage({
   const client = clients.find((c) => c.id === id);
   if (!pet || !client) notFound();
 
-  const petAppointments = appointments.filter((a) => a.pet_id === pet.id);
-  const petVaccinations = vaccinations.filter((v) => v.pet_id === pet.id);
+  const siblingRows = matchingPetRows(
+    pet,
+    pets.filter((candidate) => candidate.client_id === id),
+  );
+  const siblingIds = new Set(siblingRows.map((row) => row.id));
+  const petAppointments = appointments.filter((a) => siblingIds.has(a.pet_id));
+  const petVaccinations = vaccinations.filter((v) => siblingIds.has(v.pet_id));
   const inferredTypicalFee = pet.typical_fee ?? lastKnownPrice(petAppointments);
 
   return (
@@ -67,6 +72,16 @@ export default async function PetDetailPage({
       {pet.allergies ? (
         <div className="mt-4">
           <AllergyAlert detail={pet.allergies_detail} />
+        </div>
+      ) : null}
+
+      {siblingRows.length > 1 ? (
+        <div className="mt-4 rounded-xl bg-warn-soft px-3.5 py-3 text-sm text-warn">
+          <p className="font-semibold">Combined pet history</p>
+          <p className="mt-1 text-xs leading-relaxed">
+            This page combines {siblingRows.length} imported {pet.name} records
+            so Sam can see the full history in one place.
+          </p>
         </div>
       ) : null}
 

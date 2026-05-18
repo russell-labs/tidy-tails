@@ -1,9 +1,11 @@
 import { describe, it, expect } from "vitest";
-import type { Appointment } from "./data/types";
+import type { Appointment, Pet } from "./data/types";
 import {
+  groupPetsForDisplay,
   lastAppointment,
   lastKnownPrice,
   lastKnownService,
+  matchingPetRows,
   revenueInRange,
   usualPrice,
   usualService,
@@ -27,6 +29,32 @@ function appt(
     notes: null,
     created_at: date,
   };
+}
+
+function pet(id: string, name: string, breed: string | null): Pet {
+  return {
+    id,
+    client_id: "c",
+    name,
+    breed,
+    color: null,
+    sex: null,
+    date_of_birth: null,
+    allergies: false,
+    allergies_detail: null,
+    grooming_notes: null,
+    typical_fee: null,
+    created_at: `2026-01-0${id}`,
+  };
+}
+
+function petAppt(
+  petId: string,
+  date: string,
+  service: string | null = null,
+  price: number | null = null,
+): Appointment {
+  return { ...appt(date, service, price), pet_id: petId };
 }
 
 describe("lastAppointment — last-visit derivation", () => {
@@ -91,6 +119,36 @@ describe("booking defaults — most recent known values", () => {
       appt("2026-05-01", "Full groom", 80),
     ];
     expect(lastKnownService(list)).toBe("Full groom");
+  });
+});
+
+describe("pet display grouping — duplicate imported rows", () => {
+  it("collapses same-name/same-breed pet rows into one display group", () => {
+    const oldChloe = pet("1", "Chloe", "Cavachon");
+    const newChloe = pet("2", "Chloe", "Cavachon");
+    const milo = pet("3", "Milo", "Cavachon");
+    const appointments = [
+      petAppt("1", "2023-12-21", "Full groom", 55),
+      petAppt("2", "2025-12-22", "Full groom", 55),
+      petAppt("3", "2025-12-22", "Full groom", 55),
+    ];
+
+    const groups = groupPetsForDisplay([oldChloe, newChloe, milo], appointments);
+
+    expect(groups).toHaveLength(2);
+    const chloe = groups.find((group) => group.pet.name === "Chloe");
+    expect(chloe?.pets.map((p) => p.id).sort()).toEqual(["1", "2"]);
+    expect(chloe?.appointments).toHaveLength(2);
+    expect(chloe?.pet.id).toBe("2");
+  });
+
+  it("finds matching duplicate rows for a pet detail page", () => {
+    const oldMilo = pet("1", "Milo", "Cavachon");
+    const newMilo = pet("2", "milo", " cavachon ");
+    const other = pet("3", "Milo", "Poodle");
+
+    expect(matchingPetRows(oldMilo, [oldMilo, newMilo, other]).map((p) => p.id))
+      .toEqual(["1", "2"]);
   });
 });
 

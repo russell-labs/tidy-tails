@@ -15,11 +15,13 @@ export function PetCard({
   clientId,
   vaccinations,
   lastVisit,
+  recordCount = 1,
 }: {
   pet: Pet;
   clientId: string;
   vaccinations: Vaccination[];
   lastVisit: Appointment | null;
+  recordCount?: number;
 }) {
   const vaxState = petVaccinationState(vaccinations);
   const displayFee = pet.typical_fee ?? lastVisit?.price ?? null;
@@ -80,6 +82,11 @@ export function PetCard({
         {lastVisit ? (
           <span className="text-xs text-ink-soft">
             Last groom {relativeDate(lastVisit.date)}
+          </span>
+        ) : null}
+        {recordCount > 1 ? (
+          <span className="text-xs font-semibold text-warn">
+            {recordCount} records combined
           </span>
         ) : null}
       </div>

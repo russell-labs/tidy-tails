@@ -94,6 +94,64 @@ export function lastKnownService(appointments: Appointment[]): string | null {
   return null;
 }
 
+export type PetDisplayGroup = {
+  pet: Pet;
+  pets: Pet[];
+  appointments: Appointment[];
+};
+
+function petDisplayKey(pet: Pet): string {
+  return [pet.name, pet.breed ?? ""]
+    .map((part) => part.trim().toLowerCase().replace(/\s+/g, " "))
+    .join("::");
+}
+
+function primaryPetForGroup(pets: Pet[], appointments: Appointment[]): Pet {
+  return [...pets].sort((a, b) => {
+    const aLast = lastAppointment(appointments.filter((appt) => appt.pet_id === a.id));
+    const bLast = lastAppointment(appointments.filter((appt) => appt.pet_id === b.id));
+    const dateCompare = (bLast?.date ?? "").localeCompare(aLast?.date ?? "");
+    if (dateCompare !== 0) return dateCompare;
+    return b.created_at.localeCompare(a.created_at);
+  })[0];
+}
+
+/**
+ * Display duplicate pet rows with the same name/breed as one pet profile.
+ *
+ * Some imported card histories created split rows like Chloe/Chloe and
+ * Milo/Milo under the same household. The database rows are kept intact until a
+ * proper reconciliation pass, but the product view should answer Sam's question
+ * as one animal with one combined history.
+ */
+export function groupPetsForDisplay(
+  pets: Pet[],
+  appointments: Appointment[],
+): PetDisplayGroup[] {
+  const groups = new Map<string, Pet[]>();
+  for (const pet of pets) {
+    const key = petDisplayKey(pet);
+    const current = groups.get(key) ?? [];
+    current.push(pet);
+    groups.set(key, current);
+  }
+
+  return [...groups.values()].map((groupPets) => {
+    const ids = new Set(groupPets.map((p) => p.id));
+    const groupAppointments = appointments.filter((a) => ids.has(a.pet_id));
+    return {
+      pet: primaryPetForGroup(groupPets, appointments),
+      pets: groupPets,
+      appointments: groupAppointments,
+    };
+  });
+}
+
+export function matchingPetRows(pet: Pet, pets: Pet[]): Pet[] {
+  const key = petDisplayKey(pet);
+  return pets.filter((candidate) => petDisplayKey(candidate) === key);
+}
+
 export type LapsedClient = {
   client: Client;
   pets: Pet[];
