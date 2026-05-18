@@ -19,10 +19,15 @@ function Row({
           ) : null}
         </p>
         {appointment.service ? (
-          <p className="truncate text-sm text-ink-soft">{appointment.service}</p>
+          <p className="text-sm text-ink-soft">{appointment.service}</p>
         ) : (
-          <p className="truncate text-sm text-ink-faint">Service not recorded</p>
+          <p className="text-sm text-ink-faint">Service not recorded</p>
         )}
+        {appointment.notes ? (
+          <p className="mt-1 text-sm leading-snug text-ink">
+            {appointment.notes}
+          </p>
+        ) : null}
       </div>
       <span className="shrink-0 text-sm font-semibold text-ink">
         {formatMoney(appointment.price)}
