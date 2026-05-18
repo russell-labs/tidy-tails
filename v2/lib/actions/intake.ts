@@ -2,20 +2,20 @@
 
 // "Add household" — the client + pet intake write action.
 //
-// IMPORTANT: this action does NOT persist anything in this ship. Like the M2
-// booking and Log Groom actions it runs the COMPLETE flow (auth re-check,
-// input validation, INSERT-payload construction) and then, instead of
-// persisting, returns a result:
+// Like the M2 booking and Log Groom actions it runs the COMPLETE flow
+// (auth re-check, input validation, INSERT-payload construction) and then:
 //   - fixture mode → a "demo" dry-run: nothing is saved.
-//   - live mode    → the write gate is CLOSED. Live client/pet creation turns
-//     on only after the Ship 2.2b RLS cutover. Until then it refuses to write.
+//   - live mode    → persists only when TIDYTAILS_ENABLE_ADD_HOUSEHOLD_WRITE
+//     is exactly "on". Flag OFF returns gated and runs no insert.
 //
-// There is deliberately no `.insert()` here yet. The validated payloads are
-// built (buildClientInsert / buildPetInsert) so the shapes are proven;
-// persistence is the one step that waits for the gate.
+// This is a two-row write. The action compensates on pet-insert failure by
+// deleting the just-created client row, so Sam is not left with an owner that
+// has no first pet.
 
+import { revalidatePath } from "next/cache";
 import { dataMode } from "@/lib/data/repo";
-import { getCurrentUser } from "@/lib/supabase/server";
+import { createServerSupabase, getCurrentUser } from "@/lib/supabase/server";
+import { isAddHouseholdWriteEnabled } from "@/lib/writeGate";
 import {
   buildClientInsert,
   buildPetInsert,
@@ -40,7 +40,8 @@ export type IntakeState =
   | { status: "idle" }
   | { status: "error"; errors: IntakeErrors; formError?: string }
   | { status: "demo"; summary: IntakeSummary }
-  | { status: "gated"; summary: IntakeSummary; message: string };
+  | { status: "gated"; summary: IntakeSummary; message: string }
+  | { status: "saved"; summary: IntakeSummary };
 
 export async function saveIntake(
   _prev: IntakeState,
@@ -100,20 +101,45 @@ export async function saveIntake(
     return { status: "demo", summary };
   }
 
-  // Live mode: write gate CLOSED. When it lifts (Ship 2.2b cutover), the live
-  // persist is a two-step insert — the pet's client_id comes from the client
-  // row just created. The two inserts are NOT atomic in PostgREST; a pet
-  // failure after a client success leaves an orphan client, so the cutover
-  // wires this as an RPC (or a client-insert revert on pet failure):
-  //   const supabase = await createServerSupabase();
-  //   const { data: c, error: cErr } = await supabase
-  //     .from("clients").insert(clientPayload).select("id").single();
-  //   const { error: pErr } = await supabase
-  //     .from("pets").insert({ ...petPayload, client_id: c.id });
-  //   ...then revalidatePath("/").
-  return {
-    status: "gated",
-    summary,
-    message: "Client and pet creation isn't switched on yet. Nothing was saved.",
-  };
+  // Live mode. The server-side kill-switch decides whether this persists.
+  // OFF (default) → return `gated` and run no insert.
+  if (!isAddHouseholdWriteEnabled()) {
+    return {
+      status: "gated",
+      summary,
+      message: "Client and pet creation isn't switched on yet. Nothing was saved.",
+    };
+  }
+
+  const supabase = await createServerSupabase();
+  const { data: clientRow, error: clientError } = await supabase
+    .from("clients")
+    .insert(clientPayload)
+    .select("id")
+    .single();
+
+  if (clientError || !clientRow?.id) {
+    return {
+      status: "error",
+      errors: {},
+      formError: "That household could not be saved. Nothing was written.",
+    };
+  }
+
+  const { error: petError } = await supabase
+    .from("pets")
+    .insert({ ...petPayload, client_id: clientRow.id });
+
+  if (petError) {
+    await supabase.from("clients").delete().eq("id", clientRow.id);
+    return {
+      status: "error",
+      errors: {},
+      formError:
+        "That pet could not be saved, so the new household was rolled back.",
+    };
+  }
+
+  revalidatePath("/");
+  return { status: "saved", summary };
 }

@@ -13,9 +13,8 @@ import { formatMoney, formatPhone } from "@/lib/format";
 import { Sheet } from "./Sheet";
 
 // Add household — onboard a new client + their first pet: form → review →
-// result. Nothing is persisted in this ship: fixture mode is a dry-run, live
-// mode is gated (see lib/actions/intake.ts). Mirrors the M2 / Log Groom flow.
-// This closes the v1 intake gap before the security cutover takes v1 dark.
+// result. Fixture mode is a dry-run; live mode persists only when the private
+// TIDYTAILS_ENABLE_ADD_HOUSEHOLD_WRITE gate is on.
 
 const fieldClass =
   "w-full rounded-xl border border-line bg-surface px-3.5 py-2.5 text-base text-ink placeholder:text-ink-faint";
@@ -134,8 +133,12 @@ function IntakeForm({
     setStep("review");
   }
 
-  // Terminal: the action ran. Nothing is ever saved in this ship.
-  if (state.status === "demo" || state.status === "gated") {
+  // Terminal: the action ran.
+  if (
+    state.status === "demo" ||
+    state.status === "gated" ||
+    state.status === "saved"
+  ) {
     return <ResultScreen state={state} onDone={onDone} />;
   }
 
@@ -461,9 +464,9 @@ function AllergyPicker({
 function ModeNote({ mode }: { mode: "fixtures" | "live" }) {
   if (mode === "live") {
     return (
-      <p className="rounded-lg bg-warn-soft px-3 py-2 text-xs font-medium text-warn">
-        Use this for a brand-new owner plus first pet. Saving new households is
-        still staged because it creates two linked records.
+      <p className="rounded-lg bg-brand-soft px-3 py-2 text-xs font-medium text-brand-ink">
+        Use this for a brand-new owner plus first pet. Review carefully before
+        saving.
       </p>
     );
   }
@@ -479,22 +482,29 @@ function ResultScreen({
   state,
   onDone,
 }: {
-  state: Extract<IntakeState, { status: "demo" | "gated" }>;
+  state: Extract<IntakeState, { status: "demo" | "gated" | "saved" }>;
   onDone: () => void;
 }) {
   const { summary } = state;
-  const headline =
-    state.status === "demo"
+  const saved = state.status === "saved";
+  const headline = saved
+    ? "Household saved"
+    : state.status === "demo"
       ? "Demo only — nothing was saved"
       : "Not saved — client/pet creation is switched off.";
-  const detail =
-    state.status === "demo"
+  const detail = saved
+    ? "The new owner and first pet were added to the production book."
+    : state.status === "demo"
       ? "This is anonymized practice data, so the household was not created. The whole flow above is real — it starts saving once live writes are enabled."
       : state.message;
 
   return (
     <div className="flex flex-col gap-3.5">
-      <div className="flex gap-2.5 rounded-xl bg-warn-soft p-3.5 text-warn">
+      <div
+        className={`flex gap-2.5 rounded-xl p-3.5 ${
+          saved ? "bg-ok-soft text-ok" : "bg-warn-soft text-warn"
+        }`}
+      >
         <svg
           width="20"
           height="20"
@@ -507,9 +517,15 @@ function ResultScreen({
           className="mt-0.5 shrink-0"
           aria-hidden="true"
         >
-          <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-          <line x1="12" y1="9" x2="12" y2="13" />
-          <line x1="12" y1="17" x2="12.01" y2="17" />
+          {saved ? (
+            <path d="M20 6 9 17l-5-5" />
+          ) : (
+            <>
+              <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+              <line x1="12" y1="9" x2="12" y2="13" />
+              <line x1="12" y1="17" x2="12.01" y2="17" />
+            </>
+          )}
         </svg>
         <div>
           <p className="text-sm font-semibold">{headline}</p>
