@@ -4,6 +4,7 @@ export type EditAppointmentInput = {
   client_id: string;
   appointment_id: string;
   date: string;
+  time_slot: string;
   service_type: string;
   fee: string;
   tip: string;
@@ -14,6 +15,7 @@ export type ValidatedEditAppointment = {
   client_id: string;
   appointment_id: string;
   date: string;
+  time_slot: string | null;
   service_type: ServiceType | null;
   fee: number | null;
   tip: number | null;
@@ -30,6 +32,7 @@ export type EditAppointmentValidationResult =
 
 export type EditAppointmentUpdate = {
   date: string;
+  time_slot: string | null;
   service_type: ServiceType | null;
   fee: number | null;
   tip: number | null;
@@ -37,6 +40,7 @@ export type EditAppointmentUpdate = {
 };
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+const TIME_SLOT_MAX = 40;
 const NOTES_MAX = 1000;
 
 function pad(n: number): string {
@@ -112,6 +116,11 @@ export function validateEditAppointment(
   const fee = parseMoney(raw.fee, "fee", errors);
   const tip = parseMoney(raw.tip, "tip", errors);
 
+  const time_slot = optionalText(raw.time_slot);
+  if (time_slot && time_slot.length > TIME_SLOT_MAX) {
+    errors.time_slot = "That time is too long.";
+  }
+
   const notes = optionalText(raw.notes);
   if (notes && notes.length > NOTES_MAX) {
     errors.notes = "Those notes are too long.";
@@ -121,7 +130,7 @@ export function validateEditAppointment(
 
   return {
     ok: true,
-    value: { client_id, appointment_id, date, service_type, fee, tip, notes },
+    value: { client_id, appointment_id, date, time_slot, service_type, fee, tip, notes },
   };
 }
 
@@ -130,6 +139,7 @@ export function buildEditAppointmentUpdate(
 ): EditAppointmentUpdate {
   return {
     date: v.date,
+    time_slot: v.time_slot,
     service_type: v.service_type,
     fee: v.fee,
     tip: v.tip,

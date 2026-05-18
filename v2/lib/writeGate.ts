@@ -1,7 +1,8 @@
 // Server-side write kill-switches for the post-cutover write flips.
 //
-// Each of v2's write surfaces — Add Appointment, Log Groom, Add Pet,
-// Edit Pet, Edit Client, Edit Appointment, Reminder send, Add Household — is gated by a PRIVATE, server-only environment flag. The flag
+// Each of v2's write/send/sync surfaces — Add Appointment, Log Groom, Add Pet,
+// Edit Pet, Edit Client, Edit Appointment, Reminder send, Add Household, and
+// Google Calendar sync — is gated by a PRIVATE, server-only environment flag. The flag
 // names are deliberately NOT prefixed `NEXT_PUBLIC_`, so their values never
 // reach the browser bundle: a flip is a server-side decision only.
 //
@@ -61,4 +62,9 @@ export function isEditAppointmentWriteEnabled(): boolean {
 /** Add Household live writes — `TIDYTAILS_ENABLE_ADD_HOUSEHOLD_WRITE`. */
 export function isAddHouseholdWriteEnabled(): boolean {
   return isFlagEnabled(process.env.TIDYTAILS_ENABLE_ADD_HOUSEHOLD_WRITE);
+}
+
+/** Google Calendar event sync — `TIDYTAILS_ENABLE_GOOGLE_CALENDAR_SYNC`. */
+export function isGoogleCalendarSyncEnabled(): boolean {
+  return isFlagEnabled(process.env.TIDYTAILS_ENABLE_GOOGLE_CALENDAR_SYNC);
 }

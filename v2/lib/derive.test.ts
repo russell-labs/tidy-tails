@@ -30,6 +30,11 @@ function appt(
     price,
     tip,
     notes: null,
+    google_calendar_id: null,
+    google_event_id: null,
+    google_sync_status: null,
+    google_sync_error: null,
+    google_synced_at: null,
     created_at: date,
   };
 }

@@ -2,7 +2,9 @@
 
 import { revalidatePath } from "next/cache";
 import { dataMode, getClientRecord } from "@/lib/data/repo";
-import { serviceLabel } from "@/lib/data/live";
+import { mapAppointmentRow, serviceLabel } from "@/lib/data/live";
+import type { Appointment } from "@/lib/data/types";
+import { syncAppointmentToGoogleCalendar } from "@/lib/googleCalendar.server";
 import { createServerSupabase, getCurrentUser } from "@/lib/supabase/server";
 import { isEditAppointmentWriteEnabled } from "@/lib/writeGate";
 import {
@@ -17,9 +19,14 @@ export type EditAppointmentSummary = {
   ownerName: string;
   petName: string;
   date: string;
+  time: string | null;
   service: string | null;
   fee: number | null;
   tip: number | null;
+  calendar?: {
+    status: "disabled" | "not_connected" | "skipped" | "synced" | "failed";
+    message: string;
+  };
 };
 
 export type EditAppointmentState =
@@ -46,6 +53,7 @@ export async function editAppointment(
     client_id: String(formData.get("client_id") ?? ""),
     appointment_id: String(formData.get("appointment_id") ?? ""),
     date: String(formData.get("date") ?? ""),
+    time_slot: String(formData.get("time_slot") ?? ""),
     service_type: String(formData.get("service_type") ?? ""),
     fee: String(formData.get("fee") ?? ""),
     tip: String(formData.get("tip") ?? ""),
@@ -82,6 +90,7 @@ export async function editAppointment(
     ownerName: fullName(record.client.first_name, record.client.last_name),
     petName,
     date: payload.date,
+    time: payload.time_slot,
     service: serviceLabel(payload.service_type),
     fee: payload.fee,
     tip: payload.tip,
@@ -98,17 +107,29 @@ export async function editAppointment(
   }
 
   const supabase = await createServerSupabase();
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("appointments")
     .update(payload)
     .eq("id", appointment.appointment_id)
-    .eq("client_id", appointment.client_id);
+    .eq("client_id", appointment.client_id)
+    .select("*")
+    .single();
   if (error) {
     return {
       status: "error",
       errors: {},
       formError: "That visit could not be saved. Nothing was written.",
     };
+  }
+  const savedAppointment = mapAppointmentRow(data ?? {}) as Appointment;
+  const pet = record.pets.find((candidate) => candidate.id === existing.pet_id);
+  if (pet) {
+    const calendar = await syncAppointmentToGoogleCalendar({
+      appointment: savedAppointment,
+      client: record.client,
+      pet,
+    });
+    summary.calendar = { status: calendar.status, message: calendar.message };
   }
 
   revalidatePath(`/clients/${appointment.client_id}`);

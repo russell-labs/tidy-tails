@@ -97,6 +97,7 @@ function EditAppointmentForm({
   const [step, setStep] = useState<"form" | "review">("form");
   const [errors, setErrors] = useState<EditAppointmentErrors>({});
   const [date, setDate] = useState(appointment.date);
+  const [time, setTime] = useState(appointment.time_slot ?? "");
   const [serviceType, setServiceType] = useState(
     serviceCodeFromLabel(appointment.service),
   );
@@ -113,6 +114,7 @@ function EditAppointmentForm({
       client_id: clientId,
       appointment_id: appointment.id,
       date,
+      time_slot: time,
       service_type: serviceType,
       fee,
       tip,
@@ -144,6 +146,7 @@ function EditAppointmentForm({
       <input type="hidden" name="client_id" value={clientId} />
       <input type="hidden" name="appointment_id" value={appointment.id} />
       <input type="hidden" name="date" value={date} />
+      <input type="hidden" name="time_slot" value={time} />
       <input type="hidden" name="service_type" value={serviceType} />
       <input type="hidden" name="fee" value={fee} />
       <input type="hidden" name="tip" value={tip} />
@@ -168,6 +171,15 @@ function EditAppointmentForm({
               type="date"
               value={date}
               onChange={(e) => setDate(e.target.value)}
+              className={fieldClass}
+            />
+          </Field>
+          <Field label="Time" error={errors.time_slot}>
+            <input
+              type="text"
+              value={time}
+              onChange={(e) => setTime(e.target.value)}
+              placeholder="e.g. 10:30am"
               className={fieldClass}
             />
           </Field>
@@ -226,6 +238,7 @@ function EditAppointmentForm({
           <p className="text-sm text-ink">Review this visit update.</p>
           <dl className="flex flex-col gap-1.5 rounded-xl border border-line bg-canvas px-3.5 py-3 text-sm">
             <ReviewRow label="Date" value={date} />
+            <ReviewRow label="Time" value={time.trim() || "Not set"} />
             <ReviewRow
               label="Service"
               value={
@@ -310,9 +323,22 @@ function ResultScreen({
       <div className={`rounded-xl p-3.5 ${tone}`}>
         <p className="text-sm font-semibold">{headline}</p>
         <p className="mt-0.5 text-xs leading-relaxed">
-          {state.status === "saved" ? `${state.summary.petName} · ${state.summary.date}` : "Nothing was written."}
+          {state.status === "saved"
+            ? `${state.summary.petName} · ${state.summary.date}`
+            : "Nothing was written."}
         </p>
       </div>
+      {state.status === "saved" && state.summary.calendar ? (
+        <p
+          className={`rounded-lg px-3 py-2 text-xs font-medium ${
+            state.summary.calendar.status === "synced"
+              ? "bg-brand-soft text-brand-ink"
+              : "bg-warn-soft text-warn"
+          }`}
+        >
+          {state.summary.calendar.message}
+        </p>
+      ) : null}
       <button
         type="button"
         onClick={onDone}

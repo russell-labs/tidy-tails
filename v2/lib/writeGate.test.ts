@@ -8,6 +8,7 @@ import {
   isEditPetWriteEnabled,
   isEditClientWriteEnabled,
   isEditAppointmentWriteEnabled,
+  isGoogleCalendarSyncEnabled,
 } from "./writeGate";
 
 // The post-cutover write kill-switches. Each of v2's four write surfaces is
@@ -36,6 +37,11 @@ const SURFACES = [
     "Add Household",
     isAddHouseholdWriteEnabled,
     "TIDYTAILS_ENABLE_ADD_HOUSEHOLD_WRITE",
+  ],
+  [
+    "Google Calendar sync",
+    isGoogleCalendarSyncEnabled,
+    "TIDYTAILS_ENABLE_GOOGLE_CALENDAR_SYNC",
   ],
 ] as const;
 
@@ -96,6 +102,7 @@ describe("write-gate isolation — one flag never enables another", () => {
     expect(isEditAppointmentWriteEnabled()).toBe(false);
     expect(isReminderSendEnabled()).toBe(false);
     expect(isAddHouseholdWriteEnabled()).toBe(false);
+    expect(isGoogleCalendarSyncEnabled()).toBe(false);
   });
 
   it("enabling Log Groom leaves the other three OFF", () => {
@@ -108,5 +115,6 @@ describe("write-gate isolation — one flag never enables another", () => {
     expect(isEditAppointmentWriteEnabled()).toBe(false);
     expect(isReminderSendEnabled()).toBe(false);
     expect(isAddHouseholdWriteEnabled()).toBe(false);
+    expect(isGoogleCalendarSyncEnabled()).toBe(false);
   });
 });

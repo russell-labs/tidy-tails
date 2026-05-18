@@ -95,6 +95,11 @@ export function mapAppointmentRow(r: Row): Appointment {
     price: numOrNull(r.fee), // live column is `fee`
     tip: numOrNull(r.tip),
     notes: strOrNull(r.notes),
+    google_calendar_id: strOrNull(r.google_calendar_id),
+    google_event_id: strOrNull(r.google_event_id),
+    google_sync_status: strOrNull(r.google_sync_status),
+    google_sync_error: strOrNull(r.google_sync_error),
+    google_synced_at: strOrNull(r.google_synced_at),
     created_at: str(r.created_at),
   };
 }

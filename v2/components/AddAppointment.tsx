@@ -475,6 +475,18 @@ function ResultScreen({
         />
       </dl>
 
+      {saved && summary.calendar ? (
+        <p
+          className={`rounded-lg px-3 py-2 text-xs font-medium ${
+            summary.calendar.status === "synced"
+              ? "bg-brand-soft text-brand-ink"
+              : "bg-warn-soft text-warn"
+          }`}
+        >
+          {summary.calendar.message}
+        </p>
+      ) : null}
+
       <button
         type="button"
         onClick={onDone}

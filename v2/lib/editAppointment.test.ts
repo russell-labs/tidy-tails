@@ -10,6 +10,7 @@ const valid = {
   client_id: "client-1",
   appointment_id: "appt-1",
   date: "2026-04-10",
+  time_slot: "10:30am",
   service_type: "full_groom",
   fee: "60",
   tip: "10",
@@ -25,6 +26,7 @@ describe("validateEditAppointment", () => {
       client_id: "client-1",
       appointment_id: "appt-1",
       date: "2026-04-10",
+      time_slot: "10:30am",
       service_type: "full_groom",
       fee: 60,
       tip: 10,
@@ -46,12 +48,13 @@ describe("validateEditAppointment", () => {
 
   it("allows empty optional fields as null", () => {
     const result = validateEditAppointment(
-      { ...valid, service_type: "", fee: "", tip: "", notes: "" },
+      { ...valid, time_slot: "", service_type: "", fee: "", tip: "", notes: "" },
       TODAY,
     );
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value.service_type).toBeNull();
+    expect(result.value.time_slot).toBeNull();
     expect(result.value.fee).toBeNull();
     expect(result.value.tip).toBeNull();
     expect(result.value.notes).toBeNull();
@@ -77,6 +80,7 @@ describe("buildEditAppointmentUpdate", () => {
     if (!result.ok) return;
     expect(buildEditAppointmentUpdate(result.value)).toEqual({
       date: "2026-04-10",
+      time_slot: "10:30am",
       service_type: "full_groom",
       fee: 60,
       tip: 10,

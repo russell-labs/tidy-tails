@@ -130,6 +130,11 @@ function buildAppointments(): Appointment[] {
         price: base + ((i % 3) - 1) * 5,
         tip: i % 4 === 0 ? 10 : null,
         notes: i === 0 && pet.allergies ? "Used hypoallergenic products only." : null,
+        google_calendar_id: null,
+        google_event_id: null,
+        google_sync_status: null,
+        google_sync_error: null,
+        google_synced_at: null,
         created_at: date,
       });
     }

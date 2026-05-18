@@ -18,9 +18,10 @@
 
 import { revalidatePath } from "next/cache";
 import { dataMode, getClientRecord } from "@/lib/data/repo";
-import { serviceLabel } from "@/lib/data/live";
+import { mapAppointmentRow, serviceLabel } from "@/lib/data/live";
 import { createServerSupabase, getCurrentUser } from "@/lib/supabase/server";
 import { isAddAppointmentWriteEnabled } from "@/lib/writeGate";
+import { syncAppointmentToGoogleCalendar } from "@/lib/googleCalendar.server";
 import {
   buildAppointmentInsert,
   findOwnedPet,
@@ -37,6 +38,10 @@ export type BookingSummary = {
   time: string | null;
   service: string | null; // user-facing label
   fee: number | null;
+  calendar?: {
+    status: "disabled" | "not_connected" | "skipped" | "synced" | "failed";
+    message: string;
+  };
 };
 
 export type BookingState =
@@ -127,7 +132,11 @@ export async function createBooking(
   // Flag ON: persist exactly one appointments row. The auth-aware server client
   // carries Samantha's JWT, so the column DEFAULT auth.uid() stamps groomer_id.
   const supabase = await createServerSupabase();
-  const { error } = await supabase.from("appointments").insert(payload);
+  const { data, error } = await supabase
+    .from("appointments")
+    .insert(payload)
+    .select("*")
+    .single();
   if (error) {
     return {
       status: "error",
@@ -135,6 +144,13 @@ export async function createBooking(
       formError: "That appointment could not be saved. Nothing was written.",
     };
   }
+  const savedAppointment = mapAppointmentRow(data ?? {});
+  const calendar = await syncAppointmentToGoogleCalendar({
+    appointment: savedAppointment,
+    client: record.client,
+    pet,
+  });
+  summary.calendar = { status: calendar.status, message: calendar.message };
   revalidatePath(`/clients/${booking.client_id}`);
   return { status: "saved", summary };
 }

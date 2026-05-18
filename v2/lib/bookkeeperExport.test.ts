@@ -49,6 +49,11 @@ const appointments: Appointment[] = [
     price: 60,
     tip: 10,
     notes: "#4, left ears and tail",
+    google_calendar_id: null,
+    google_event_id: null,
+    google_sync_status: null,
+    google_sync_error: null,
+    google_synced_at: null,
     created_at: "2026-04-10",
   },
 ];

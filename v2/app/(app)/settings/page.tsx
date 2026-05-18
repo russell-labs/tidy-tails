@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { signOut } from "@/lib/actions/auth";
+import { disconnectGoogleCalendarAction } from "@/lib/actions/googleCalendar";
 import { saveOperatorSettings } from "@/lib/actions/settings";
+import { readGoogleCalendarConnection } from "@/lib/googleCalendar.server";
 import { LAPSED_THRESHOLD_OPTIONS } from "@/lib/operatorSettings";
 import { readOperatorSettings } from "@/lib/operatorSettings.server";
 import { getCurrentUser } from "@/lib/supabase/server";
@@ -39,9 +41,15 @@ function Row({ label, value }: { label: string; value: string }) {
   );
 }
 
-export default async function SettingsPage() {
+export default async function SettingsPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ calendar?: string; message?: string }>;
+}) {
   const user = await getCurrentUser();
   const settings = await readOperatorSettings();
+  const calendar = await readGoogleCalendarConnection();
+  const params = searchParams ? await searchParams : {};
 
   return (
     <main className="px-4 py-5">
@@ -54,6 +62,67 @@ export default async function SettingsPage() {
       <Card title="Business">
         <Row label="Business name" value="Tidy Tails" />
         <Row label="Reminder sender" value="Samantha" />
+      </Card>
+
+      <Card title="Calendar">
+        <div className="px-3.5 py-3">
+          {params.calendar === "connected" ? (
+            <p className="mb-2 rounded-lg bg-brand-soft px-3 py-2 text-xs font-medium text-brand-ink">
+              Google Calendar connected.
+            </p>
+          ) : null}
+          {params.calendar === "error" ? (
+            <p className="mb-2 rounded-lg bg-warn-soft px-3 py-2 text-xs font-medium text-warn">
+              {params.message ?? "Google Calendar could not be connected."}
+            </p>
+          ) : null}
+
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold text-ink">
+                Google Calendar
+              </p>
+              <p className="mt-1 text-xs leading-relaxed text-ink-soft">
+                New bookings can create calendar events after Sam connects her
+                Google account. The booking still saves if Google is unavailable.
+              </p>
+            </div>
+            <span
+              className={`shrink-0 rounded-full px-2 py-1 text-xs font-semibold ${
+                calendar.enabled
+                  ? "bg-brand-soft text-brand-ink"
+                  : "bg-canvas text-ink-soft"
+              }`}
+            >
+              {calendar.enabled ? "Sync on" : "Sync off"}
+            </span>
+          </div>
+
+          {!calendar.configured ? (
+            <p className="mt-3 rounded-lg bg-warn-soft px-3 py-2 text-xs font-medium text-warn">
+              Google OAuth is not configured on this deployment yet.
+            </p>
+          ) : calendar.connection ? (
+            <div className="mt-3 flex flex-col gap-2">
+              <Row label="Connected as" value={calendar.connection.google_email} />
+              <form action={disconnectGoogleCalendarAction}>
+                <button
+                  type="submit"
+                  className="w-full rounded-xl border border-line bg-canvas px-4 py-2.5 text-sm font-semibold text-ink-soft active:bg-surface"
+                >
+                  Disconnect Google Calendar
+                </button>
+              </form>
+            </div>
+          ) : (
+            <a
+              href="/settings/google/connect"
+              className="mt-3 block rounded-xl bg-brand px-4 py-3 text-center text-sm font-semibold text-white active:bg-brand-ink"
+            >
+              Connect Google Calendar
+            </a>
+          )}
+        </div>
       </Card>
 
       <section className="mt-4">
