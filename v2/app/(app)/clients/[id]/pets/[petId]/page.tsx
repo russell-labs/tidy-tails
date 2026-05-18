@@ -9,7 +9,10 @@ import { VaccinationList } from "@/components/VaccinationList";
 import { dataMode, loadDataset } from "@/lib/data/repo";
 import { lastKnownPrice, matchingPetRows } from "@/lib/derive";
 import { formatDate, formatMoney, fullName } from "@/lib/format";
-import { isEditPetWriteEnabled } from "@/lib/writeGate";
+import {
+  isEditAppointmentWriteEnabled,
+  isEditPetWriteEnabled,
+} from "@/lib/writeGate";
 
 export async function generateMetadata({
   params,
@@ -135,7 +138,12 @@ export default async function PetDetailPage({
         <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-ink-faint">
           Appointment history
         </h2>
-        <AppointmentHistory appointments={petAppointments} />
+        <AppointmentHistory
+          appointments={petAppointments}
+          clientId={client.id}
+          mode={dataMode()}
+          writesEnabled={isEditAppointmentWriteEnabled()}
+        />
       </section>
     </main>
   );

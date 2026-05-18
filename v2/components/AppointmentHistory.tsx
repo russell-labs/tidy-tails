@@ -1,13 +1,20 @@
 import type { Appointment } from "@/lib/data/types";
 import { sortByDateDesc } from "@/lib/derive";
 import { formatDateShort, formatMoney } from "@/lib/format";
+import { EditAppointment } from "./EditAppointment";
 
 function Row({
   appointment,
+  clientId,
   petName,
+  mode,
+  writesEnabled,
 }: {
   appointment: Appointment;
+  clientId: string;
   petName?: string;
+  mode: "fixtures" | "live";
+  writesEnabled: boolean;
 }) {
   const total = (appointment.price ?? 0) + (appointment.tip ?? 0);
   return (
@@ -29,6 +36,13 @@ function Row({
             {appointment.notes}
           </p>
         ) : null}
+        <EditAppointment
+          clientId={clientId}
+          appointment={appointment}
+          petName={petName}
+          mode={mode}
+          writesEnabled={writesEnabled}
+        />
       </div>
       <div className="shrink-0 text-right">
         <p className="text-sm font-semibold text-ink">
@@ -48,10 +62,16 @@ function Row({
 
 export function AppointmentHistory({
   appointments,
+  clientId,
   petsById,
+  mode,
+  writesEnabled,
 }: {
   appointments: Appointment[];
+  clientId: string;
   petsById?: Record<string, string>;
+  mode: "fixtures" | "live";
+  writesEnabled: boolean;
 }) {
   if (appointments.length === 0) {
     return (
@@ -76,7 +96,14 @@ export function AppointmentHistory({
 
       <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">
         {head.map((a) => (
-          <Row key={a.id} appointment={a} petName={petsById?.[a.pet_id]} />
+          <Row
+            key={a.id}
+            appointment={a}
+            clientId={clientId}
+            petName={petsById?.[a.pet_id]}
+            mode={mode}
+            writesEnabled={writesEnabled}
+          />
         ))}
       </ul>
 
@@ -90,7 +117,14 @@ export function AppointmentHistory({
           </summary>
           <ul className="mt-2 divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">
             {rest.map((a) => (
-              <Row key={a.id} appointment={a} petName={petsById?.[a.pet_id]} />
+              <Row
+                key={a.id}
+                appointment={a}
+                clientId={clientId}
+                petName={petsById?.[a.pet_id]}
+                mode={mode}
+                writesEnabled={writesEnabled}
+              />
             ))}
           </ul>
         </details>

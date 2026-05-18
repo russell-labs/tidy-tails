@@ -5,6 +5,7 @@ import { AddPet } from "@/components/AddPet";
 import { AppointmentHistory } from "@/components/AppointmentHistory";
 import { BackLink } from "@/components/BackLink";
 import { ClientActions } from "@/components/ClientActions";
+import { EditClient } from "@/components/EditClient";
 import { LogGroom } from "@/components/LogGroom";
 import { PetCard } from "@/components/PetCard";
 import { dataMode, getClientRecord, loadVaccinations } from "@/lib/data/repo";
@@ -13,6 +14,8 @@ import { digitsOnly, formatPhone, fullName } from "@/lib/format";
 import { readOperatorSettings } from "@/lib/operatorSettings.server";
 import {
   isAddAppointmentWriteEnabled,
+  isEditAppointmentWriteEnabled,
+  isEditClientWriteEnabled,
   isLogGroomWriteEnabled,
 } from "@/lib/writeGate";
 
@@ -69,6 +72,11 @@ export default async function ClientDetailPage({
             <span className="text-ink-soft">{client.address}</span>
           ) : null}
         </div>
+        <EditClient
+          client={client}
+          mode={dataMode()}
+          writesEnabled={isEditClientWriteEnabled()}
+        />
       </header>
 
       <div className="mt-4 flex flex-col gap-2.5">
@@ -145,7 +153,13 @@ export default async function ClientDetailPage({
         <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-ink-faint">
           Appointment history
         </h2>
-        <AppointmentHistory appointments={appointments} petsById={petsById} />
+        <AppointmentHistory
+          appointments={appointments}
+          clientId={client.id}
+          petsById={petsById}
+          mode={dataMode()}
+          writesEnabled={isEditAppointmentWriteEnabled()}
+        />
       </section>
     </main>
   );
