@@ -37,6 +37,7 @@ export default async function ClientDetailPage({
   const { client, pets, appointments } = record;
   const allVaccinations = await loadVaccinations();
   const petsById = Object.fromEntries(pets.map((p) => [p.id, p.name]));
+  const duplicatePetNames = petNameDuplicates(pets.map((p) => p.name));
 
   return (
     <main className="px-4 py-4">
@@ -89,6 +90,16 @@ export default async function ClientDetailPage({
         </p>
       ) : null}
 
+      {duplicatePetNames.length > 0 ? (
+        <div className="mt-4 rounded-xl bg-warn-soft px-3.5 py-3 text-sm text-warn">
+          <p className="font-semibold">Possible duplicate pet records</p>
+          <p className="mt-1 text-xs leading-relaxed">
+            This household has repeated pet names:{" "}
+            {duplicatePetNames.join(", ")}. Check history before booking.
+          </p>
+        </div>
+      ) : null}
+
       <section className="mt-6">
         <div className="mb-2 flex items-center justify-between gap-3">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-faint">
@@ -123,4 +134,18 @@ export default async function ClientDetailPage({
       </section>
     </main>
   );
+}
+
+function petNameDuplicates(names: string[]): string[] {
+  const counts = new Map<string, { label: string; count: number }>();
+  for (const name of names) {
+    const key = name.trim().toLowerCase();
+    if (!key) continue;
+    const current = counts.get(key) ?? { label: name.trim(), count: 0 };
+    current.count += 1;
+    counts.set(key, current);
+  }
+  return [...counts.values()]
+    .filter((entry) => entry.count > 1)
+    .map((entry) => `${entry.label} x${entry.count}`);
 }
