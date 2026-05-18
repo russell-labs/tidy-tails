@@ -14,10 +14,9 @@ import type { OperatorSettings } from "@/lib/operatorSettings";
 import { Sheet } from "./Sheet";
 
 // Reminder Prep — prepare an appointment reminder text: draft → review →
-// result. Nothing is sent in this ship: fixture mode is a dry-run, live mode is
-// gated (see lib/actions/reminders.ts). And nothing is EVER sent automatically
-// — Sam reviews and explicitly confirms every SMS. Mirrors the M2 / Log Groom /
-// Add Household flow.
+// result. Nothing is ever sent automatically — Sam reviews and explicitly
+// confirms every SMS. Live sending stays behind the server-only
+// TIDYTAILS_ENABLE_REMINDER_SEND gate.
 
 const MESSAGE_MAX = 480;
 
@@ -144,8 +143,13 @@ function ReminderForm({
     setStep("review");
   }
 
-  // Terminal: the action ran. Nothing is ever sent in this ship.
-  if (state.status === "demo" || state.status === "gated") {
+  // Terminal: the action ran. Sending only happens after explicit confirmation
+  // and only when the private server-side reminder gate is enabled.
+  if (
+    state.status === "demo" ||
+    state.status === "gated" ||
+    state.status === "sent"
+  ) {
     return <ResultScreen state={state} onDone={onDone} />;
   }
 
@@ -268,8 +272,8 @@ function ModeNote({ mode }: { mode: "fixtures" | "live" }) {
   if (mode === "live") {
     return (
       <p className="rounded-lg bg-warn-soft px-3 py-2 text-xs font-medium text-warn">
-        Reminder sending is not turned on yet. You can review the text, but it
-        will not be sent.
+        Sam reviews this message before anything sends. If reminder sending is
+        switched on, confirming sends one SMS.
       </p>
     );
   }
@@ -285,22 +289,30 @@ function ResultScreen({
   state,
   onDone,
 }: {
-  state: Extract<ReminderState, { status: "demo" | "gated" }>;
+  state: Extract<ReminderState, { status: "demo" | "gated" | "sent" }>;
   onDone: () => void;
 }) {
   const { summary } = state;
-  const headline =
-    state.status === "demo"
+  const isSent = state.status === "sent";
+  const headline = isSent
+    ? "Reminder sent"
+    : state.status === "demo"
       ? "Demo only — no text was sent"
       : "Not sent — reminder sending is switched off.";
-  const detail =
-    state.status === "demo"
+  const detail = isSent
+    ? (state.logWarning ??
+      "The SMS was sent after this explicit confirmation.")
+    : state.status === "demo"
       ? "This is anonymized practice data, so no text was sent. The whole flow above is real — it starts sending once reminder sending is enabled and you confirm."
       : state.message;
 
   return (
     <div className="flex flex-col gap-3.5">
-      <div className="flex gap-2.5 rounded-xl bg-warn-soft p-3.5 text-warn">
+      <div
+        className={`flex gap-2.5 rounded-xl p-3.5 ${
+          isSent ? "bg-ok-soft text-ok" : "bg-warn-soft text-warn"
+        }`}
+      >
         <svg
           width="20"
           height="20"
@@ -313,9 +325,17 @@ function ResultScreen({
           className="mt-0.5 shrink-0"
           aria-hidden="true"
         >
-          <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-          <line x1="12" y1="9" x2="12" y2="13" />
-          <line x1="12" y1="17" x2="12.01" y2="17" />
+          {isSent ? (
+            <>
+              <path d="M20 6 9 17l-5-5" />
+            </>
+          ) : (
+            <>
+              <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+              <line x1="12" y1="9" x2="12" y2="13" />
+              <line x1="12" y1="17" x2="12.01" y2="17" />
+            </>
+          )}
         </svg>
         <div>
           <p className="text-sm font-semibold">{headline}</p>

@@ -1,28 +1,30 @@
 "use server";
 
-// Reminder Prep — the "prepare an appointment reminder text" action.
+// Reminder Prep / Send — the "prepare an appointment reminder text" action.
 //
-// IMPORTANT: this action does NOT send anything in this ship, and it never
-// sends automatically in ANY ship. Like the M2 booking, Log Groom, and Add
-// Household actions it runs the COMPLETE flow (auth re-check, validation,
-// draft construction) and then, instead of dispatching, returns a result:
+// IMPORTANT: this action never sends automatically. Like the M2 booking, Log
+// Groom, and Add Household actions it runs the COMPLETE flow (auth re-check,
+// validation, draft construction) and then:
 //   - fixture mode → a "demo" dry-run: no text is sent.
-//   - live mode    → the send gate is CLOSED. Reminder sending turns on only
-//     after the Ship 2.2b RLS cutover. Until then this action refuses to send.
+//   - live mode    → sends only when TIDYTAILS_ENABLE_REMINDER_SEND is exactly
+//     "on" and private Twilio env vars are present. Otherwise it returns gated.
 //
 // HARD PRODUCT RULE — true now and after the cutover: the app PREPARES a
 // reminder; Sam reviews and explicitly confirms every SMS in-app. No automatic,
-// no batch, no background sending — ever. There is deliberately no Twilio call
-// and no automations_log write here.
+// no batch, no background sending — ever. This server action is reachable only
+// from the explicit "Confirm & send" submit.
 
+import { revalidatePath } from "next/cache";
 import { dataMode, getClientRecord } from "@/lib/data/repo";
-import { getCurrentUser } from "@/lib/supabase/server";
+import { createServerSupabase, getCurrentUser } from "@/lib/supabase/server";
+import { isReminderSendEnabled } from "@/lib/writeGate";
 import {
   buildReminderDraft,
   pickReminderAppointment,
   validateReminderInput,
   type ReminderErrors,
 } from "@/lib/reminders";
+import { getTwilioConfig, sendTwilioSms, toTwilioPhone } from "@/lib/twilio";
 import { fullName } from "@/lib/format";
 
 // A human-readable echo of the prepared reminder — for the review/result screens.
@@ -38,7 +40,8 @@ export type ReminderState =
   | { status: "idle" }
   | { status: "error"; errors: ReminderErrors; formError?: string }
   | { status: "demo"; summary: ReminderSummary }
-  | { status: "gated"; summary: ReminderSummary; message: string };
+  | { status: "gated"; summary: ReminderSummary; message: string }
+  | { status: "sent"; summary: ReminderSummary; logWarning?: string };
 
 export async function prepareReminder(
   _prev: ReminderState,
@@ -105,19 +108,65 @@ export async function prepareReminder(
     return { status: "demo", summary };
   }
 
-  // Live mode: send gate CLOSED. When it lifts (Ship 2.2b cutover), a confirmed
-  // send invokes the `send-sms` edge function and logs an automations_log row —
-  // but ONLY in response to this explicit, per-message operator confirmation.
-  // The gate authorizes the capability; it never authorizes an automatic send.
-  //   const supabase = await createServerSupabase();
-  //   await supabase.functions.invoke("send-sms",
-  //     { body: { to: draft.to, message: draft.message } });
-  //   await supabase.from("automations_log").insert(
-  //     { client_id: clientId, type: "reminder", channel: "sms", message: draft.message });
+  // Live mode. The send gate authorizes the capability; it never authorizes an
+  // automatic send. This code path only runs after the operator submits the
+  // review step's "Confirm & send" button.
+  if (!isReminderSendEnabled()) {
+    return {
+      status: "gated",
+      summary,
+      message: "Reminder sending isn't switched on yet. No text was sent.",
+    };
+  }
+
+  const twilioConfig = getTwilioConfig();
+  if (!twilioConfig.ok) {
+    return {
+      status: "error",
+      errors: {},
+      formError:
+        "Reminder sending is enabled, but Twilio is not configured. No text was sent.",
+    };
+  }
+
+  const to = toTwilioPhone(draft.to);
+  if (!to) {
+    return {
+      status: "error",
+      errors: {},
+      formError:
+        "This client's phone number is not in a format Twilio can text. No text was sent.",
+    };
+  }
+
+  const sendResult = await sendTwilioSms(twilioConfig.value, {
+    to,
+    body: draft.message,
+  });
+  if (!sendResult.ok) {
+    return {
+      status: "error",
+      errors: {},
+      formError: `${sendResult.message} No text was sent.`,
+    };
+  }
+
+  const supabase = await createServerSupabase();
+  const { error: logError } = await supabase.from("automations_log").insert({
+    client_id: clientId,
+    type: "reminder",
+    channel: "sms",
+    message: draft.message,
+    status: "sent",
+    sent_at: new Date().toISOString(),
+  });
+
+  revalidatePath(`/clients/${clientId}`);
   return {
-    status: "gated",
+    status: "sent",
     summary,
-    message:
-      "Reminder sending isn't switched on yet. No text was sent.",
+    logWarning: logError
+      ? "The text was sent, but the send log could not be recorded."
+      : undefined,
   };
 }
