@@ -9,10 +9,9 @@ import {
   fullName,
   relativeDate,
 } from "@/lib/format";
+import { readOperatorSettings } from "@/lib/operatorSettings.server";
 
 export const metadata: Metadata = { title: "Reports" };
-
-const DEFAULT_LAPSED_THRESHOLD_DAYS = 90;
 
 function parseMonth(raw: string | undefined): { year: number; month: number } {
   const now = new Date();
@@ -49,10 +48,16 @@ export default async function ReportsPage({
     lapsed: lapsedParam,
   } = await searchParams;
   const { year, month } = parseMonth(monthParam);
+  const operatorSettings = await readOperatorSettings();
   const { clients, pets, appointments, vaccinations } = await loadDataset();
-  const threshold = parseThreshold(thresholdParam);
+  const threshold = parseThreshold(
+    thresholdParam,
+    operatorSettings.lapsedThresholdDays,
+  );
   const period =
-    periodParam === "ytd" || periodParam === "all" ? periodParam : "month";
+    periodParam === "month" || periodParam === "ytd" || periodParam === "all"
+      ? periodParam
+      : "all";
   const lapsedView =
     lapsedParam === "never" || lapsedParam === "all" ? lapsedParam : "overdue";
 
@@ -149,7 +154,7 @@ export default async function ReportsPage({
         <p className="mt-2 text-xs text-ink-faint">
           Showing {rangeLabel}.{" "}
           {revenue.count === 0
-            ? "No appointments are recorded in this range."
+            ? "No appointments are recorded in this range; try All or Year."
             : "Gross uses appointments with a recorded fee."}
         </p>
       </section>
@@ -309,7 +314,7 @@ function PeriodLink({
   );
 }
 
-function parseThreshold(raw: string | undefined): number {
+function parseThreshold(raw: string | undefined, fallback: number): number {
   const n = Number(raw);
-  return [60, 90, 120, 180].includes(n) ? n : DEFAULT_LAPSED_THRESHOLD_DAYS;
+  return [60, 90, 120, 180].includes(n) ? n : fallback;
 }

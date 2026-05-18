@@ -10,6 +10,7 @@ import {
 } from "@/lib/reminders";
 import type { Appointment, Client, Pet } from "@/lib/data/types";
 import { formatDate, formatPhone, fullName } from "@/lib/format";
+import type { OperatorSettings } from "@/lib/operatorSettings";
 import { Sheet } from "./Sheet";
 
 // Reminder Prep — prepare an appointment reminder text: draft → review →
@@ -28,11 +29,16 @@ export function ClientActions({
   pets,
   appointments,
   mode,
+  reminderSettings,
 }: {
   client: Client;
   pets: Pet[];
   appointments: Appointment[];
   mode: "fixtures" | "live";
+  reminderSettings: Pick<
+    OperatorSettings,
+    "appointmentReminderTemplate" | "rebookReminderTemplate"
+  >;
 }) {
   const [open, setOpen] = useState(false);
   // Remount the form on each close so a reopened sheet starts fresh.
@@ -73,6 +79,7 @@ export function ClientActions({
           pets={pets}
           appointments={appointments}
           mode={mode}
+          reminderSettings={reminderSettings}
           onDone={close}
         />
       </Sheet>
@@ -85,12 +92,17 @@ function ReminderForm({
   pets,
   appointments,
   mode,
+  reminderSettings,
   onDone,
 }: {
   client: Client;
   pets: Pet[];
   appointments: Appointment[];
   mode: "fixtures" | "live";
+  reminderSettings: Pick<
+    OperatorSettings,
+    "appointmentReminderTemplate" | "rebookReminderTemplate"
+  >;
   onDone: () => void;
 }) {
   const [state, formAction, pending] = useActionState<ReminderState, FormData>(
@@ -117,6 +129,8 @@ function ReminderForm({
       ownerFirstName: client.first_name,
       petName,
       appointmentDate: upcoming?.date ?? null,
+      appointmentTemplate: reminderSettings.appointmentReminderTemplate,
+      rebookTemplate: reminderSettings.rebookReminderTemplate,
     }),
   );
 

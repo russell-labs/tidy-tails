@@ -48,7 +48,33 @@ export type ReminderContext = {
   ownerFirstName: string;
   petName: string | null; // null → "your dog"
   appointmentDate: string | null; // ISO; null → a generic check-in message
+  appointmentTemplate?: string;
+  rebookTemplate?: string;
 };
+
+export type ReminderTemplateVars = {
+  ownerFirstName: string;
+  petName: string | null;
+  appointmentDate: string | null;
+  appointmentTime?: string | null;
+};
+
+export function renderReminderTemplate(
+  template: string,
+  vars: ReminderTemplateVars,
+): string {
+  const owner = vars.ownerFirstName.trim() || "there";
+  const pet = (vars.petName ?? "").trim() || "your dog";
+  const date = vars.appointmentDate ? formatDate(vars.appointmentDate) : "soon";
+  const time = (vars.appointmentTime ?? "").trim() || "the scheduled time";
+
+  return template
+    .replaceAll("[first name]", owner)
+    .replaceAll("[pet name]", pet)
+    .replaceAll("[date]", date)
+    .replaceAll("[time]", time)
+    .trim();
+}
 
 /**
  * Build a default reminder message. With an appointment date it is a dated
@@ -59,15 +85,16 @@ export function buildReminderMessage(ctx: ReminderContext): string {
   const owner = ctx.ownerFirstName.trim() || "there";
   const pet = (ctx.petName ?? "").trim() || "your dog";
   if (ctx.appointmentDate) {
-    return (
-      `Hi ${owner}, a friendly reminder that ${pet} has a grooming ` +
-      `appointment at Tidy Tails on ${formatDate(ctx.appointmentDate)}. ` +
-      `See you then! — Samantha`
+    return renderReminderTemplate(
+      ctx.appointmentTemplate ??
+        "Hi [first name], a friendly reminder that [pet name] has a grooming appointment at Tidy Tails on [date]. See you then! — Samantha",
+      ctx,
     );
   }
-  return (
-    `Hi ${owner}, it's been a little while since ${pet}'s last visit to ` +
-    `Tidy Tails. Would you like to book in for a groom? — Samantha`
+  return renderReminderTemplate(
+    ctx.rebookTemplate ??
+      `Hi ${owner}, it's been a little while since ${pet}'s last visit to Tidy Tails. Would you like to book in for a groom? — Samantha`,
+    ctx,
   );
 }
 

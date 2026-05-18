@@ -10,6 +10,7 @@ import { PetCard } from "@/components/PetCard";
 import { dataMode, getClientRecord, loadVaccinations } from "@/lib/data/repo";
 import { groupPetsForDisplay, lastAppointment } from "@/lib/derive";
 import { digitsOnly, formatPhone, fullName } from "@/lib/format";
+import { readOperatorSettings } from "@/lib/operatorSettings.server";
 
 export async function generateMetadata({
   params,
@@ -35,6 +36,7 @@ export default async function ClientDetailPage({
   if (!record) notFound();
 
   const { client, pets, appointments } = record;
+  const operatorSettings = await readOperatorSettings();
   const allVaccinations = await loadVaccinations();
   const petsById = Object.fromEntries(pets.map((p) => [p.id, p.name]));
   const petGroups = groupPetsForDisplay(pets, appointments);
@@ -83,6 +85,7 @@ export default async function ClientDetailPage({
           pets={pets}
           appointments={appointments}
           mode={dataMode()}
+          reminderSettings={operatorSettings}
         />
       </div>
 

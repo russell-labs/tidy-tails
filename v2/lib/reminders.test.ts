@@ -4,6 +4,7 @@ import {
   buildReminderDraft,
   buildReminderMessage,
   pickReminderAppointment,
+  renderReminderTemplate,
   validateReminderInput,
 } from "./reminders";
 
@@ -97,6 +98,52 @@ describe("buildReminderMessage — message generation", () => {
       appointmentDate: null,
     });
     expect(msg).toContain("there");
+  });
+
+  it("uses the saved appointment template when one is provided", () => {
+    const msg = buildReminderMessage({
+      ownerFirstName: "Hannah",
+      petName: "Waffles",
+      appointmentDate: "2026-05-23",
+      appointmentTemplate: "Hi [first name], [pet name] is booked on [date].",
+    });
+    expect(msg).toBe("Hi Hannah, Waffles is booked on May 23, 2026.");
+  });
+
+  it("uses the saved rebook template when there is no upcoming appointment", () => {
+    const msg = buildReminderMessage({
+      ownerFirstName: "Hannah",
+      petName: "Waffles",
+      appointmentDate: null,
+      rebookTemplate: "Hi [first name], should we book [pet name]?",
+    });
+    expect(msg).toBe("Hi Hannah, should we book Waffles?");
+  });
+});
+
+describe("renderReminderTemplate — placeholder replacement", () => {
+  it("replaces every supported placeholder", () => {
+    expect(
+      renderReminderTemplate(
+        "[first name] / [pet name] / [date] / [time]",
+        {
+          ownerFirstName: "Sam",
+          petName: "Scout",
+          appointmentDate: "2026-06-01",
+          appointmentTime: "10am",
+        },
+      ),
+    ).toBe("Sam / Scout / Jun 1, 2026 / 10am");
+  });
+
+  it("uses humane fallbacks for missing values", () => {
+    expect(
+      renderReminderTemplate("[first name] [pet name] [date] [time]", {
+        ownerFirstName: " ",
+        petName: null,
+        appointmentDate: null,
+      }),
+    ).toBe("there your dog soon the scheduled time");
   });
 });
 
