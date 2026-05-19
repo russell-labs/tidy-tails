@@ -70,6 +70,9 @@ export type BookingInput = {
   service_type: string;
   location: string;
   send_invite: string;
+  customer_email: string;
+  send_sms: string;
+  customer_phone: string;
   fee: string;
   notes: string;
 };
@@ -83,6 +86,9 @@ export type ValidatedBooking = {
   service_type: ServiceType | null;
   location: BookingLocation | null;
   send_invite: boolean;
+  customer_email: string | null;
+  send_sms: boolean;
+  customer_phone: string | null;
   fee: number | null;
   notes: string | null;
 };
@@ -94,6 +100,7 @@ export type ValidationResult =
   | { ok: false; errors: BookingErrors };
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const TIME_SLOT_MAX = 40;
 const NOTES_MAX = 1000;
 
@@ -114,6 +121,10 @@ function shiftYearISO(d: Date, years: number): string {
 function optionalText(v: string | undefined): string | null {
   const t = (v ?? "").trim();
   return t === "" ? null : t;
+}
+
+function digitsOnly(v: string): string {
+  return v.replace(/\D/g, "");
 }
 
 export function normalizeTimeForCompare(raw: string | null | undefined): string {
@@ -228,6 +239,32 @@ export function validateBookingInput(
   const send_invite = ["on", "true", "1", "yes"].includes(
     (raw.send_invite ?? "").trim().toLowerCase(),
   );
+  const customer_email = optionalText(raw.customer_email);
+  if (send_invite) {
+    if (!customer_email) {
+      errors.customer_email = "Enter the owner's email for the invite.";
+    } else if (!EMAIL_RE.test(customer_email)) {
+      errors.customer_email = "That email doesn't look right.";
+    }
+  } else if (customer_email && !EMAIL_RE.test(customer_email)) {
+    errors.customer_email = "That email doesn't look right.";
+  }
+
+  const send_sms = ["on", "true", "1", "yes"].includes(
+    (raw.send_sms ?? "").trim().toLowerCase(),
+  );
+  const customer_phone = optionalText(raw.customer_phone);
+  if (send_sms) {
+    const phoneDigits = digitsOnly(customer_phone ?? "");
+    if (
+      !(
+        phoneDigits.length === 10 ||
+        (phoneDigits.length === 11 && phoneDigits.startsWith("1"))
+      )
+    ) {
+      errors.customer_phone = "Enter a 10-digit phone number for texts.";
+    }
+  }
 
   const feeRaw = (raw.fee ?? "").trim();
   let fee: number | null = null;
@@ -257,6 +294,9 @@ export function validateBookingInput(
       service_type,
       location,
       send_invite,
+      customer_email,
+      send_sms,
+      customer_phone,
       fee,
       notes,
     },

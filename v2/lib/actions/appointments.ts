@@ -44,6 +44,7 @@ export type BookingSummary = {
   service: string | null; // user-facing label
   location: string | null;
   customerInvite: string | null;
+  textReminder: string | null;
   fee: number | null;
   calendar?: {
     status: "disabled" | "not_connected" | "skipped" | "synced" | "failed";
@@ -81,6 +82,9 @@ export async function createBooking(
     service_type: String(formData.get("service_type") ?? ""),
     location: String(formData.get("location") ?? ""),
     send_invite: String(formData.get("send_invite") ?? ""),
+    customer_email: String(formData.get("customer_email") ?? ""),
+    send_sms: String(formData.get("send_sms") ?? ""),
+    customer_phone: String(formData.get("customer_phone") ?? ""),
     fee: String(formData.get("fee") ?? ""),
     notes: String(formData.get("notes") ?? ""),
   };
@@ -114,19 +118,29 @@ export async function createBooking(
   // The validated INSERT payload — proven shape, not yet persisted.
   const payload = buildAppointmentInsert(booking);
 
+  const effectiveClient = {
+    ...record.client,
+    email:
+      booking.send_invite && booking.customer_email
+        ? booking.customer_email
+        : record.client.email,
+    phone:
+      booking.send_sms && booking.customer_phone
+        ? booking.customer_phone
+        : record.client.phone,
+  };
+
   const summary: BookingSummary = {
     petName: pet.name,
-    ownerName: fullName(record.client.first_name, record.client.last_name),
+    ownerName: fullName(effectiveClient.first_name, effectiveClient.last_name),
     date: payload.date,
     time: payload.time_slot,
     service: serviceLabel(payload.service_type),
     location: bookingLocationLabel(payload.location),
     customerInvite:
-      booking.send_invite && record.client.email
-        ? record.client.email
-        : booking.send_invite
-          ? "No owner email on file"
-          : null,
+      booking.send_invite && effectiveClient.email ? effectiveClient.email : null,
+    textReminder:
+      booking.send_sms && effectiveClient.phone ? effectiveClient.phone : null,
     fee: payload.fee,
   };
 
@@ -178,6 +192,28 @@ export async function createBooking(
   // Flag ON: persist exactly one appointments row. The auth-aware server client
   // carries Samantha's JWT, so the column DEFAULT auth.uid() stamps groomer_id.
   const supabase = await createServerSupabase();
+  const clientPatch: { email?: string | null; phone?: string } = {};
+  if (booking.send_invite && booking.customer_email !== record.client.email) {
+    clientPatch.email = booking.customer_email;
+  }
+  if (booking.send_sms && booking.customer_phone !== record.client.phone) {
+    clientPatch.phone = booking.customer_phone ?? record.client.phone;
+  }
+  if (Object.keys(clientPatch).length > 0) {
+    const { error } = await supabase
+      .from("clients")
+      .update(clientPatch)
+      .eq("id", record.client.id);
+    if (error) {
+      return {
+        status: "error",
+        errors: {},
+        formError:
+          "The customer contact details could not be saved. Nothing was booked.",
+      };
+    }
+  }
+
   const { data, error } = await supabase
     .from("appointments")
     .insert(payload)
@@ -193,9 +229,9 @@ export async function createBooking(
   const savedAppointment = mapAppointmentRow(data ?? {});
   const calendar = await syncAppointmentToGoogleCalendar({
     appointment: savedAppointment,
-    client: record.client,
+    client: effectiveClient,
     pet,
-    sendCustomerInvite: booking.send_invite && Boolean(record.client.email),
+    sendCustomerInvite: booking.send_invite && Boolean(effectiveClient.email),
   });
   summary.calendar = { status: calendar.status, message: calendar.message };
   revalidatePath(`/clients/${booking.client_id}`);

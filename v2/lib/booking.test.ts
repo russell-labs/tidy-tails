@@ -72,6 +72,9 @@ describe("validateBookingInput — required fields", () => {
         service_type: null,
         location: null,
         send_invite: false,
+        customer_email: null,
+        send_sms: false,
+        customer_phone: null,
         fee: null,
         notes: null,
       });
@@ -152,6 +155,9 @@ describe("validateBookingInput — optional fields", () => {
         service_type: "full_groom",
         location: "gina",
         send_invite: "on",
+        customer_email: "mary@example.com",
+        send_sms: "on",
+        customer_phone: "705-330-1807",
         fee: "72.50",
         notes: "Use hypoallergenic shampoo",
       },
@@ -163,9 +169,57 @@ describe("validateBookingInput — optional fields", () => {
       expect(r.value.service_type).toBe("full_groom");
       expect(r.value.location).toBe("gina");
       expect(r.value.send_invite).toBe(true);
+      expect(r.value.customer_email).toBe("mary@example.com");
+      expect(r.value.send_sms).toBe(true);
+      expect(r.value.customer_phone).toBe("705-330-1807");
       expect(r.value.fee).toBe(72.5);
       expect(r.value.notes).toBe("Use hypoallergenic shampoo");
     }
+  });
+
+  it("requires a valid owner email when email invite is selected", () => {
+    const missing = validateBookingInput(
+      {
+        client_id: "c1",
+        pet_id: "p1",
+        date: "2026-06-01",
+        time_slot: "10:30am",
+        send_invite: "on",
+      },
+      TODAY,
+    );
+    expect(missing.ok).toBe(false);
+    if (!missing.ok) expect(missing.errors.customer_email).toBeTruthy();
+
+    const malformed = validateBookingInput(
+      {
+        client_id: "c1",
+        pet_id: "p1",
+        date: "2026-06-01",
+        time_slot: "10:30am",
+        send_invite: "on",
+        customer_email: "mary",
+      },
+      TODAY,
+    );
+    expect(malformed.ok).toBe(false);
+    if (!malformed.ok) expect(malformed.errors.customer_email).toBeTruthy();
+  });
+
+  it("requires a usable phone when text reminder is selected", () => {
+    const r = validateBookingInput(
+      {
+        client_id: "c1",
+        pet_id: "p1",
+        date: "2026-06-01",
+        time_slot: "10:30am",
+        send_sms: "on",
+        customer_phone: "555-0100",
+      },
+      TODAY,
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.errors.customer_phone).toBeTruthy();
   });
 
   it("accepts a fee of 0", () => {
@@ -270,6 +324,9 @@ describe("buildAppointmentInsert — payload + null policy", () => {
       service_type: null,
       location: null,
       send_invite: false,
+      customer_email: null,
+      send_sms: false,
+      customer_phone: null,
       fee: null,
       notes: null,
     });
@@ -295,6 +352,9 @@ describe("buildAppointmentInsert — payload + null policy", () => {
       service_type: "nail_trim",
       location: "annette",
       send_invite: true,
+      customer_email: "owner@example.com",
+      send_sms: true,
+      customer_phone: "705-555-0199",
       fee: 25,
       notes: "quick visit",
     });
@@ -316,6 +376,9 @@ describe("buildAppointmentInsert — payload + null policy", () => {
       service_type: null,
       location: null,
       send_invite: false,
+      customer_email: null,
+      send_sms: false,
+      customer_phone: null,
       fee: null,
       notes: null,
     });

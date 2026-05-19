@@ -133,6 +133,9 @@ function BookingForm({
   const [serviceType, setServiceType] = useState(initialDefaults.serviceType);
   const [location, setLocation] = useState<BookingLocation | "">("");
   const [sendInvite, setSendInvite] = useState(Boolean(client.email));
+  const [customerEmail, setCustomerEmail] = useState(client.email ?? "");
+  const [sendSms, setSendSms] = useState(Boolean(client.phone));
+  const [customerPhone, setCustomerPhone] = useState(client.phone);
   const [fee, setFee] = useState(initialDefaults.fee);
   const [notes, setNotes] = useState("");
   const [availabilityResult, setAvailabilityResult] = useState<{
@@ -196,6 +199,9 @@ function BookingForm({
       service_type: serviceType,
       location,
       send_invite: sendInvite ? "on" : "",
+      customer_email: customerEmail,
+      send_sms: sendSms ? "on" : "",
+      customer_phone: customerPhone,
       fee,
       notes,
     });
@@ -236,6 +242,9 @@ function BookingForm({
       <input type="hidden" name="service_type" value={serviceType} />
       <input type="hidden" name="location" value={location} />
       <input type="hidden" name="send_invite" value={sendInvite ? "on" : ""} />
+      <input type="hidden" name="customer_email" value={customerEmail} />
+      <input type="hidden" name="send_sms" value={sendSms ? "on" : ""} />
+      <input type="hidden" name="customer_phone" value={customerPhone} />
       <input type="hidden" name="fee" value={fee} />
       <input type="hidden" name="notes" value={notes} />
 
@@ -390,19 +399,57 @@ function BookingForm({
             <input
               type="checkbox"
               checked={sendInvite}
-              disabled={!client.email}
               onChange={(e) => setSendInvite(e.target.checked)}
-              className="mt-1 h-4 w-4 accent-brand disabled:opacity-40"
+              className="mt-1 h-4 w-4 accent-brand"
             />
             <span>
               <span className="font-semibold text-ink">Email calendar invite</span>
               <span className="block text-xs leading-relaxed">
                 {client.email
-                  ? `Send to ${client.email} when Sam confirms the booking.`
-                  : "No owner email is on file, so no customer invite can be sent."}
+                  ? "Send a Google Calendar invite when Sam confirms the booking."
+                  : "Add an owner email here; it saves to this household for next time."}
               </span>
             </span>
           </label>
+          {sendInvite ? (
+            <Field label="Owner email" error={errors.customer_email}>
+              <input
+                type="email"
+                inputMode="email"
+                value={customerEmail}
+                onChange={(e) => setCustomerEmail(e.target.value)}
+                placeholder="owner@example.com"
+                className={fieldClass}
+              />
+            </Field>
+          ) : null}
+
+          <label className="flex items-start gap-2 rounded-xl border border-line bg-surface px-3.5 py-3 text-sm text-ink-soft">
+            <input
+              type="checkbox"
+              checked={sendSms}
+              onChange={(e) => setSendSms(e.target.checked)}
+              className="mt-1 h-4 w-4 accent-brand"
+            />
+            <span>
+              <span className="font-semibold text-ink">Text reminder</span>
+              <span className="block text-xs leading-relaxed">
+                Save the reminder phone now; Twilio will use it when SMS sending is on.
+              </span>
+            </span>
+          </label>
+          {sendSms ? (
+            <Field label="Reminder phone" error={errors.customer_phone}>
+              <input
+                type="tel"
+                inputMode="tel"
+                value={customerPhone}
+                onChange={(e) => setCustomerPhone(e.target.value)}
+                placeholder="705-555-0100"
+                className={fieldClass}
+              />
+            </Field>
+          ) : null}
 
           <Field label="Fee" error={errors.fee} hint="Prefilled from the pet's last charged fee when available.">
             <input
@@ -454,13 +501,11 @@ function BookingForm({
             />
             <ReviewRow
               label="Invite"
-              value={
-                sendInvite && client.email
-                  ? client.email
-                  : sendInvite
-                    ? "No owner email on file"
-                    : "No customer invite"
-              }
+              value={sendInvite ? customerEmail.trim() || "Email needed" : "No email invite"}
+            />
+            <ReviewRow
+              label="Text"
+              value={sendSms ? customerPhone.trim() || "Phone needed" : "No text reminder"}
             />
             <ReviewRow
               label="Fee"
@@ -595,7 +640,11 @@ function ResultScreen({
         <ReviewRow label="Location" value={summary.location ?? "Not set"} />
         <ReviewRow
           label="Invite"
-          value={summary.customerInvite ?? "No customer invite"}
+          value={summary.customerInvite ?? "No email invite"}
+        />
+        <ReviewRow
+          label="Text"
+          value={summary.textReminder ?? "No text reminder"}
         />
         <ReviewRow
           label="Fee"
