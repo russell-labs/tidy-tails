@@ -19,6 +19,11 @@ export type TwilioSendResult =
   | { ok: true; sid: string | null }
   | { ok: false; message: string };
 
+type TwilioErrorPayload = {
+  code?: number;
+  message?: string;
+};
+
 const TWILIO_ACCOUNT_SID = "TIDYTAILS_TWILIO_ACCOUNT_SID";
 const TWILIO_AUTH_TOKEN = "TIDYTAILS_TWILIO_AUTH_TOKEN";
 const TWILIO_FROM_NUMBER = "TIDYTAILS_TWILIO_FROM_NUMBER";
@@ -97,7 +102,22 @@ export async function sendTwilioSms(
   });
 
   if (!response.ok) {
-    return { ok: false, message: "Twilio could not send the SMS." };
+    const payload = (await response
+      .json()
+      .catch(() => ({}))) as TwilioErrorPayload;
+    if (payload.code === 21608) {
+      return {
+        ok: false,
+        message:
+          "Twilio trial accounts can only text verified recipient numbers. Upgrade Twilio or verify this number, then try again.",
+      };
+    }
+    return {
+      ok: false,
+      message: payload.message
+        ? `Twilio could not send the SMS: ${payload.message}`
+        : "Twilio could not send the SMS.",
+    };
   }
 
   const payload = (await response.json().catch(() => ({}))) as { sid?: string };

@@ -100,11 +100,11 @@ describe("sendTwilioSms", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("returns a friendly failure without leaking Twilio details", async () => {
+  it("explains the Twilio trial verified-recipient restriction", async () => {
     const fetchMock = vi.fn(async () => ({
       ok: false,
       status: 400,
-      text: async () => "Twilio raw error",
+      json: async () => ({ code: 21608 }),
     })) as unknown as typeof fetch;
     vi.stubGlobal("fetch", fetchMock);
 
@@ -119,7 +119,31 @@ describe("sendTwilioSms", () => {
 
     expect(result).toEqual({
       ok: false,
-      message: "Twilio could not send the SMS.",
+      message:
+        "Twilio trial accounts can only text verified recipient numbers. Upgrade Twilio or verify this number, then try again.",
+    });
+  });
+
+  it("returns a friendly failure with Twilio's safe message when available", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: false,
+      status: 400,
+      json: async () => ({ code: 21211, message: "The 'To' number is invalid." }),
+    })) as unknown as typeof fetch;
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await sendTwilioSms(
+      {
+        accountSid: "AC123",
+        authToken: "secret",
+        fromNumber: "+17055550123",
+      },
+      { to: "+17055550106", body: "Hi there" },
+    );
+
+    expect(result).toEqual({
+      ok: false,
+      message: "Twilio could not send the SMS: The 'To' number is invalid.",
     });
   });
 });
