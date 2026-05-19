@@ -48,7 +48,7 @@ export type IntakeInput = {
 export type ValidatedIntake = {
   client: {
     first_name: string;
-    last_name: string;
+    last_name: string | null;
     phone: string;
     email: string | null;
     address: string | null;
@@ -92,8 +92,8 @@ function parseAllergyState(raw: string | undefined): AllergyState | null {
 }
 
 /**
- * Validate raw intake form input into a client + pet. Owner first/last name,
- * phone, and pet name are required; everything else is optional, normalized to
+ * Validate raw intake form input into a client + pet. Owner first name, phone,
+ * and pet name are required; everything else is optional, normalized to
  * value-or-null. Phone must carry a North American digit count (10, or 11 with
  * a leading 1); the entered string is kept verbatim, matching the v1 `phone`
  * column. Allergy detail is only carried when the state is "yes".
@@ -105,12 +105,11 @@ export function validateIntake(
 
   // ---- client -----------------------------------------------------------
   const first_name = (raw.first_name ?? "").trim();
-  const last_name = (raw.last_name ?? "").trim();
+  const last_name = optionalText(raw.last_name);
   if (!first_name) errors.first_name = "Enter the owner's first name.";
   else if (first_name.length > NAME_MAX)
     errors.first_name = "That name is too long.";
-  if (!last_name) errors.last_name = "Enter the owner's last name.";
-  else if (last_name.length > NAME_MAX)
+  if (last_name && last_name.length > NAME_MAX)
     errors.last_name = "That name is too long.";
 
   const phone = (raw.phone ?? "").trim();
@@ -215,7 +214,7 @@ export function validateIntake(
 // The `clients` INSERT payload — only the columns the intake flow owns.
 export type ClientInsert = {
   first_name: string;
-  last_name: string;
+  last_name: string | null;
   phone: string;
   email: string | null;
   address: string | null;

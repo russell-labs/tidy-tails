@@ -50,10 +50,10 @@ describe("validateIntake — required fields", () => {
     if (!r.ok) expect(r.errors.first_name).toBeTruthy();
   });
 
-  it("rejects a missing last name", () => {
+  it("accepts a new household with only a first name", () => {
     const r = validateIntake({ ...VALID, last_name: "" });
-    expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.errors.last_name).toBeTruthy();
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.value.client.last_name).toBeNull();
   });
 
   it("rejects a missing phone", () => {

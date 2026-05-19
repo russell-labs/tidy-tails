@@ -137,7 +137,7 @@ function EditClientForm({
               className={fieldClass}
             />
           </Field>
-          <Field label="Last name" error={errors.last_name}>
+          <Field label="Last name (optional)" error={errors.last_name}>
             <input
               type="text"
               value={lastName}

@@ -64,7 +64,7 @@ export async function editClient(
 
   const payload: EditClientUpdate = buildEditClientUpdate(client);
   const summary: EditClientSummary = {
-    ownerName: fullName(payload.first_name, payload.last_name),
+    ownerName: fullName(payload.first_name, payload.last_name ?? ""),
     phone: payload.phone,
     address: payload.address,
   };

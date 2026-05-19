@@ -87,7 +87,7 @@ export async function saveIntake(
   const petPayload = buildPetInsert(intake);
 
   const summary: IntakeSummary = {
-    ownerName: fullName(clientPayload.first_name, clientPayload.last_name),
+    ownerName: fullName(clientPayload.first_name, clientPayload.last_name ?? ""),
     phone: clientPayload.phone,
     petName: petPayload.name,
     petBreed: petPayload.breed,
