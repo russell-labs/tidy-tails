@@ -55,7 +55,7 @@ body {
   padding-bottom: env(safe-area-inset-bottom);
 }
 .sheet-bottom-room {
-  padding-bottom: calc(6.5rem + env(safe-area-inset-bottom));
+  padding-bottom: calc(2rem + env(safe-area-inset-bottom));
 }
 
 .submit-dog-line path,

@@ -57,7 +57,7 @@ export function Sheet({
         onClick={onClose}
         className="absolute inset-0 bg-ink/40"
       />
-      <div className="relative mx-auto flex max-h-[88dvh] w-full max-w-md flex-col overscroll-contain rounded-t-2xl bg-surface shadow-2xl">
+      <div className="relative mx-auto mb-3 flex max-h-[calc(88dvh-0.75rem)] w-[calc(100%-1.5rem)] max-w-md flex-col overscroll-contain rounded-2xl bg-surface shadow-2xl">
         <header className="flex items-center justify-between border-b border-line px-5 py-3.5">
           <h2 className="text-base font-bold text-ink">{title}</h2>
           <button
