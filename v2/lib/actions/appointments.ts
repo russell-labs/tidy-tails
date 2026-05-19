@@ -181,7 +181,10 @@ export async function createBooking(
       formError: googleAvailability.message,
     };
   }
-  if (googleAvailability.status === "failed") {
+  if (
+    googleAvailability.status === "failed" ||
+    googleAvailability.status === "not_connected"
+  ) {
     return {
       status: "error",
       errors: {},

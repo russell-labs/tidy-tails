@@ -6,7 +6,7 @@ import type { Client } from "@/lib/data/types";
 import { validateEditClient, type EditClientErrors } from "@/lib/editClient";
 import { formatPhone } from "@/lib/format";
 import { Sheet } from "./Sheet";
-import { SubmitDog } from "./SubmitDog";
+import { SubmitDogOverlay } from "./SubmitDog";
 
 const fieldClass =
   "w-full rounded-xl border border-line bg-surface px-3.5 py-2.5 text-base text-ink placeholder:text-ink-faint";
@@ -111,6 +111,7 @@ function EditClientForm({
 
   return (
     <form action={formAction} className="flex flex-col gap-3.5">
+      <SubmitDogOverlay label="Saving household" show={pending} />
       <input type="hidden" name="client_id" value={client.id} />
       <input type="hidden" name="first_name" value={firstName} />
       <input type="hidden" name="last_name" value={lastName} />
@@ -223,7 +224,7 @@ function EditClientForm({
               disabled={pending}
               className="flex-1 rounded-xl bg-brand px-4 py-3 text-base font-semibold text-white active:bg-brand-ink disabled:opacity-50"
             >
-              {pending ? <SubmitDog label="Saving" /> : "Confirm & save"}
+              Confirm & save
             </button>
           </div>
         </>

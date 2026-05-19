@@ -22,7 +22,7 @@ import { serviceLabel } from "@/lib/data/live";
 import type { Appointment, Client, Pet } from "@/lib/data/types";
 import { formatMoney, formatReviewDate, fullName } from "@/lib/format";
 import { Sheet } from "./Sheet";
-import { SubmitDog } from "./SubmitDog";
+import { SubmitDogOverlay } from "./SubmitDog";
 
 // M2 — "Add appointment" booking flow: form → review → result. The wedge
 // becomes Call/Text → Identify → Add Booking. Nothing is persisted in this
@@ -163,20 +163,11 @@ function BookingForm({
             } as const),
       )
     : [];
-  const slots = availability?.slots.length
-    ? availability.slots
-    : date
-      ? fallbackSlots.map((slot) =>
-          slot.available
-            ? ({
-                ...slot,
-                available: false,
-                source: "google",
-                reason: "Checking Google Calendar",
-              } as const)
-            : slot,
-        )
-      : fallbackSlots;
+  const slots = availability
+    ? availability.slots.length
+      ? availability.slots
+      : fallbackSlots
+    : [];
   const bookedTimes = date ? bookedTimesForDate(appointments, date) : [];
 
   useEffect(() => {
@@ -246,6 +237,7 @@ function BookingForm({
 
   return (
     <form action={formAction} className="flex flex-col gap-3.5">
+      <SubmitDogOverlay label="Saving booking" show={pending} />
       {/* Hidden fields carry the current values into the server action,
           regardless of which step is visible. */}
       <input type="hidden" name="client_id" value={client.id} />
@@ -310,7 +302,7 @@ function BookingForm({
                 : "Choose a date first to see open slots."
             }
           >
-            {date ? (
+            {date && availability ? (
               <div className="mb-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
                 {slots.map((slot) => (
                   <button
@@ -337,10 +329,7 @@ function BookingForm({
                     <span>{slot.time}</span>
                     {!slot.available ? (
                       <span className="ml-1 text-[10px] font-medium no-underline">
-                        {"reason" in slot &&
-                        slot.reason === "Checking Google Calendar"
-                          ? "Checking"
-                          : "Busy"}
+                        Busy
                       </span>
                     ) : null}
                   </button>
@@ -544,7 +533,7 @@ function BookingForm({
               disabled={pending}
               className="flex-1 rounded-xl bg-brand px-4 py-3 text-base font-semibold text-white active:bg-brand-ink disabled:opacity-50"
             >
-              {pending ? <SubmitDog label="Saving" /> : "Confirm & save"}
+              Confirm & save
             </button>
           </div>
         </>

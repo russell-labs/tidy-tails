@@ -7,6 +7,7 @@ import {
   type ServiceType,
 } from "@/lib/booking";
 import {
+  markCalendarUnavailableSlots,
   markGoogleCalendarBusySlots,
   type CalendarAwareBookingSlot,
 } from "@/lib/googleCalendar";
@@ -52,6 +53,14 @@ export async function checkBookingAvailability({
         service,
         google.busy,
       ),
+    };
+  }
+
+  if (google.status === "failed" || google.status === "not_connected") {
+    return {
+      status: google.status,
+      message: google.message,
+      slots: markCalendarUnavailableSlots(tidyTailsSlots, google.message),
     };
   }
 

@@ -11,7 +11,7 @@ import {
 } from "@/lib/intake";
 import { formatMoney, formatPhone } from "@/lib/format";
 import { Sheet } from "./Sheet";
-import { SubmitDog } from "./SubmitDog";
+import { SubmitDogOverlay } from "./SubmitDog";
 
 // Add household — onboard a new client + their first pet: form → review →
 // result. Fixture mode is a dry-run; live mode persists only when the private
@@ -156,6 +156,7 @@ function IntakeForm({
 
   return (
     <form action={formAction} className="flex flex-col gap-3.5">
+      <SubmitDogOverlay label="Saving household" show={pending} />
       {/* Hidden fields carry the current values into the server action,
           regardless of which step is visible. */}
       <input type="hidden" name="first_name" value={firstName} />
@@ -386,7 +387,7 @@ function IntakeForm({
               disabled={pending}
               className="flex-1 rounded-xl bg-brand px-4 py-3 text-base font-semibold text-white active:bg-brand-ink disabled:opacity-50"
             >
-              {pending ? <SubmitDog label="Saving" /> : "Confirm & save"}
+              Confirm & save
             </button>
           </div>
         </>

@@ -27,7 +27,7 @@ import {
 } from "@/lib/editAppointment";
 import { formatMoney } from "@/lib/format";
 import { Sheet } from "./Sheet";
-import { SubmitDog } from "./SubmitDog";
+import { SubmitDogOverlay } from "./SubmitDog";
 
 const fieldClass =
   "w-full rounded-xl border border-line bg-surface px-3.5 py-2.5 text-base text-ink placeholder:text-ink-faint";
@@ -163,20 +163,11 @@ function EditAppointmentForm({
             } as const),
       )
     : [];
-  const slots = availability?.slots.length
-    ? availability.slots
-    : date
-      ? fallbackSlots.map((slot) =>
-          slot.available
-            ? ({
-                ...slot,
-                available: false,
-                source: "google",
-                reason: "Checking Google Calendar",
-              } as const)
-            : slot,
-        )
-      : fallbackSlots;
+  const slots = availability
+    ? availability.slots.length
+      ? availability.slots
+      : fallbackSlots
+    : [];
   const bookedTimes = date ? bookedTimesForDate(comparableAppointments, date) : [];
 
   useEffect(() => {
@@ -238,6 +229,10 @@ function EditAppointmentForm({
 
   return (
     <form action={formAction} className="flex flex-col gap-3.5">
+      <SubmitDogOverlay
+        label={deletePending ? "Deleting booking" : "Saving changes"}
+        show={pending || deletePending}
+      />
       <input type="hidden" name="client_id" value={clientId} />
       <input type="hidden" name="appointment_id" value={appointment.id} />
       <input type="hidden" name="date" value={date} />
@@ -276,7 +271,7 @@ function EditAppointmentForm({
             />
           </Field>
           <Field label="Time" error={errors.time_slot}>
-            {date ? (
+            {date && availability ? (
               <div className="mb-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
                 {slots.map((slot) => (
                   <button
@@ -303,10 +298,7 @@ function EditAppointmentForm({
                     <span>{slot.time}</span>
                     {!slot.available ? (
                       <span className="ml-1 text-[10px] font-medium no-underline">
-                        {"reason" in slot &&
-                        slot.reason === "Checking Google Calendar"
-                          ? "Checking"
-                          : "Busy"}
+                        Busy
                       </span>
                     ) : null}
                   </button>
@@ -431,7 +423,7 @@ function EditAppointmentForm({
                       disabled={deletePending}
                       className="flex-1 rounded-lg bg-danger-ink px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
                     >
-                      {deletePending ? <SubmitDog label="Deleting" /> : "Delete booking"}
+                      Delete booking
                     </button>
                   </div>
                 </div>
@@ -483,7 +475,7 @@ function EditAppointmentForm({
               disabled={pending}
               className="flex-1 rounded-xl bg-brand px-4 py-3 text-base font-semibold text-white active:bg-brand-ink disabled:opacity-50"
             >
-              {pending ? <SubmitDog label="Saving" /> : "Confirm & save"}
+              Confirm & save
             </button>
           </div>
         </>

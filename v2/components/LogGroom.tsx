@@ -9,7 +9,7 @@ import { serviceLabel } from "@/lib/data/live";
 import type { Appointment, Client, Pet } from "@/lib/data/types";
 import { formatMoney, formatReviewDate, fullName } from "@/lib/format";
 import { Sheet } from "./Sheet";
-import { SubmitDog } from "./SubmitDog";
+import { SubmitDogOverlay } from "./SubmitDog";
 
 // Log Groom — record a completed groom: form → review → result. Nothing is
 // persisted in this ship: fixture mode is a dry-run, live mode is gated (see
@@ -169,6 +169,7 @@ function GroomForm({
 
   return (
     <form action={formAction} className="flex flex-col gap-3.5">
+      <SubmitDogOverlay label="Saving groom" show={pending} />
       {/* Hidden fields carry the current values into the server action,
           regardless of which step is visible. */}
       <input type="hidden" name="client_id" value={client.id} />
@@ -319,7 +320,7 @@ function GroomForm({
               disabled={pending}
               className="flex-1 rounded-xl bg-brand px-4 py-3 text-base font-semibold text-white active:bg-brand-ink disabled:opacity-50"
             >
-              {pending ? <SubmitDog label="Saving" /> : "Confirm & save"}
+              Confirm & save
             </button>
           </div>
         </>

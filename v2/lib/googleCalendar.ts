@@ -248,6 +248,27 @@ export function markGoogleCalendarBusySlots(
   });
 }
 
+export function markCalendarUnavailableSlots(
+  slots: { time: string; available: boolean }[],
+  reason: string,
+): CalendarAwareBookingSlot[] {
+  return slots.map((slot) => {
+    if (!slot.available) {
+      return {
+        ...slot,
+        source: "tidy_tails",
+        reason: "Already booked in Tidy Tails",
+      };
+    }
+    return {
+      ...slot,
+      available: false,
+      source: "google",
+      reason,
+    };
+  });
+}
+
 export function buildGoogleCalendarEvent({
   appointment,
   client,

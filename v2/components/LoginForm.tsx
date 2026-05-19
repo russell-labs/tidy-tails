@@ -8,7 +8,7 @@
 
 import { useActionState } from "react";
 import { signIn, type AuthState } from "@/lib/actions/auth";
-import { SubmitDog } from "./SubmitDog";
+import { SubmitDogOverlay } from "./SubmitDog";
 
 export function LoginForm() {
   const [state, formAction, pending] = useActionState<AuthState, FormData>(
@@ -18,6 +18,7 @@ export function LoginForm() {
 
   return (
     <form action={formAction} className="flex flex-col gap-4">
+      <SubmitDogOverlay label="Signing in" show={pending} />
       <label className="flex flex-col gap-1.5">
         <span className="text-sm font-medium text-ink-soft">Email</span>
         <input
@@ -57,7 +58,7 @@ export function LoginForm() {
         disabled={pending}
         className="mt-2 rounded-xl bg-brand px-4 py-3 text-base font-semibold text-white active:bg-brand-ink disabled:opacity-60"
       >
-        {pending ? <SubmitDog label="Signing in" /> : "Sign in"}
+        Sign in
       </button>
     </form>
   );

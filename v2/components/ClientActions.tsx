@@ -12,7 +12,7 @@ import type { Appointment, Client, Pet } from "@/lib/data/types";
 import { formatDate, formatPhone, fullName } from "@/lib/format";
 import type { OperatorSettings } from "@/lib/operatorSettings";
 import { Sheet } from "./Sheet";
-import { SubmitDog } from "./SubmitDog";
+import { SubmitDogOverlay } from "./SubmitDog";
 
 // Reminder Prep — prepare an appointment reminder text: draft → review →
 // result. Nothing is ever sent automatically — Sam reviews and explicitly
@@ -166,6 +166,7 @@ function ReminderForm({
 
   return (
     <form action={formAction} className="flex flex-col gap-3.5">
+      <SubmitDogOverlay label="Sending reminder" show={pending} />
       {/* Hidden fields carry the current values into the server action. The
           recipient phone is re-read server-side from the client record. */}
       <input type="hidden" name="client_id" value={client.id} />
@@ -261,7 +262,7 @@ function ReminderForm({
               disabled={pending}
               className="flex-1 rounded-xl bg-brand px-4 py-3 text-base font-semibold text-white active:bg-brand-ink disabled:opacity-50"
             >
-              {pending ? <SubmitDog label="Sending" /> : "Confirm & send"}
+              Confirm & send
             </button>
           </div>
         </>

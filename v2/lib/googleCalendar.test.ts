@@ -7,6 +7,7 @@ import {
   encryptRefreshToken,
   googleFreeBusyRangeForDate,
   isGoogleCalendarWindowBusy,
+  markCalendarUnavailableSlots,
   markGoogleCalendarBusySlots,
   parseAppointmentTime,
   toCalendarLocalDateTime,
@@ -209,6 +210,31 @@ describe("Google Calendar availability", () => {
         reason: "Busy in Google Calendar",
       },
       { time: "12:00pm", available: true, source: "open" },
+    ]);
+  });
+
+  it("fails closed when Google Calendar availability cannot be trusted", () => {
+    const slots = markCalendarUnavailableSlots(
+      [
+        { time: "9:00am", available: true },
+        { time: "10:30am", available: false },
+      ],
+      "Google Calendar availability failed",
+    );
+
+    expect(slots).toEqual([
+      {
+        time: "9:00am",
+        available: false,
+        source: "google",
+        reason: "Google Calendar availability failed",
+      },
+      {
+        time: "10:30am",
+        available: false,
+        source: "tidy_tails",
+        reason: "Already booked in Tidy Tails",
+      },
     ]);
   });
 });
