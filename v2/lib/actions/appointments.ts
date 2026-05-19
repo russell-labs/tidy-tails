@@ -21,19 +21,23 @@ import { dataMode, getClientRecord, loadAppointments } from "@/lib/data/repo";
 import { mapAppointmentRow, serviceLabel } from "@/lib/data/live";
 import { createServerSupabase, getCurrentUser } from "@/lib/supabase/server";
 import { isAddAppointmentWriteEnabled } from "@/lib/writeGate";
+import { isReminderSendEnabled } from "@/lib/writeGate";
 import {
   checkGoogleCalendarAppointmentAvailability,
   syncAppointmentToGoogleCalendar,
 } from "@/lib/googleCalendar.server";
 import {
+  buildBookingTextMessage,
   bookingLocationLabel,
   buildAppointmentInsert,
+  customerBookingLocationLabel,
   findOwnedPet,
   hasBookedTimeConflict,
   validateBookingInput,
   type BookingErrors,
 } from "@/lib/booking";
 import { fullName } from "@/lib/format";
+import { getTwilioConfig, sendTwilioSms, toTwilioPhone } from "@/lib/twilio";
 
 // A human-readable echo of the booking — for the review and result screens.
 export type BookingSummary = {
@@ -44,10 +48,15 @@ export type BookingSummary = {
   service: string | null; // user-facing label
   location: string | null;
   customerInvite: string | null;
-  textReminder: string | null;
+  bookingText: string | null;
+  reminderPhone: string | null;
   fee: number | null;
   calendar?: {
     status: "disabled" | "not_connected" | "skipped" | "synced" | "failed";
+    message: string;
+  };
+  bookingTextSend?: {
+    status: "skipped" | "sent" | "gated" | "failed";
     message: string;
   };
 };
@@ -83,7 +92,8 @@ export async function createBooking(
     location: String(formData.get("location") ?? ""),
     send_invite: String(formData.get("send_invite") ?? ""),
     customer_email: String(formData.get("customer_email") ?? ""),
-    send_sms: String(formData.get("send_sms") ?? ""),
+    send_booking_text: String(formData.get("send_booking_text") ?? ""),
+    save_reminder_phone: String(formData.get("save_reminder_phone") ?? ""),
     customer_phone: String(formData.get("customer_phone") ?? ""),
     fee: String(formData.get("fee") ?? ""),
     notes: String(formData.get("notes") ?? ""),
@@ -125,7 +135,8 @@ export async function createBooking(
         ? booking.customer_email
         : record.client.email,
     phone:
-      booking.send_sms && booking.customer_phone
+      (booking.send_booking_text || booking.save_reminder_phone) &&
+      booking.customer_phone
         ? booking.customer_phone
         : record.client.phone,
   };
@@ -139,8 +150,14 @@ export async function createBooking(
     location: bookingLocationLabel(payload.location),
     customerInvite:
       booking.send_invite && effectiveClient.email ? effectiveClient.email : null,
-    textReminder:
-      booking.send_sms && effectiveClient.phone ? effectiveClient.phone : null,
+    bookingText:
+      booking.send_booking_text && effectiveClient.phone
+        ? effectiveClient.phone
+        : null,
+    reminderPhone:
+      booking.save_reminder_phone && effectiveClient.phone
+        ? effectiveClient.phone
+        : null,
     fee: payload.fee,
   };
 
@@ -199,7 +216,10 @@ export async function createBooking(
   if (booking.send_invite && booking.customer_email !== record.client.email) {
     clientPatch.email = booking.customer_email;
   }
-  if (booking.send_sms && booking.customer_phone !== record.client.phone) {
+  if (
+    (booking.send_booking_text || booking.save_reminder_phone) &&
+    booking.customer_phone !== record.client.phone
+  ) {
     clientPatch.phone = booking.customer_phone ?? record.client.phone;
   }
   if (Object.keys(clientPatch).length > 0) {
@@ -237,6 +257,84 @@ export async function createBooking(
     sendCustomerInvite: booking.send_invite && Boolean(effectiveClient.email),
   });
   summary.calendar = { status: calendar.status, message: calendar.message };
+  if (booking.send_booking_text && effectiveClient.phone) {
+    summary.bookingTextSend = await sendBookingText({
+      to: effectiveClient.phone,
+      ownerFirstName: effectiveClient.first_name,
+      petName: pet.name,
+      date: summary.date,
+      time: summary.time,
+      service: summary.service,
+      location: customerBookingLocationLabel(payload.location) ?? summary.location,
+    });
+  } else {
+    summary.bookingTextSend = {
+      status: "skipped",
+      message: "No booking text was requested.",
+    };
+  }
   revalidatePath(`/clients/${booking.client_id}`);
   return { status: "saved", summary };
+}
+
+async function sendBookingText({
+  to,
+  ownerFirstName,
+  petName,
+  date,
+  time,
+  service,
+  location,
+}: {
+  to: string;
+  ownerFirstName: string | null;
+  petName: string;
+  date: string;
+  time: string | null;
+  service: string | null;
+  location: string | null;
+}): Promise<NonNullable<BookingSummary["bookingTextSend"]>> {
+  if (!isReminderSendEnabled()) {
+    return {
+      status: "gated",
+      message: "Booking text was not sent because SMS sending is switched off.",
+    };
+  }
+
+  const twilioConfig = getTwilioConfig();
+  if (!twilioConfig.ok) {
+    return {
+      status: "failed",
+      message: "Booking text was not sent because Twilio is not configured.",
+    };
+  }
+
+  const normalizedPhone = toTwilioPhone(to);
+  if (!normalizedPhone) {
+    return {
+      status: "failed",
+      message:
+        "Booking text was not sent because the customer phone number is not textable.",
+    };
+  }
+
+  const body = buildBookingTextMessage({
+    ownerFirstName,
+    petName,
+    date,
+    time,
+    service,
+    location,
+  });
+  const result = await sendTwilioSms(twilioConfig.value, {
+    to: normalizedPhone,
+    body,
+  });
+  if (!result.ok) {
+    return {
+      status: "failed",
+      message: `${result.message} Booking text was not sent.`,
+    };
+  }
+  return { status: "sent", message: "Booking text sent to the customer." };
 }

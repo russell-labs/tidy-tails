@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import type { Appointment, Pet } from "./data/types";
 import {
   availableBookingTimeSlots,
+  buildBookingTextMessage,
   bookedTimesForDate,
   buildAppointmentInsert,
   findOwnedPet,
@@ -73,7 +74,8 @@ describe("validateBookingInput — required fields", () => {
         location: null,
         send_invite: false,
         customer_email: null,
-        send_sms: false,
+        send_booking_text: false,
+        save_reminder_phone: false,
         customer_phone: null,
         fee: null,
         notes: null,
@@ -156,7 +158,8 @@ describe("validateBookingInput — optional fields", () => {
         location: "gina",
         send_invite: "on",
         customer_email: "mary@example.com",
-        send_sms: "on",
+        send_booking_text: "on",
+        save_reminder_phone: "on",
         customer_phone: "705-330-1807",
         fee: "72.50",
         notes: "Use hypoallergenic shampoo",
@@ -170,7 +173,8 @@ describe("validateBookingInput — optional fields", () => {
       expect(r.value.location).toBe("gina");
       expect(r.value.send_invite).toBe(true);
       expect(r.value.customer_email).toBe("mary@example.com");
-      expect(r.value.send_sms).toBe(true);
+      expect(r.value.send_booking_text).toBe(true);
+      expect(r.value.save_reminder_phone).toBe(true);
       expect(r.value.customer_phone).toBe("705-330-1807");
       expect(r.value.fee).toBe(72.5);
       expect(r.value.notes).toBe("Use hypoallergenic shampoo");
@@ -206,14 +210,30 @@ describe("validateBookingInput — optional fields", () => {
     if (!malformed.ok) expect(malformed.errors.customer_email).toBeTruthy();
   });
 
-  it("requires a usable phone when text reminder is selected", () => {
+  it("requires a usable phone when booking text is selected", () => {
     const r = validateBookingInput(
       {
         client_id: "c1",
         pet_id: "p1",
         date: "2026-06-01",
         time_slot: "10:30am",
-        send_sms: "on",
+        send_booking_text: "on",
+        customer_phone: "555-0100",
+      },
+      TODAY,
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.errors.customer_phone).toBeTruthy();
+  });
+
+  it("requires a usable phone when reminder phone saving is selected", () => {
+    const r = validateBookingInput(
+      {
+        client_id: "c1",
+        pet_id: "p1",
+        date: "2026-06-01",
+        time_slot: "10:30am",
+        save_reminder_phone: "on",
         customer_phone: "555-0100",
       },
       TODAY,
@@ -325,7 +345,8 @@ describe("buildAppointmentInsert — payload + null policy", () => {
       location: null,
       send_invite: false,
       customer_email: null,
-      send_sms: false,
+      send_booking_text: false,
+      save_reminder_phone: false,
       customer_phone: null,
       fee: null,
       notes: null,
@@ -353,7 +374,8 @@ describe("buildAppointmentInsert — payload + null policy", () => {
       location: "annette",
       send_invite: true,
       customer_email: "owner@example.com",
-      send_sms: true,
+      send_booking_text: true,
+      save_reminder_phone: true,
       customer_phone: "705-555-0199",
       fee: 25,
       notes: "quick visit",
@@ -377,7 +399,8 @@ describe("buildAppointmentInsert — payload + null policy", () => {
       location: null,
       send_invite: false,
       customer_email: null,
-      send_sms: false,
+      send_booking_text: false,
+      save_reminder_phone: false,
       customer_phone: null,
       fee: null,
       notes: null,
@@ -385,6 +408,36 @@ describe("buildAppointmentInsert — payload + null policy", () => {
     for (const k of ["id", "created_at", "tip", "rent_paid", "net"]) {
       expect(payload).not.toHaveProperty(k);
     }
+  });
+});
+
+describe("buildBookingTextMessage", () => {
+  it("summarizes the booking details for a customer SMS", () => {
+    expect(
+      buildBookingTextMessage({
+        ownerFirstName: "Mary",
+        petName: "Whiskey",
+        date: "2026-06-01",
+        time: "10:30am",
+        service: "Full groom",
+        location: "Tidy Tails at Annette's, 290 Millard Street, Orillia",
+      }),
+    ).toBe(
+      "Hi Mary, Whiskey is booked for full groom on 2026-06-01 at 10:30am at Tidy Tails at Annette's, 290 Millard Street, Orillia. See you then! — Samantha",
+    );
+  });
+
+  it("falls back gracefully when optional details are missing", () => {
+    expect(
+      buildBookingTextMessage({
+        ownerFirstName: null,
+        petName: "Kiwi",
+        date: "2026-06-01",
+        time: null,
+        service: null,
+        location: null,
+      }),
+    ).toBe("Hi there, Kiwi is booked on 2026-06-01. See you then! — Samantha");
   });
 });
 

@@ -60,7 +60,7 @@ body {
 
 .submit-dog-line path,
 .submit-dog-line circle {
-  animation: submit-dog-draw 1.45s ease-in-out infinite;
+  animation: submit-dog-draw 2.6s ease-in-out infinite;
   stroke-dasharray: 72;
   stroke-dashoffset: 72;
 }
@@ -74,8 +74,8 @@ body {
     opacity: 0.45;
     stroke-dashoffset: 72;
   }
-  48%,
-  72% {
+  42%,
+  78% {
     opacity: 1;
     stroke-dashoffset: 0;
   }

@@ -73,7 +73,8 @@ export type BookingInput = {
   location: string;
   send_invite: string;
   customer_email: string;
-  send_sms: string;
+  send_booking_text: string;
+  save_reminder_phone: string;
   customer_phone: string;
   fee: string;
   notes: string;
@@ -89,7 +90,8 @@ export type ValidatedBooking = {
   location: BookingLocation | null;
   send_invite: boolean;
   customer_email: string | null;
-  send_sms: boolean;
+  send_booking_text: boolean;
+  save_reminder_phone: boolean;
   customer_phone: string | null;
   fee: number | null;
   notes: string | null;
@@ -127,6 +129,10 @@ function optionalText(v: string | undefined): string | null {
 
 function digitsOnly(v: string): string {
   return v.replace(/\D/g, "");
+}
+
+function isChecked(v: string | undefined): boolean {
+  return ["on", "true", "1", "yes"].includes((v ?? "").trim().toLowerCase());
 }
 
 export function normalizeTimeForCompare(raw: string | null | undefined): string {
@@ -238,9 +244,7 @@ export function validateBookingInput(
     }
   }
 
-  const send_invite = ["on", "true", "1", "yes"].includes(
-    (raw.send_invite ?? "").trim().toLowerCase(),
-  );
+  const send_invite = isChecked(raw.send_invite);
   const customer_email = optionalText(raw.customer_email);
   if (send_invite) {
     if (!customer_email) {
@@ -252,11 +256,10 @@ export function validateBookingInput(
     errors.customer_email = "That email doesn't look right.";
   }
 
-  const send_sms = ["on", "true", "1", "yes"].includes(
-    (raw.send_sms ?? "").trim().toLowerCase(),
-  );
+  const send_booking_text = isChecked(raw.send_booking_text);
+  const save_reminder_phone = isChecked(raw.save_reminder_phone);
   const customer_phone = optionalText(raw.customer_phone);
-  if (send_sms) {
+  if (send_booking_text || save_reminder_phone) {
     const phoneDigits = digitsOnly(customer_phone ?? "");
     if (
       !(
@@ -297,7 +300,8 @@ export function validateBookingInput(
       location,
       send_invite,
       customer_email,
-      send_sms,
+      send_booking_text,
+      save_reminder_phone,
       customer_phone,
       fee,
       notes,
@@ -353,4 +357,26 @@ export function buildAppointmentInsert(b: ValidatedBooking): AppointmentInsert {
     notes: b.notes,
     status: "booked",
   };
+}
+
+export function buildBookingTextMessage({
+  ownerFirstName,
+  petName,
+  date,
+  time,
+  service,
+  location,
+}: {
+  ownerFirstName: string | null;
+  petName: string;
+  date: string;
+  time: string | null;
+  service: string | null;
+  location: string | null;
+}): string {
+  const who = ownerFirstName?.trim() || "there";
+  const when = time ? `${date} at ${time}` : date;
+  const servicePart = service ? ` for ${service.toLowerCase()}` : "";
+  const locationPart = location ? ` at ${location}` : "";
+  return `Hi ${who}, ${petName} is booked${servicePart} on ${when}${locationPart}. See you then! — Samantha`;
 }

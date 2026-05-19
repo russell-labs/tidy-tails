@@ -134,7 +134,10 @@ function BookingForm({
   const [location, setLocation] = useState<BookingLocation | "">("");
   const [sendInvite, setSendInvite] = useState(Boolean(client.email));
   const [customerEmail, setCustomerEmail] = useState(client.email ?? "");
-  const [sendSms, setSendSms] = useState(Boolean(client.phone));
+  const [sendBookingText, setSendBookingText] = useState(false);
+  const [saveReminderPhone, setSaveReminderPhone] = useState(
+    Boolean(client.phone),
+  );
   const [customerPhone, setCustomerPhone] = useState(client.phone);
   const [fee, setFee] = useState(initialDefaults.fee);
   const [notes, setNotes] = useState("");
@@ -204,7 +207,8 @@ function BookingForm({
       location,
       send_invite: sendInvite ? "on" : "",
       customer_email: customerEmail,
-      send_sms: sendSms ? "on" : "",
+      send_booking_text: sendBookingText ? "on" : "",
+      save_reminder_phone: saveReminderPhone ? "on" : "",
       customer_phone: customerPhone,
       fee,
       notes,
@@ -238,6 +242,10 @@ function BookingForm({
   return (
     <form action={formAction} className="flex flex-col gap-3.5">
       <SubmitDogOverlay label="Saving booking" show={pending} />
+      <SubmitDogOverlay
+        label="Checking calendar"
+        show={Boolean(date) && !availability && !pending}
+      />
       {/* Hidden fields carry the current values into the server action,
           regardless of which step is visible. */}
       <input type="hidden" name="client_id" value={client.id} />
@@ -248,7 +256,16 @@ function BookingForm({
       <input type="hidden" name="location" value={location} />
       <input type="hidden" name="send_invite" value={sendInvite ? "on" : ""} />
       <input type="hidden" name="customer_email" value={customerEmail} />
-      <input type="hidden" name="send_sms" value={sendSms ? "on" : ""} />
+      <input
+        type="hidden"
+        name="send_booking_text"
+        value={sendBookingText ? "on" : ""}
+      />
+      <input
+        type="hidden"
+        name="save_reminder_phone"
+        value={saveReminderPhone ? "on" : ""}
+      />
       <input type="hidden" name="customer_phone" value={customerPhone} />
       <input type="hidden" name="fee" value={fee} />
       <input type="hidden" name="notes" value={notes} />
@@ -432,19 +449,41 @@ function BookingForm({
           <label className="flex items-start gap-2 rounded-xl border border-line bg-surface px-3.5 py-3 text-sm text-ink-soft">
             <input
               type="checkbox"
-              checked={sendSms}
-              onChange={(e) => setSendSms(e.target.checked)}
+              checked={sendBookingText}
+              onChange={(e) => setSendBookingText(e.target.checked)}
               className="mt-1 h-4 w-4 accent-brand"
             />
             <span>
-              <span className="font-semibold text-ink">Text reminder</span>
+              <span className="font-semibold text-ink">
+                Text booking info now
+              </span>
               <span className="block text-xs leading-relaxed">
-                Save the reminder phone now; Twilio will use it when SMS sending is on.
+                Send one SMS with the booking date, time, service, and location
+                after Sam confirms.
               </span>
             </span>
           </label>
-          {sendSms ? (
-            <Field label="Reminder phone" error={errors.customer_phone}>
+
+          <label className="flex items-start gap-2 rounded-xl border border-line bg-surface px-3.5 py-3 text-sm text-ink-soft">
+            <input
+              type="checkbox"
+              checked={saveReminderPhone}
+              onChange={(e) => setSaveReminderPhone(e.target.checked)}
+              className="mt-1 h-4 w-4 accent-brand"
+            />
+            <span>
+              <span className="font-semibold text-ink">
+                Use this phone for reminders
+              </span>
+              <span className="block text-xs leading-relaxed">
+                Keep this number on the household so Sam can send appointment
+                reminders later. Nothing sends from this option.
+              </span>
+            </span>
+          </label>
+
+          {sendBookingText || saveReminderPhone ? (
+            <Field label="Customer phone" error={errors.customer_phone}>
               <input
                 type="tel"
                 inputMode="tel"
@@ -509,8 +548,20 @@ function BookingForm({
               value={sendInvite ? customerEmail.trim() || "Email needed" : "No email invite"}
             />
             <ReviewRow
-              label="Text"
-              value={sendSms ? customerPhone.trim() || "Phone needed" : "No text reminder"}
+              label="Booking text"
+              value={
+                sendBookingText
+                  ? customerPhone.trim() || "Phone needed"
+                  : "No booking text"
+              }
+            />
+            <ReviewRow
+              label="Reminder phone"
+              value={
+                saveReminderPhone
+                  ? customerPhone.trim() || "Phone needed"
+                  : "No reminder phone"
+              }
             />
             <ReviewRow
               label="Fee"
@@ -648,8 +699,12 @@ function ResultScreen({
           value={summary.customerInvite ?? "No email invite"}
         />
         <ReviewRow
-          label="Text"
-          value={summary.textReminder ?? "No text reminder"}
+          label="Booking text"
+          value={summary.bookingText ?? "No booking text"}
+        />
+        <ReviewRow
+          label="Reminder phone"
+          value={summary.reminderPhone ?? "No reminder phone"}
         />
         <ReviewRow
           label="Fee"
@@ -666,6 +721,19 @@ function ResultScreen({
           }`}
         >
           {summary.calendar.message}
+        </p>
+      ) : null}
+
+      {saved && summary.bookingTextSend ? (
+        <p
+          className={`rounded-lg px-3 py-2 text-xs font-medium ${
+            summary.bookingTextSend.status === "sent" ||
+            summary.bookingTextSend.status === "skipped"
+              ? "bg-brand-soft text-brand-ink"
+              : "bg-warn-soft text-warn"
+          }`}
+        >
+          {summary.bookingTextSend.message}
         </p>
       ) : null}
 

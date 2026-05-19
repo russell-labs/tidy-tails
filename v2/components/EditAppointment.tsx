@@ -233,6 +233,10 @@ function EditAppointmentForm({
         label={deletePending ? "Deleting booking" : "Saving changes"}
         show={pending || deletePending}
       />
+      <SubmitDogOverlay
+        label="Checking calendar"
+        show={Boolean(date) && !availability && !pending && !deletePending}
+      />
       <input type="hidden" name="client_id" value={clientId} />
       <input type="hidden" name="appointment_id" value={appointment.id} />
       <input type="hidden" name="date" value={date} />

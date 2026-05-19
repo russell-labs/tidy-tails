@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect, useState } from "react";
+
 export function SubmitDog({ label }: { label: string }) {
   return (
     <span className="inline-flex items-center justify-center gap-2">
@@ -32,7 +34,17 @@ export function SubmitDogOverlay({
   label: string;
   show: boolean;
 }) {
-  if (!show) return null;
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(
+      () => setVisible(show),
+      show ? 1 : 850,
+    );
+    return () => window.clearTimeout(timeout);
+  }, [show]);
+
+  if (!visible) return null;
   return (
     <div
       className="pointer-events-none fixed inset-0 z-[90] flex items-center justify-center bg-ink/10"
