@@ -10,6 +10,7 @@ import {
   relativeDate,
 } from "@/lib/format";
 import { readOperatorSettings } from "@/lib/operatorSettings.server";
+import { parsePaymentInfo } from "@/lib/payments";
 
 export const metadata: Metadata = { title: "Reports" };
 
@@ -86,6 +87,15 @@ export default async function ReportsPage({
         ? `${new Date().getFullYear()} year to date`
         : monthLabel;
   const revenue = revenueInRange(appointments, from, to);
+  const clientsById = new Map(clients.map((client) => [client.id, client]));
+  const petsById = new Map(pets.map((pet) => [pet.id, pet]));
+  const waitingPayments = appointments
+    .filter((appointment) => parsePaymentInfo(appointment.notes).status === "waiting")
+    .sort((a, b) => a.date.localeCompare(b.date));
+  const waitingTotal = waitingPayments.reduce(
+    (sum, appointment) => sum + (appointment.price ?? 0) + (appointment.tip ?? 0),
+    0,
+  );
 
   const lapsed = lapsedClients(clients, appointments, pets, threshold);
   const overdue = lapsed.filter((row) => row.daysSince != null);
@@ -170,8 +180,52 @@ export default async function ReportsPage({
           Showing {rangeLabel}.{" "}
           {revenue.count === 0
             ? "No appointments are recorded in this range; try All or Year."
-            : "Totals use recorded app history only; active card clients are still being added."}
+            : "Collected totals exclude visits marked waiting on payment; active card clients are still being added."}
         </p>
+      </section>
+
+      {/* Payment follow-up -------------------------------------------------- */}
+      <section className="mt-7">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-faint">
+          Payment follow-up
+        </h2>
+        <p className="mb-2 text-xs text-ink-faint">
+          Waiting on payment · {waitingPayments.length} visit
+          {waitingPayments.length === 1 ? "" : "s"} · {formatMoney(waitingTotal)}
+        </p>
+        {waitingPayments.length === 0 ? (
+          <p className="text-sm text-ink-faint">No payments are marked waiting.</p>
+        ) : (
+          <ul className="flex flex-col gap-2">
+            {waitingPayments.slice(0, 12).map((appointment) => {
+              const client = clientsById.get(appointment.client_id);
+              const pet = petsById.get(appointment.pet_id);
+              return (
+                <li key={appointment.id}>
+                  <Link
+                    href={`/clients/${appointment.client_id}`}
+                    className="block rounded-xl border border-line bg-surface px-4 py-3 shadow-sm"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="truncate font-semibold text-ink">
+                        {client
+                          ? fullName(client.first_name, client.last_name)
+                          : appointment.client_id}
+                      </span>
+                      <span className="shrink-0 text-xs font-semibold text-warn">
+                        {formatMoney((appointment.price ?? 0) + (appointment.tip ?? 0))}
+                      </span>
+                    </div>
+                    <p className="mt-0.5 text-xs text-ink-faint">
+                      {pet?.name ?? "Pet"} · {formatDate(appointment.date)} ·{" "}
+                      {client ? formatPhone(client.phone) : ""}
+                    </p>
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        )}
       </section>
 
       {/* Lapsed clients ----------------------------------------------------- */}

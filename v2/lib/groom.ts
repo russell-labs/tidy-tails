@@ -9,6 +9,13 @@
 // reuses findOwnedPet for the ownership check. Unit-tested in groom.test.ts.
 
 import { SERVICE_TYPES, type ServiceType } from "./booking";
+import {
+  isPaymentMethod,
+  isPaymentStatus,
+  withPaymentInfo,
+  type PaymentMethod,
+  type PaymentStatus,
+} from "./payments";
 
 // Raw Log Groom form input — every field arrives as a string (or absent).
 export type GroomLogInput = {
@@ -18,6 +25,8 @@ export type GroomLogInput = {
   service_type: string;
   fee: string;
   tip: string;
+  payment_method: string;
+  payment_status: string;
   notes: string;
 };
 
@@ -29,6 +38,8 @@ export type ValidatedGroomLog = {
   service_type: ServiceType | null;
   fee: number | null;
   tip: number | null;
+  payment_method: PaymentMethod;
+  payment_status: PaymentStatus;
   notes: string | null;
 };
 
@@ -124,6 +135,22 @@ export function validateGroomLog(
     }
   }
 
+  const paymentMethodRaw = (raw.payment_method ?? "cash").trim() || "cash";
+  let payment_method: PaymentMethod = "cash";
+  if (!isPaymentMethod(paymentMethodRaw)) {
+    errors.payment_method = "Choose cash, Interac, or other.";
+  } else {
+    payment_method = paymentMethodRaw;
+  }
+
+  const paymentStatusRaw = (raw.payment_status ?? "paid").trim() || "paid";
+  let payment_status: PaymentStatus = "paid";
+  if (!isPaymentStatus(paymentStatusRaw)) {
+    errors.payment_status = "Choose paid or waiting on payment.";
+  } else {
+    payment_status = paymentStatusRaw;
+  }
+
   const notes = optionalText(raw.notes);
   if (notes && notes.length > NOTES_MAX) {
     errors.notes = "Those notes are too long.";
@@ -133,7 +160,17 @@ export function validateGroomLog(
 
   return {
     ok: true,
-    value: { client_id, pet_id, date, service_type, fee, tip, notes },
+    value: {
+      client_id,
+      pet_id,
+      date,
+      service_type,
+      fee,
+      tip,
+      payment_method,
+      payment_status,
+      notes,
+    },
   };
 }
 
@@ -146,6 +183,7 @@ export type GroomInsert = {
   service_type: ServiceType | null;
   fee: number | null;
   tip: number | null;
+  net: number | null;
   notes: string | null;
   status: "completed";
 };
@@ -153,11 +191,13 @@ export type GroomInsert = {
 /**
  * Build the appointments INSERT payload from a validated completed groom.
  * `status` is "completed" — this records a visit that already happened. `id`,
- * `created_at`, `rent_paid` take their DB defaults; `time_slot` /
- * `location` / `net` are deliberately left unset (NULL) — unknown when logging a
- * groom, never fabricated (the Phase 3.5 conservative-NULL policy).
+ * `created_at`, `rent_paid` take their DB defaults; `time_slot` / `location`
+ * are deliberately left unset (NULL). `net` is computed only when the visit is
+ * marked paid; waiting-on-payment rows stay NULL so they do not masquerade as
+ * collected revenue.
  */
 export function buildGroomInsert(g: ValidatedGroomLog): GroomInsert {
+  const total = (g.fee ?? 0) + (g.tip ?? 0);
   return {
     client_id: g.client_id,
     pet_id: g.pet_id,
@@ -165,7 +205,11 @@ export function buildGroomInsert(g: ValidatedGroomLog): GroomInsert {
     service_type: g.service_type,
     fee: g.fee,
     tip: g.tip,
-    notes: g.notes,
+    net: g.payment_status === "paid" ? total : null,
+    notes: withPaymentInfo(g.notes, {
+      method: g.payment_method,
+      status: g.payment_status,
+    }),
     status: "completed",
   };
 }

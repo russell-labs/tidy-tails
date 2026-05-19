@@ -8,6 +8,13 @@ import { validateGroomLog, type GroomLogErrors } from "@/lib/groom";
 import { serviceLabel } from "@/lib/data/live";
 import type { Appointment, Client, Pet } from "@/lib/data/types";
 import { formatMoney, formatReviewDate, fullName } from "@/lib/format";
+import {
+  PAYMENT_METHODS,
+  PAYMENT_METHOD_LABELS,
+  paymentLabel,
+  type PaymentMethod,
+  type PaymentStatus,
+} from "@/lib/payments";
 import { Sheet } from "./Sheet";
 import { SubmitDogOverlay } from "./SubmitDog";
 
@@ -16,7 +23,7 @@ import { SubmitDogOverlay } from "./SubmitDog";
 // lib/actions/grooms.ts). Mirrors the M2 AddAppointment flow.
 
 const fieldClass =
-  "w-full rounded-xl border border-line bg-surface px-3.5 py-2.5 text-base text-ink placeholder:text-ink-faint";
+  "w-full min-w-0 max-w-full rounded-xl border border-line bg-surface px-3.5 py-2.5 text-base text-ink placeholder:text-ink-faint";
 const labelClass = "text-sm font-medium text-ink-soft";
 
 export function LogGroom({
@@ -116,6 +123,8 @@ function GroomForm({
   const [serviceType, setServiceType] = useState(initialDefaults.serviceType);
   const [fee, setFee] = useState(initialDefaults.fee);
   const [tip, setTip] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cash");
+  const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>("paid");
   const [notes, setNotes] = useState("");
 
   const selectedPet = pets.find((p) => p.id === petId) ?? pets[0];
@@ -126,9 +135,11 @@ function GroomForm({
     const p = pets.find((x) => x.id === id);
     if (!p) return;
     const defaults = groomDefaults(p, appointments);
-    setServiceType(defaults.serviceType);
-    setFee(defaults.fee);
-    setTip("");
+      setServiceType(defaults.serviceType);
+      setFee(defaults.fee);
+      setTip("");
+      setPaymentMethod("cash");
+      setPaymentStatus("paid");
   }
 
   function toReview() {
@@ -139,6 +150,8 @@ function GroomForm({
       service_type: serviceType,
       fee,
       tip,
+      payment_method: paymentMethod,
+      payment_status: paymentStatus,
       notes,
     });
     if (!v.ok) {
@@ -178,6 +191,8 @@ function GroomForm({
       <input type="hidden" name="service_type" value={serviceType} />
       <input type="hidden" name="fee" value={fee} />
       <input type="hidden" name="tip" value={tip} />
+      <input type="hidden" name="payment_method" value={paymentMethod} />
+      <input type="hidden" name="payment_status" value={paymentStatus} />
       <input type="hidden" name="notes" value={notes} />
 
       <ModeNote mode={mode} writesEnabled={writesEnabled} />
@@ -257,6 +272,40 @@ function GroomForm({
             />
           </Field>
 
+          <fieldset className="flex flex-col gap-2">
+            <legend className={labelClass}>Payment</legend>
+            <div className="grid grid-cols-2 gap-2">
+              <ChoiceButton
+                active={paymentStatus === "paid"}
+                onClick={() => setPaymentStatus("paid")}
+              >
+                Paid
+              </ChoiceButton>
+              <ChoiceButton
+                active={paymentStatus === "waiting"}
+                onClick={() => setPaymentStatus("waiting")}
+              >
+                Waiting
+              </ChoiceButton>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              {PAYMENT_METHODS.map((method) => (
+                <ChoiceButton
+                  key={method}
+                  active={paymentMethod === method}
+                  onClick={() => setPaymentMethod(method)}
+                  disabled={paymentStatus === "waiting"}
+                >
+                  {PAYMENT_METHOD_LABELS[method]}
+                </ChoiceButton>
+              ))}
+            </div>
+            <p className="text-xs text-ink-faint">
+              Waiting payments show up for follow-up and stay out of collected
+              revenue until Sam marks them paid.
+            </p>
+          </fieldset>
+
           <Field label="Notes (optional)" error={errors.notes}>
             <input
               type="text"
@@ -302,6 +351,13 @@ function GroomForm({
             <ReviewRow
               label="Total"
               value={formatMoney((Number(fee) || 0) + (Number(tip) || 0))}
+            />
+            <ReviewRow
+              label="Payment"
+              value={paymentLabel({
+                method: paymentMethod,
+                status: paymentStatus,
+              })}
             />
             {notes.trim() ? <ReviewRow label="Notes" value={notes} /> : null}
           </dl>
@@ -440,6 +496,13 @@ function ResultScreen({
           label="Total"
           value={formatMoney((summary.fee ?? 0) + (summary.tip ?? 0))}
         />
+        <ReviewRow
+          label="Payment"
+          value={paymentLabel({
+            method: summary.paymentMethod,
+            status: summary.paymentStatus,
+          })}
+        />
       </dl>
 
       <button
@@ -450,6 +513,33 @@ function ResultScreen({
         Done
       </button>
     </div>
+  );
+}
+
+function ChoiceButton({
+  active,
+  disabled = false,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  disabled?: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={`min-h-11 rounded-lg border px-2 py-2 text-sm font-semibold ${
+        active
+          ? "border-brand bg-brand text-white"
+          : "border-line bg-surface text-ink-soft active:bg-brand-soft"
+      } disabled:bg-canvas disabled:text-ink-faint`}
+    >
+      {children}
+    </button>
   );
 }
 

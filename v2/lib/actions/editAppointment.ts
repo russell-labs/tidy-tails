@@ -19,6 +19,7 @@ import {
   type EditAppointmentUpdate,
 } from "@/lib/editAppointment";
 import { fullName } from "@/lib/format";
+import { parsePaymentInfo, type PaymentMethod, type PaymentStatus } from "@/lib/payments";
 
 export type EditAppointmentSummary = {
   ownerName: string;
@@ -29,6 +30,8 @@ export type EditAppointmentSummary = {
   location: string | null;
   fee: number | null;
   tip: number | null;
+  paymentMethod: PaymentMethod;
+  paymentStatus: PaymentStatus;
   calendar?: {
     status: "disabled" | "not_connected" | "skipped" | "synced" | "failed";
     message: string;
@@ -74,6 +77,8 @@ export async function editAppointment(
     location: String(formData.get("location") ?? ""),
     fee: String(formData.get("fee") ?? ""),
     tip: String(formData.get("tip") ?? ""),
+    payment_method: String(formData.get("payment_method") ?? ""),
+    payment_status: String(formData.get("payment_status") ?? ""),
     notes: String(formData.get("notes") ?? ""),
   };
 
@@ -112,6 +117,8 @@ export async function editAppointment(
     location: bookingLocationLabel(payload.location),
     fee: payload.fee,
     tip: payload.tip,
+    paymentMethod: appointment.payment_method,
+    paymentStatus: appointment.payment_status,
   };
 
   if (dataMode() === "fixtures") return { status: "demo", summary };
@@ -217,6 +224,7 @@ export async function deleteAppointment(
     return { status: "error", message: "That appointment could not be found." };
   }
   const pet = record.pets.find((candidate) => candidate.id === existing.pet_id);
+  const payment = parsePaymentInfo(existing.notes);
   const summary: EditAppointmentSummary = {
     ownerName: fullName(record.client.first_name, record.client.last_name),
     petName: pet?.name ?? "the pet",
@@ -226,6 +234,8 @@ export async function deleteAppointment(
     fee: existing.price,
     location: bookingLocationLabel(existing.location),
     tip: existing.tip,
+    paymentMethod: payment.method ?? "cash",
+    paymentStatus: payment.status ?? "paid",
   };
 
   if (dataMode() === "fixtures") {

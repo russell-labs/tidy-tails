@@ -3,6 +3,7 @@
 
 import type { Appointment, Client, Pet, Vaccination } from "./data/types";
 import { daysFromToday } from "./format";
+import { parsePaymentInfo } from "./payments";
 
 /**
  * Most recent *past* appointment in a list — the client's last actual visit —
@@ -241,9 +242,12 @@ export function revenueInRange(
   to: string,
 ): RevenueSummary {
   const inRange = appointments.filter((a) => a.date >= from && a.date <= to);
-  const priced = inRange.filter((a) => a.price != null);
+  const collected = inRange.filter(
+    (a) => parsePaymentInfo(a.notes).status !== "waiting",
+  );
+  const priced = collected.filter((a) => a.price != null);
   const fees = priced.reduce((sum, a) => sum + (a.price ?? 0), 0);
-  const tips = inRange.reduce((sum, a) => sum + (a.tip ?? 0), 0);
+  const tips = collected.reduce((sum, a) => sum + (a.tip ?? 0), 0);
   const total = fees + tips;
   return {
     count: inRange.length,

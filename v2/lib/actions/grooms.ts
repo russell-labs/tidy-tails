@@ -30,6 +30,7 @@ import {
   type GroomLogErrors,
 } from "@/lib/groom";
 import { fullName } from "@/lib/format";
+import type { PaymentMethod, PaymentStatus } from "@/lib/payments";
 
 // A human-readable echo of the logged groom — for the review and result screens.
 export type GroomSummary = {
@@ -39,6 +40,8 @@ export type GroomSummary = {
   service: string | null; // user-facing label
   fee: number | null;
   tip: number | null;
+  paymentMethod: PaymentMethod;
+  paymentStatus: PaymentStatus;
 };
 
 export type GroomState =
@@ -70,6 +73,8 @@ export async function logGroom(
     service_type: String(formData.get("service_type") ?? ""),
     fee: String(formData.get("fee") ?? ""),
     tip: String(formData.get("tip") ?? ""),
+    payment_method: String(formData.get("payment_method") ?? ""),
+    payment_status: String(formData.get("payment_status") ?? ""),
     notes: String(formData.get("notes") ?? ""),
   };
 
@@ -109,6 +114,8 @@ export async function logGroom(
     service: serviceLabel(payload.service_type),
     fee: payload.fee,
     tip: payload.tip,
+    paymentMethod: groom.payment_method,
+    paymentStatus: groom.payment_status,
   };
 
   if (dataMode() === "fixtures") {

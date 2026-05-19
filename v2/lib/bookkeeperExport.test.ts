@@ -48,7 +48,7 @@ const appointments: Appointment[] = [
     service: "Full groom",
     price: 60,
     tip: 10,
-    notes: "#4, left ears and tail",
+    notes: "#4, left ears and tail [payment:interac; payment_status:paid]",
     location: "gina",
     google_calendar_id: null,
     google_event_id: null,
@@ -78,10 +78,48 @@ describe("bookkeeper export rows", () => {
         70,
         "",
         "",
-        "",
+        60,
+        "Paid",
         "Full groom",
         "#4, left ears and tail",
       ],
+    ]);
+  });
+
+  it("marks waiting payments instead of counting them as collected cash/interac", () => {
+    const waiting = [
+      {
+        ...appointments[0],
+        notes: "Pay Friday [payment:cash; payment_status:waiting]",
+      },
+    ];
+
+    expect(
+      buildBookkeeperRows({
+        clients,
+        pets,
+        appointments: waiting,
+        from: "2026-01-01",
+        to: "2026-12-31",
+      })[0],
+    ).toEqual([
+      "2026-04-10",
+      "Mary Anca",
+      "705-330-1807",
+      "Whiskey",
+      "Silver Terrier Yorkie",
+      "Tidy Tails (Gina)",
+      "",
+      "",
+      60,
+      10,
+      0,
+      "",
+      "",
+      "",
+      "Waiting on payment",
+      "Full groom",
+      "Pay Friday",
     ]);
   });
 
@@ -113,5 +151,7 @@ describe("createBookkeeperWorkbookBuffer", () => {
     expect(sheet?.getCell("A2").value).toBe("2026-04-10");
     expect(sheet?.getCell("F2").value).toBe("Tidy Tails (Gina)");
     expect(sheet?.getCell("K2").value).toBe(70);
+    expect(sheet?.getCell("N2").value).toBe(60);
+    expect(sheet?.getCell("O2").value).toBe("Paid");
   });
 });

@@ -308,4 +308,21 @@ describe("revenueInRange — totals over a date window", () => {
       averageTotal: 65,
     });
   });
+
+  it("keeps waiting-on-payment visits out of collected fees and tips", () => {
+    const paid = appt("2026-04-10", "Full groom", 80, 10);
+    const waiting = {
+      ...appt("2026-04-12", "Full groom", 100, 20),
+      notes: "[payment:cash; payment_status:waiting]",
+    };
+
+    expect(revenueInRange([paid, waiting], "2026-04-01", "2026-04-30")).toEqual({
+      count: 2,
+      fees: 80,
+      tips: 10,
+      total: 90,
+      averageFee: 80,
+      averageTotal: 45,
+    });
+  });
 });

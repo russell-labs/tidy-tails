@@ -4,6 +4,13 @@ import {
   SERVICE_TYPES,
   type ServiceType,
 } from "./booking";
+import {
+  isPaymentMethod,
+  isPaymentStatus,
+  withPaymentInfo,
+  type PaymentMethod,
+  type PaymentStatus,
+} from "./payments";
 
 export type EditAppointmentInput = {
   client_id: string;
@@ -14,6 +21,8 @@ export type EditAppointmentInput = {
   location: string;
   fee: string;
   tip: string;
+  payment_method: string;
+  payment_status: string;
   notes: string;
 };
 
@@ -26,6 +35,8 @@ export type ValidatedEditAppointment = {
   location: BookingLocation | null;
   fee: number | null;
   tip: number | null;
+  payment_method: PaymentMethod;
+  payment_status: PaymentStatus;
   notes: string | null;
 };
 
@@ -44,6 +55,7 @@ export type EditAppointmentUpdate = {
   location: BookingLocation | null;
   fee: number | null;
   tip: number | null;
+  net: number | null;
   notes: string | null;
 };
 
@@ -134,6 +146,22 @@ export function validateEditAppointment(
   const fee = parseMoney(raw.fee, "fee", errors);
   const tip = parseMoney(raw.tip, "tip", errors);
 
+  const paymentMethodRaw = (raw.payment_method ?? "cash").trim() || "cash";
+  let payment_method: PaymentMethod = "cash";
+  if (!isPaymentMethod(paymentMethodRaw)) {
+    errors.payment_method = "Choose cash, Interac, or other.";
+  } else {
+    payment_method = paymentMethodRaw;
+  }
+
+  const paymentStatusRaw = (raw.payment_status ?? "paid").trim() || "paid";
+  let payment_status: PaymentStatus = "paid";
+  if (!isPaymentStatus(paymentStatusRaw)) {
+    errors.payment_status = "Choose paid or waiting on payment.";
+  } else {
+    payment_status = paymentStatusRaw;
+  }
+
   const time_slot = optionalText(raw.time_slot);
   if (time_slot && time_slot.length > TIME_SLOT_MAX) {
     errors.time_slot = "That time is too long.";
@@ -157,6 +185,8 @@ export function validateEditAppointment(
       location,
       fee,
       tip,
+      payment_method,
+      payment_status,
       notes,
     },
   };
@@ -165,6 +195,7 @@ export function validateEditAppointment(
 export function buildEditAppointmentUpdate(
   v: ValidatedEditAppointment,
 ): EditAppointmentUpdate {
+  const total = (v.fee ?? 0) + (v.tip ?? 0);
   return {
     date: v.date,
     time_slot: v.time_slot,
@@ -172,6 +203,10 @@ export function buildEditAppointmentUpdate(
     location: v.location,
     fee: v.fee,
     tip: v.tip,
-    notes: v.notes,
+    net: v.payment_status === "paid" ? total : null,
+    notes: withPaymentInfo(v.notes, {
+      method: v.payment_method,
+      status: v.payment_status,
+    }),
   };
 }

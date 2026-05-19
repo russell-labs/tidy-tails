@@ -19,6 +19,8 @@ describe("validateGroomLog — required fields", () => {
         service_type: null,
         fee: null,
         tip: null,
+        payment_method: "cash",
+        payment_status: "paid",
         notes: null,
       });
     }
@@ -98,6 +100,8 @@ describe("validateGroomLog — optional fields", () => {
         service_type: "full_groom",
         fee: "72.50",
         tip: "12.50",
+        payment_method: "interac",
+        payment_status: "paid",
         notes: "Matted behind the ears — trimmed short",
       },
       TODAY,
@@ -107,7 +111,45 @@ describe("validateGroomLog — optional fields", () => {
       expect(r.value.service_type).toBe("full_groom");
       expect(r.value.fee).toBe(72.5);
       expect(r.value.tip).toBe(12.5);
+      expect(r.value.payment_method).toBe("interac");
+      expect(r.value.payment_status).toBe("paid");
       expect(r.value.notes).toBe("Matted behind the ears — trimmed short");
+    }
+  });
+
+  it("accepts waiting-on-payment as a first-class closeout state", () => {
+    const r = validateGroomLog(
+      {
+        client_id: "c1",
+        pet_id: "p1",
+        date: "2026-05-10",
+        payment_method: "cash",
+        payment_status: "waiting",
+      },
+      TODAY,
+    );
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.value.payment_method).toBe("cash");
+      expect(r.value.payment_status).toBe("waiting");
+    }
+  });
+
+  it("rejects invalid payment method and status", () => {
+    const r = validateGroomLog(
+      {
+        client_id: "c1",
+        pet_id: "p1",
+        date: "2026-05-10",
+        payment_method: "cheque",
+        payment_status: "maybe",
+      },
+      TODAY,
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.errors.payment_method).toBeTruthy();
+      expect(r.errors.payment_status).toBeTruthy();
     }
   });
 
@@ -212,6 +254,8 @@ describe("buildGroomInsert — payload + null policy", () => {
       service_type: null,
       fee: null,
       tip: null,
+      payment_method: "cash",
+      payment_status: "paid",
       notes: null,
     });
     expect(payload).toEqual({
@@ -221,7 +265,8 @@ describe("buildGroomInsert — payload + null policy", () => {
       service_type: null,
       fee: null,
       tip: null,
-      notes: null,
+      net: 0,
+      notes: "[payment:cash; payment_status:paid]",
       status: "completed",
     });
   });
@@ -234,16 +279,35 @@ describe("buildGroomInsert — payload + null policy", () => {
       service_type: "bath_only",
       fee: 40,
       tip: 10,
+      payment_method: "interac",
+      payment_status: "paid",
       notes: "calm visit",
     });
     expect(payload.service_type).toBe("bath_only");
     expect(payload.fee).toBe(40);
     expect(payload.tip).toBe(10);
-    expect(payload.notes).toBe("calm visit");
+    expect(payload.net).toBe(50);
+    expect(payload.notes).toBe("calm visit [payment:interac; payment_status:paid]");
     expect(payload.status).toBe("completed");
   });
 
-  it("never sets id, created_at, rent_paid, time_slot, location, or net — DB defaults / conservative NULL", () => {
+  it("marks waiting payments with null net so reports can separate collected from owing", () => {
+    const payload = buildGroomInsert({
+      client_id: "c1",
+      pet_id: "p1",
+      date: "2026-05-10",
+      service_type: "bath_only",
+      fee: 40,
+      tip: 10,
+      payment_method: "cash",
+      payment_status: "waiting",
+      notes: "pay next visit",
+    });
+    expect(payload.net).toBeNull();
+    expect(payload.notes).toBe("pay next visit [payment:cash; payment_status:waiting]");
+  });
+
+  it("never sets id, created_at, rent_paid, time_slot, or location — DB defaults / conservative NULL", () => {
     const payload = buildGroomInsert({
       client_id: "c1",
       pet_id: "p1",
@@ -251,6 +315,8 @@ describe("buildGroomInsert — payload + null policy", () => {
       service_type: null,
       fee: null,
       tip: null,
+      payment_method: "cash",
+      payment_status: "paid",
       notes: null,
     });
     for (const k of [
@@ -259,7 +325,6 @@ describe("buildGroomInsert — payload + null policy", () => {
       "rent_paid",
       "time_slot",
       "location",
-      "net",
     ]) {
       expect(payload).not.toHaveProperty(k);
     }

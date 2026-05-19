@@ -15,6 +15,8 @@ const valid = {
   location: "gina",
   fee: "60",
   tip: "10",
+  payment_method: "interac",
+  payment_status: "paid",
   notes: "#4, left ears and tail",
 };
 
@@ -32,6 +34,8 @@ describe("validateEditAppointment", () => {
       location: "gina",
       fee: 60,
       tip: 10,
+      payment_method: "interac",
+      payment_status: "paid",
       notes: "#4, left ears and tail",
     });
   });
@@ -57,6 +61,8 @@ describe("validateEditAppointment", () => {
         location: "",
         fee: "",
         tip: "",
+        payment_method: "",
+        payment_status: "",
         notes: "",
       },
       TODAY,
@@ -68,12 +74,22 @@ describe("validateEditAppointment", () => {
     expect(result.value.time_slot).toBeNull();
     expect(result.value.fee).toBeNull();
     expect(result.value.tip).toBeNull();
+    expect(result.value.payment_method).toBe("cash");
+    expect(result.value.payment_status).toBe("paid");
     expect(result.value.notes).toBeNull();
   });
 
-  it("rejects invalid service, invalid location, negative fee, and negative tip", () => {
+  it("rejects invalid service, location, fee, tip, and payment values", () => {
     const result = validateEditAppointment(
-      { ...valid, service_type: "spa", location: "mobile", fee: "-1", tip: "-2" },
+      {
+        ...valid,
+        service_type: "spa",
+        location: "mobile",
+        fee: "-1",
+        tip: "-2",
+        payment_method: "cheque",
+        payment_status: "maybe",
+      },
       TODAY,
     );
     expect(result.ok).toBe(false);
@@ -82,6 +98,8 @@ describe("validateEditAppointment", () => {
     expect(result.errors.location).toBeTruthy();
     expect(result.errors.fee).toBeTruthy();
     expect(result.errors.tip).toBeTruthy();
+    expect(result.errors.payment_method).toBeTruthy();
+    expect(result.errors.payment_status).toBeTruthy();
   });
 });
 
@@ -97,7 +115,18 @@ describe("buildEditAppointmentUpdate", () => {
       location: "gina",
       fee: 60,
       tip: 10,
-      notes: "#4, left ears and tail",
+      net: 70,
+      notes: "#4, left ears and tail [payment:interac; payment_status:paid]",
     });
+  });
+
+  it("marks waiting payments with a null net", () => {
+    const result = validateEditAppointment(
+      { ...valid, payment_method: "cash", payment_status: "waiting" },
+      TODAY,
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(buildEditAppointmentUpdate(result.value).net).toBeNull();
   });
 });

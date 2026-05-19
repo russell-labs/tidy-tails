@@ -26,6 +26,15 @@ import {
   type EditAppointmentErrors,
 } from "@/lib/editAppointment";
 import { formatMoney } from "@/lib/format";
+import {
+  PAYMENT_METHODS,
+  PAYMENT_METHOD_LABELS,
+  parsePaymentInfo,
+  paymentLabel,
+  stripPaymentInfo,
+  type PaymentMethod,
+  type PaymentStatus,
+} from "@/lib/payments";
 import { Sheet } from "./Sheet";
 import { SubmitDogOverlay } from "./SubmitDog";
 
@@ -137,7 +146,14 @@ function EditAppointmentForm({
   const [tip, setTip] = useState(
     appointment.tip != null ? String(appointment.tip) : "",
   );
-  const [notes, setNotes] = useState(appointment.notes ?? "");
+  const initialPayment = parsePaymentInfo(appointment.notes);
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(
+    initialPayment.method ?? "cash",
+  );
+  const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>(
+    initialPayment.status ?? "paid",
+  );
+  const [notes, setNotes] = useState(stripPaymentInfo(appointment.notes) ?? "");
   const canDeleteBooking = appointment.status === "booked";
   const [availabilityResult, setAvailabilityResult] = useState<{
     date: string;
@@ -197,6 +213,8 @@ function EditAppointmentForm({
       location,
       fee,
       tip,
+      payment_method: paymentMethod,
+      payment_status: paymentStatus,
       notes,
     });
     if (!validation.ok) {
@@ -250,6 +268,8 @@ function EditAppointmentForm({
       <input type="hidden" name="location" value={location} />
       <input type="hidden" name="fee" value={fee} />
       <input type="hidden" name="tip" value={tip} />
+      <input type="hidden" name="payment_method" value={paymentMethod} />
+      <input type="hidden" name="payment_status" value={paymentStatus} />
       <input type="hidden" name="notes" value={notes} />
 
       <ModeNote mode={mode} writesEnabled={writesEnabled} />
@@ -393,6 +413,35 @@ function EditAppointmentForm({
               className={fieldClass}
             />
           </Field>
+          <fieldset className="flex flex-col gap-2">
+            <legend className={labelClass}>Payment</legend>
+            <div className="grid grid-cols-2 gap-2">
+              <ChoiceButton
+                active={paymentStatus === "paid"}
+                onClick={() => setPaymentStatus("paid")}
+              >
+                Paid
+              </ChoiceButton>
+              <ChoiceButton
+                active={paymentStatus === "waiting"}
+                onClick={() => setPaymentStatus("waiting")}
+              >
+                Waiting
+              </ChoiceButton>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              {PAYMENT_METHODS.map((method) => (
+                <ChoiceButton
+                  key={method}
+                  active={paymentMethod === method}
+                  onClick={() => setPaymentMethod(method)}
+                  disabled={paymentStatus === "waiting"}
+                >
+                  {PAYMENT_METHOD_LABELS[method]}
+                </ChoiceButton>
+              ))}
+            </div>
+          </fieldset>
           <Field label="Notes" error={errors.notes}>
             <textarea
               value={notes}
@@ -470,6 +519,13 @@ function EditAppointmentForm({
             />
             <ReviewRow label="Fee" value={fee ? formatMoney(Number(fee)) : "Not set"} />
             <ReviewRow label="Tip" value={tip ? formatMoney(Number(tip)) : "Not set"} />
+            <ReviewRow
+              label="Payment"
+              value={paymentLabel({
+                method: paymentMethod,
+                status: paymentStatus,
+              })}
+            />
             <ReviewRow label="Notes" value={notes.trim() || "Not set"} />
           </dl>
           <div className="flex gap-2.5">
@@ -615,6 +671,13 @@ function DeleteResultScreen({
               : "Not set"
           }
         />
+        <ReviewRow
+          label="Payment"
+          value={paymentLabel({
+            method: state.summary.paymentMethod,
+            status: state.summary.paymentStatus,
+          })}
+        />
       </dl>
       {state.calendar ? (
         <p
@@ -654,6 +717,33 @@ function Field({
       {children}
       {error ? <span className="text-xs text-danger-ink">{error}</span> : null}
     </label>
+  );
+}
+
+function ChoiceButton({
+  active,
+  disabled = false,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  disabled?: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={`min-h-11 rounded-lg border px-2 py-2 text-sm font-semibold ${
+        active
+          ? "border-brand bg-brand text-white"
+          : "border-line bg-surface text-ink-soft active:bg-brand-soft"
+      } disabled:bg-canvas disabled:text-ink-faint`}
+    >
+      {children}
+    </button>
   );
 }
 

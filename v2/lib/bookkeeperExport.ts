@@ -1,6 +1,7 @@
 import ExcelJS from "exceljs";
 import { bookingLocationLabel } from "./booking";
 import type { Appointment, Client, Pet } from "./data/types";
+import { parsePaymentInfo, stripPaymentInfo } from "./payments";
 
 export const BOOKKEEPER_HEADERS = [
   "Date",
@@ -17,6 +18,7 @@ export const BOOKKEEPER_HEADERS = [
   "wages pd cash",
   "Fee Paid Cash",
   "Fee Paid Debit",
+  "Payment Status",
   "Service",
   "Notes",
 ] as const;
@@ -47,6 +49,9 @@ export function buildBookkeeperRows({
       const pet = petsById.get(appointment.pet_id);
       const fee = appointment.price ?? 0;
       const tip = appointment.tip ?? 0;
+      const payment = parsePaymentInfo(appointment.notes);
+      const paid = payment.status === "paid";
+      const totalCollected = paid || payment.status == null ? fee + tip : 0;
       return [
         appointment.date,
         client
@@ -60,12 +65,13 @@ export function buildBookkeeperRows({
         "",
         appointment.price,
         appointment.tip,
-        fee + tip,
+        totalCollected,
         "",
-        "",
-        "",
+        paid && payment.method === "cash" ? fee : "",
+        paid && payment.method === "interac" ? fee : "",
+        payment.status === "waiting" ? "Waiting on payment" : paid ? "Paid" : "",
         appointment.service,
-        appointment.notes,
+        stripPaymentInfo(appointment.notes),
       ];
     });
 }
@@ -113,6 +119,7 @@ export async function createBookkeeperWorkbookBuffer({
     { width: 14 },
     { width: 14 },
     { width: 14 },
+    { width: 18 },
     { width: 18 },
     { width: 42 },
   ];
