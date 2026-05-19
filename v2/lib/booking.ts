@@ -19,6 +19,32 @@ export const SERVICE_TYPES = [
 ] as const;
 export type ServiceType = (typeof SERVICE_TYPES)[number];
 
+// The live appointments.location CHECK constraint currently allows these two
+// physical shop locations. Work-context / payout modeling is a separate schema
+// step; this value is what customers should see in calendar invites and texts.
+export const BOOKING_LOCATIONS = ["gina", "annette"] as const;
+export type BookingLocation = (typeof BOOKING_LOCATIONS)[number];
+
+export const BOOKING_LOCATION_LABELS: Record<BookingLocation, string> = {
+  gina: "Tidy Tails (Gina)",
+  annette: "Tidy Tails (Annette)",
+};
+
+export function bookingLocationLabel(
+  location: BookingLocation | string | null | undefined,
+): string | null {
+  if (!location) return null;
+  return BOOKING_LOCATION_LABELS[location as BookingLocation] ?? null;
+}
+
+export function customerBookingLocationLabel(
+  location: BookingLocation | string | null | undefined,
+): string | null {
+  if (location === "gina") return "Tidy Tails at Gina's";
+  if (location === "annette") return "Tidy Tails at Annette's";
+  return null;
+}
+
 // First-pass day-book slots. This is not external calendar sync; it makes the
 // booking sheet calendar-aware against appointments already stored in Tidy
 // Tails, so Sam can tap an open slot instead of typing from a blank field.
@@ -42,6 +68,8 @@ export type BookingInput = {
   date: string;
   time_slot: string;
   service_type: string;
+  location: string;
+  send_invite: string;
   fee: string;
   notes: string;
 };
@@ -53,6 +81,8 @@ export type ValidatedBooking = {
   date: string;
   time_slot: string;
   service_type: ServiceType | null;
+  location: BookingLocation | null;
+  send_invite: boolean;
   fee: number | null;
   notes: string | null;
 };
@@ -185,6 +215,20 @@ export function validateBookingInput(
     }
   }
 
+  const locationRaw = (raw.location ?? "").trim();
+  let location: BookingLocation | null = null;
+  if (locationRaw) {
+    if ((BOOKING_LOCATIONS as readonly string[]).includes(locationRaw)) {
+      location = locationRaw as BookingLocation;
+    } else {
+      errors.location = "Choose Gina's or Annette's.";
+    }
+  }
+
+  const send_invite = ["on", "true", "1", "yes"].includes(
+    (raw.send_invite ?? "").trim().toLowerCase(),
+  );
+
   const feeRaw = (raw.fee ?? "").trim();
   let fee: number | null = null;
   if (feeRaw) {
@@ -205,7 +249,17 @@ export function validateBookingInput(
 
   return {
     ok: true,
-    value: { client_id, pet_id, date, time_slot, service_type, fee, notes },
+    value: {
+      client_id,
+      pet_id,
+      date,
+      time_slot,
+      service_type,
+      location,
+      send_invite,
+      fee,
+      notes,
+    },
   };
 }
 
@@ -232,6 +286,7 @@ export type AppointmentInsert = {
   date: string;
   time_slot: string | null;
   service_type: ServiceType | null;
+  location: BookingLocation | null;
   fee: number | null;
   notes: string | null;
   status: "booked";
@@ -240,8 +295,9 @@ export type AppointmentInsert = {
 /**
  * Build the appointments INSERT payload from a validated booking. Sets only
  * the columns M2 owns; `id`, `created_at`, `tip`, `rent_paid` take their DB
- * defaults, and `location` / `net` are deliberately left unset (NULL) — unknown
- * at booking time, never fabricated (the Phase 3.5 conservative-NULL policy).
+ * defaults, and `net` is deliberately left unset (NULL) — unknown at booking
+ * time, never fabricated (the Phase 3.5 conservative-NULL policy).
+ * `send_invite` is an action side effect flag, not a database column.
  */
 export function buildAppointmentInsert(b: ValidatedBooking): AppointmentInsert {
   return {
@@ -250,6 +306,7 @@ export function buildAppointmentInsert(b: ValidatedBooking): AppointmentInsert {
     date: b.date,
     time_slot: b.time_slot,
     service_type: b.service_type,
+    location: b.location,
     fee: b.fee,
     notes: b.notes,
     status: "booked",

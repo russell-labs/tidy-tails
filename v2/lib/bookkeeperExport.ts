@@ -1,4 +1,5 @@
 import ExcelJS from "exceljs";
+import { bookingLocationLabel } from "./booking";
 import type { Appointment, Client, Pet } from "./data/types";
 
 export const BOOKKEEPER_HEADERS = [
@@ -7,6 +8,7 @@ export const BOOKKEEPER_HEADERS = [
   "Phone",
   "Pet Name",
   "Breed",
+  "Location",
   "work",
   "wage",
   "Fee",
@@ -53,6 +55,7 @@ export function buildBookkeeperRows({
         client?.phone ?? "",
         pet?.name ?? appointment.pet_id,
         pet?.breed ?? "",
+        bookingLocationLabel(appointment.location) ?? "",
         "",
         "",
         appointment.price,
@@ -101,6 +104,7 @@ export async function createBookkeeperWorkbookBuffer({
     { width: 16 },
     { width: 18 },
     { width: 22 },
+    { width: 14 },
     { width: 12 },
     { width: 12 },
     { width: 12 },
@@ -112,7 +116,7 @@ export async function createBookkeeperWorkbookBuffer({
     { width: 18 },
     { width: 42 },
   ];
-  for (const column of [8, 9, 10, 11, 12, 13]) {
+  for (const column of [9, 10, 11, 12, 13, 14]) {
     sheet.getColumn(column).numFmt = "$#,##0.00";
   }
   sheet.autoFilter = {
@@ -129,9 +133,9 @@ export async function createBookkeeperWorkbookBuffer({
     ["From", from],
     ["To", to],
     ["Visits", rows.length],
-    ["Fees", { formula: `SUM('Bookkeeper Export'!H2:H${lastRow})` }],
-    ["Tips", { formula: `SUM('Bookkeeper Export'!I2:I${lastRow})` }],
-    ["Total collected", { formula: `SUM('Bookkeeper Export'!J2:J${lastRow})` }],
+    ["Fees", { formula: `SUM('Bookkeeper Export'!I2:I${lastRow})` }],
+    ["Tips", { formula: `SUM('Bookkeeper Export'!J2:J${lastRow})` }],
+    ["Total collected", { formula: `SUM('Bookkeeper Export'!K2:K${lastRow})` }],
   ]);
   summary.getCell("A1").font = { bold: true, size: 14 };
   summary.getColumn(1).font = { bold: true };

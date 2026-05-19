@@ -1,4 +1,9 @@
-import { SERVICE_TYPES, type ServiceType } from "./booking";
+import {
+  BOOKING_LOCATIONS,
+  type BookingLocation,
+  SERVICE_TYPES,
+  type ServiceType,
+} from "./booking";
 
 export type EditAppointmentInput = {
   client_id: string;
@@ -6,6 +11,7 @@ export type EditAppointmentInput = {
   date: string;
   time_slot: string;
   service_type: string;
+  location: string;
   fee: string;
   tip: string;
   notes: string;
@@ -17,6 +23,7 @@ export type ValidatedEditAppointment = {
   date: string;
   time_slot: string | null;
   service_type: ServiceType | null;
+  location: BookingLocation | null;
   fee: number | null;
   tip: number | null;
   notes: string | null;
@@ -34,6 +41,7 @@ export type EditAppointmentUpdate = {
   date: string;
   time_slot: string | null;
   service_type: ServiceType | null;
+  location: BookingLocation | null;
   fee: number | null;
   tip: number | null;
   notes: string | null;
@@ -113,6 +121,16 @@ export function validateEditAppointment(
     }
   }
 
+  const locationRaw = (raw.location ?? "").trim();
+  let location: BookingLocation | null = null;
+  if (locationRaw) {
+    if ((BOOKING_LOCATIONS as readonly string[]).includes(locationRaw)) {
+      location = locationRaw as BookingLocation;
+    } else {
+      errors.location = "Choose Gina's or Annette's.";
+    }
+  }
+
   const fee = parseMoney(raw.fee, "fee", errors);
   const tip = parseMoney(raw.tip, "tip", errors);
 
@@ -130,7 +148,17 @@ export function validateEditAppointment(
 
   return {
     ok: true,
-    value: { client_id, appointment_id, date, time_slot, service_type, fee, tip, notes },
+    value: {
+      client_id,
+      appointment_id,
+      date,
+      time_slot,
+      service_type,
+      location,
+      fee,
+      tip,
+      notes,
+    },
   };
 }
 
@@ -141,6 +169,7 @@ export function buildEditAppointmentUpdate(
     date: v.date,
     time_slot: v.time_slot,
     service_type: v.service_type,
+    location: v.location,
     fee: v.fee,
     tip: v.tip,
     notes: v.notes,

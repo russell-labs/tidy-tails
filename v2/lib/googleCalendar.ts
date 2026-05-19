@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import { customerBookingLocationLabel } from "./booking";
 import type { Appointment, Client, Pet } from "./data/types";
 import { formatMoney, fullName } from "./format";
 
@@ -50,15 +51,18 @@ export type CalendarAwareBookingSlot = {
 export type CalendarEventInput = {
   appointment: Pick<
     Appointment,
-    "date" | "time_slot" | "service" | "price" | "notes"
+    "date" | "time_slot" | "service" | "price" | "notes" | "location"
   >;
-  client: Pick<Client, "first_name" | "last_name" | "phone">;
+  client: Pick<Client, "first_name" | "last_name" | "phone" | "email" | "address">;
   pet: Pick<Pet, "name" | "breed" | "grooming_notes">;
+  sendCustomerInvite?: boolean;
 };
 
 export type GoogleCalendarEventPayload = {
   summary: string;
   description: string;
+  location?: string;
+  attendees?: { email: string; displayName?: string }[];
   start: { dateTime: string; timeZone: string };
   end: { dateTime: string; timeZone: string };
 };
@@ -248,6 +252,7 @@ export function buildGoogleCalendarEvent({
   appointment,
   client,
   pet,
+  sendCustomerInvite = false,
 }: CalendarEventInput): GoogleCalendarEventPayload | null {
   const window = buildCalendarEventWindow(
     appointment.date,
@@ -257,19 +262,28 @@ export function buildGoogleCalendarEvent({
   if (!window) return null;
 
   const owner = fullName(client.first_name, client.last_name);
+  const customerLocation = customerBookingLocationLabel(appointment.location);
   const details = [
     `Owner: ${owner}`,
     client.phone ? `Phone: ${client.phone}` : null,
+    client.email ? `Email: ${client.email}` : null,
     pet.breed ? `Pet: ${pet.name} (${pet.breed})` : `Pet: ${pet.name}`,
     appointment.service ? `Service: ${appointment.service}` : null,
     appointment.price != null ? `Fee: ${formatMoney(appointment.price)}` : null,
+    customerLocation ? `Location: ${customerLocation}` : null,
     appointment.notes ? `Booking notes: ${appointment.notes}` : null,
     pet.grooming_notes ? `Grooming notes: ${pet.grooming_notes}` : null,
   ].filter(Boolean);
+  const attendees =
+    sendCustomerInvite && client.email
+      ? [{ email: client.email, displayName: owner }]
+      : undefined;
 
   return {
     summary: `Tidy Tails: ${pet.name}`,
     description: details.join("\n"),
+    ...(customerLocation ? { location: customerLocation } : {}),
+    ...(attendees ? { attendees } : {}),
     start: {
       dateTime: window.startDateTime,
       timeZone: window.timeZone,

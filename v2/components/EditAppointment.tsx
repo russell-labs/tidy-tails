@@ -13,8 +13,11 @@ import {
 } from "@/lib/actions/editAppointment";
 import {
   availableBookingTimeSlots,
+  BOOKING_LOCATIONS,
+  bookingLocationLabel,
   bookedTimesForDate,
   SERVICE_TYPES,
+  type BookingLocation,
   type ServiceType,
 } from "@/lib/booking";
 import type { Appointment } from "@/lib/data/types";
@@ -122,6 +125,11 @@ function EditAppointmentForm({
   const [serviceType, setServiceType] = useState(
     serviceCodeFromLabel(appointment.service),
   );
+  const [location, setLocation] = useState<BookingLocation | "">(
+    (appointment.location === "gina" || appointment.location === "annette"
+      ? appointment.location
+      : "") as BookingLocation | "",
+  );
   const [fee, setFee] = useState(
     appointment.price != null ? String(appointment.price) : "",
   );
@@ -181,6 +189,7 @@ function EditAppointmentForm({
       date,
       time_slot: time,
       service_type: serviceType,
+      location,
       fee,
       tip,
       notes,
@@ -220,6 +229,7 @@ function EditAppointmentForm({
       <input type="hidden" name="date" value={date} />
       <input type="hidden" name="time_slot" value={time} />
       <input type="hidden" name="service_type" value={serviceType} />
+      <input type="hidden" name="location" value={location} />
       <input type="hidden" name="fee" value={fee} />
       <input type="hidden" name="tip" value={tip} />
       <input type="hidden" name="notes" value={notes} />
@@ -329,6 +339,20 @@ function EditAppointmentForm({
               ))}
             </select>
           </Field>
+          <Field label="Location" error={errors.location}>
+            <select
+              value={location}
+              onChange={(e) => setLocation(e.target.value as BookingLocation | "")}
+              className={fieldClass}
+            >
+              <option value="">Not set</option>
+              {BOOKING_LOCATIONS.map((code) => (
+                <option key={code} value={code}>
+                  {bookingLocationLabel(code)}
+                </option>
+              ))}
+            </select>
+          </Field>
           <Field label="Fee" error={errors.fee}>
             <input
               type="text"
@@ -419,6 +443,10 @@ function EditAppointmentForm({
                   ? (SERVICE_LABELS[serviceType as ServiceType] ?? "Not set")
                   : "Not set"
               }
+            />
+            <ReviewRow
+              label="Location"
+              value={location ? bookingLocationLabel(location) ?? "Not set" : "Not set"}
             />
             <ReviewRow label="Fee" value={fee ? formatMoney(Number(fee)) : "Not set"} />
             <ReviewRow label="Tip" value={tip ? formatMoney(Number(tip)) : "Not set"} />
@@ -558,6 +586,7 @@ function DeleteResultScreen({
         <ReviewRow label="Date" value={state.summary.date} />
         <ReviewRow label="Time" value={state.summary.time ?? "Not set"} />
         <ReviewRow label="Service" value={state.summary.service ?? "Not set"} />
+        <ReviewRow label="Location" value={state.summary.location ?? "Not set"} />
         <ReviewRow
           label="Fee"
           value={

@@ -70,6 +70,8 @@ describe("validateBookingInput — required fields", () => {
         date: "2026-06-01",
         time_slot: "10:30am",
         service_type: null,
+        location: null,
+        send_invite: false,
         fee: null,
         notes: null,
       });
@@ -148,6 +150,8 @@ describe("validateBookingInput — optional fields", () => {
         date: "2026-06-01",
         time_slot: "10:00",
         service_type: "full_groom",
+        location: "gina",
+        send_invite: "on",
         fee: "72.50",
         notes: "Use hypoallergenic shampoo",
       },
@@ -157,6 +161,8 @@ describe("validateBookingInput — optional fields", () => {
     if (r.ok) {
       expect(r.value.time_slot).toBe("10:00");
       expect(r.value.service_type).toBe("full_groom");
+      expect(r.value.location).toBe("gina");
+      expect(r.value.send_invite).toBe(true);
       expect(r.value.fee).toBe(72.5);
       expect(r.value.notes).toBe("Use hypoallergenic shampoo");
     }
@@ -221,6 +227,21 @@ describe("validateBookingInput — optional fields", () => {
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.errors.service_type).toBeTruthy();
   });
+
+  it("rejects a location outside the live schema enum", () => {
+    const r = validateBookingInput(
+      {
+        client_id: "c1",
+        pet_id: "p1",
+        date: "2026-06-01",
+        time_slot: "10:30am",
+        location: "mobile",
+      },
+      TODAY,
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.errors.location).toBeTruthy();
+  });
 });
 
 describe("findOwnedPet — pet/client ownership check", () => {
@@ -247,6 +268,8 @@ describe("buildAppointmentInsert — payload + null policy", () => {
       date: "2026-06-01",
       time_slot: "10:30am",
       service_type: null,
+      location: null,
+      send_invite: false,
       fee: null,
       notes: null,
     });
@@ -256,6 +279,7 @@ describe("buildAppointmentInsert — payload + null policy", () => {
       date: "2026-06-01",
       time_slot: "10:30am",
       service_type: null,
+      location: null,
       fee: null,
       notes: null,
       status: "booked",
@@ -269,27 +293,33 @@ describe("buildAppointmentInsert — payload + null policy", () => {
       date: "2026-06-01",
       time_slot: "10:00",
       service_type: "nail_trim",
+      location: "annette",
+      send_invite: true,
       fee: 25,
       notes: "quick visit",
     });
     expect(payload.time_slot).toBe("10:00");
     expect(payload.service_type).toBe("nail_trim");
+    expect(payload.location).toBe("annette");
     expect(payload.fee).toBe(25);
     expect(payload.notes).toBe("quick visit");
     expect(payload.status).toBe("booked");
+    expect(payload).not.toHaveProperty("send_invite");
   });
 
-  it("never sets id, created_at, tip, rent_paid, location, or net — DB defaults / conservative NULL", () => {
+  it("never sets id, created_at, tip, rent_paid, or net — DB defaults / conservative NULL", () => {
     const payload = buildAppointmentInsert({
       client_id: "c1",
       pet_id: "p1",
       date: "2026-06-01",
       time_slot: "10:30am",
       service_type: null,
+      location: null,
+      send_invite: false,
       fee: null,
       notes: null,
     });
-    for (const k of ["id", "created_at", "tip", "rent_paid", "location", "net"]) {
+    for (const k of ["id", "created_at", "tip", "rent_paid", "net"]) {
       expect(payload).not.toHaveProperty(k);
     }
   });

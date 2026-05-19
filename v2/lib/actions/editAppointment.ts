@@ -11,7 +11,7 @@ import {
 } from "@/lib/googleCalendar.server";
 import { createServerSupabase, getCurrentUser } from "@/lib/supabase/server";
 import { isEditAppointmentWriteEnabled } from "@/lib/writeGate";
-import { hasBookedTimeConflict } from "@/lib/booking";
+import { bookingLocationLabel, hasBookedTimeConflict } from "@/lib/booking";
 import {
   buildEditAppointmentUpdate,
   validateEditAppointment,
@@ -26,6 +26,7 @@ export type EditAppointmentSummary = {
   date: string;
   time: string | null;
   service: string | null;
+  location: string | null;
   fee: number | null;
   tip: number | null;
   calendar?: {
@@ -70,6 +71,7 @@ export async function editAppointment(
     date: String(formData.get("date") ?? ""),
     time_slot: String(formData.get("time_slot") ?? ""),
     service_type: String(formData.get("service_type") ?? ""),
+    location: String(formData.get("location") ?? ""),
     fee: String(formData.get("fee") ?? ""),
     tip: String(formData.get("tip") ?? ""),
     notes: String(formData.get("notes") ?? ""),
@@ -107,6 +109,7 @@ export async function editAppointment(
     date: payload.date,
     time: payload.time_slot,
     service: serviceLabel(payload.service_type),
+    location: bookingLocationLabel(payload.location),
     fee: payload.fee,
     tip: payload.tip,
   };
@@ -218,6 +221,7 @@ export async function deleteAppointment(
     time: existing.time_slot,
     service: existing.service,
     fee: existing.price,
+    location: bookingLocationLabel(existing.location),
     tip: existing.tip,
   };
 

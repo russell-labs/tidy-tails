@@ -445,10 +445,12 @@ export async function syncAppointmentToGoogleCalendar({
   appointment,
   client,
   pet,
+  sendCustomerInvite = false,
 }: {
   appointment: Appointment;
   client: Client;
   pet: Pet;
+  sendCustomerInvite?: boolean;
 }): Promise<GoogleCalendarSyncResult> {
   if (!isGoogleCalendarSyncEnabled()) {
     return { status: "disabled", message: "Google Calendar sync is switched off." };
@@ -457,7 +459,12 @@ export async function syncAppointmentToGoogleCalendar({
     return { status: "disabled", message: "Google Calendar is not configured." };
   }
 
-  const event = buildGoogleCalendarEvent({ appointment, client, pet });
+  const event = buildGoogleCalendarEvent({
+    appointment,
+    client,
+    pet,
+    sendCustomerInvite,
+  });
   if (!event) {
     await markAppointmentSync(appointment.id, {
       google_sync_status: "skipped",
@@ -482,9 +489,14 @@ export async function syncAppointmentToGoogleCalendar({
     const accessToken = await refreshAccessToken(connection);
     const existingEventId = appointment.google_event_id;
     const calendarId = connection.calendar_id || CALENDAR_ID;
-    const url = existingEventId
+    const baseUrl = existingEventId
       ? `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(existingEventId)}`
       : `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events`;
+    const url = new URL(baseUrl);
+    url.searchParams.set(
+      "sendUpdates",
+      sendCustomerInvite && event.attendees?.length ? "all" : "none",
+    );
     const response = await fetch(url, {
       method: existingEventId ? "PATCH" : "POST",
       headers: {

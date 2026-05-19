@@ -26,6 +26,7 @@ import {
   syncAppointmentToGoogleCalendar,
 } from "@/lib/googleCalendar.server";
 import {
+  bookingLocationLabel,
   buildAppointmentInsert,
   findOwnedPet,
   hasBookedTimeConflict,
@@ -41,6 +42,8 @@ export type BookingSummary = {
   date: string;
   time: string | null;
   service: string | null; // user-facing label
+  location: string | null;
+  customerInvite: string | null;
   fee: number | null;
   calendar?: {
     status: "disabled" | "not_connected" | "skipped" | "synced" | "failed";
@@ -76,6 +79,8 @@ export async function createBooking(
     date: String(formData.get("date") ?? ""),
     time_slot: String(formData.get("time_slot") ?? ""),
     service_type: String(formData.get("service_type") ?? ""),
+    location: String(formData.get("location") ?? ""),
+    send_invite: String(formData.get("send_invite") ?? ""),
     fee: String(formData.get("fee") ?? ""),
     notes: String(formData.get("notes") ?? ""),
   };
@@ -115,6 +120,13 @@ export async function createBooking(
     date: payload.date,
     time: payload.time_slot,
     service: serviceLabel(payload.service_type),
+    location: bookingLocationLabel(payload.location),
+    customerInvite:
+      booking.send_invite && record.client.email
+        ? record.client.email
+        : booking.send_invite
+          ? "No owner email on file"
+          : null,
     fee: payload.fee,
   };
 
@@ -183,6 +195,7 @@ export async function createBooking(
     appointment: savedAppointment,
     client: record.client,
     pet,
+    sendCustomerInvite: booking.send_invite && Boolean(record.client.email),
   });
   summary.calendar = { status: calendar.status, message: calendar.message };
   revalidatePath(`/clients/${booking.client_id}`);

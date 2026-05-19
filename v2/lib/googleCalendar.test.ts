@@ -62,12 +62,15 @@ describe("Google Calendar event building", () => {
         time_slot: "10am",
         service: "Full groom",
         price: 80,
+        location: "gina",
         notes: "Bring harness",
       },
       client: {
         first_name: "Mary",
         last_name: "Anca",
         phone: "705-330-1807",
+        email: "mary@example.com",
+        address: "1 Main St",
       },
       pet: {
         name: "Whiskey",
@@ -77,12 +80,46 @@ describe("Google Calendar event building", () => {
     });
 
     expect(event?.summary).toBe("Tidy Tails: Whiskey");
+    expect(event?.location).toBe("Tidy Tails at Gina's");
     expect(event?.start).toEqual({
       dateTime: "2026-06-29T10:00:00",
       timeZone: "America/Toronto",
     });
     expect(event?.description).toContain("Owner: Mary Anca");
     expect(event?.description).toContain("Fee: $80.00");
+    expect(event?.description).toContain("Location: Tidy Tails at Gina's");
+    expect(event?.attendees).toBeUndefined();
+  });
+
+  it("adds a customer attendee only when Sam chooses to email the invite", () => {
+    const event = buildGoogleCalendarEvent({
+      appointment: {
+        date: "2026-06-29",
+        time_slot: "10am",
+        service: "Full groom",
+        price: 80,
+        location: "annette",
+        notes: null,
+      },
+      client: {
+        first_name: "Mary",
+        last_name: "Anca",
+        phone: "705-330-1807",
+        email: "mary@example.com",
+        address: null,
+      },
+      pet: {
+        name: "Whiskey",
+        breed: "Silver Terrier Yorkie",
+        grooming_notes: null,
+      },
+      sendCustomerInvite: true,
+    });
+
+    expect(event?.attendees).toEqual([
+      { email: "mary@example.com", displayName: "Mary Anca" },
+    ]);
+    expect(event?.location).toBe("Tidy Tails at Annette's");
   });
 });
 

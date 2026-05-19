@@ -8,9 +8,12 @@ import {
 import { createBooking, type BookingState } from "@/lib/actions/appointments";
 import {
   availableBookingTimeSlots,
+  BOOKING_LOCATIONS,
+  bookingLocationLabel,
   bookedTimesForDate,
   SERVICE_TYPES,
   validateBookingInput,
+  type BookingLocation,
   type BookingErrors,
   type ServiceType,
 } from "@/lib/booking";
@@ -127,6 +130,8 @@ function BookingForm({
   const [time, setTime] = useState("");
   const initialDefaults = bookingDefaults(pets[0], appointments);
   const [serviceType, setServiceType] = useState(initialDefaults.serviceType);
+  const [location, setLocation] = useState<BookingLocation | "">("");
+  const [sendInvite, setSendInvite] = useState(Boolean(client.email));
   const [fee, setFee] = useState(initialDefaults.fee);
   const [notes, setNotes] = useState("");
   const [availabilityResult, setAvailabilityResult] = useState<{
@@ -188,6 +193,8 @@ function BookingForm({
       date,
       time_slot: time,
       service_type: serviceType,
+      location,
+      send_invite: sendInvite ? "on" : "",
       fee,
       notes,
     });
@@ -226,6 +233,8 @@ function BookingForm({
       <input type="hidden" name="date" value={date} />
       <input type="hidden" name="time_slot" value={time} />
       <input type="hidden" name="service_type" value={serviceType} />
+      <input type="hidden" name="location" value={location} />
+      <input type="hidden" name="send_invite" value={sendInvite ? "on" : ""} />
       <input type="hidden" name="fee" value={fee} />
       <input type="hidden" name="notes" value={notes} />
 
@@ -357,6 +366,43 @@ function BookingForm({
             </select>
           </Field>
 
+          <Field
+            label="Location"
+            error={errors.location}
+            hint="Used in the calendar event and customer reminder copy."
+          >
+            <select
+              value={location}
+              onChange={(e) => setLocation(e.target.value as BookingLocation | "")}
+              className={fieldClass}
+            >
+              <option value="">Not set yet</option>
+              {BOOKING_LOCATIONS.map((code) => (
+                <option key={code} value={code}>
+                  {bookingLocationLabel(code)}
+                </option>
+              ))}
+            </select>
+          </Field>
+
+          <label className="flex items-start gap-2 rounded-xl border border-line bg-surface px-3.5 py-3 text-sm text-ink-soft">
+            <input
+              type="checkbox"
+              checked={sendInvite}
+              disabled={!client.email}
+              onChange={(e) => setSendInvite(e.target.checked)}
+              className="mt-1 h-4 w-4 accent-brand disabled:opacity-40"
+            />
+            <span>
+              <span className="font-semibold text-ink">Email calendar invite</span>
+              <span className="block text-xs leading-relaxed">
+                {client.email
+                  ? `Send to ${client.email} when Sam confirms the booking.`
+                  : "No owner email is on file, so no customer invite can be sent."}
+              </span>
+            </span>
+          </label>
+
           <Field label="Fee" error={errors.fee} hint="Prefilled from the pet's last charged fee when available.">
             <input
               type="text"
@@ -400,6 +446,20 @@ function BookingForm({
             <ReviewRow
               label="Service"
               value={serviceType ? serviceLabel(serviceType) ?? "Not set" : "Not set"}
+            />
+            <ReviewRow
+              label="Location"
+              value={location ? bookingLocationLabel(location) ?? "Not set" : "Not set"}
+            />
+            <ReviewRow
+              label="Invite"
+              value={
+                sendInvite && client.email
+                  ? client.email
+                  : sendInvite
+                    ? "No owner email on file"
+                    : "No customer invite"
+              }
             />
             <ReviewRow
               label="Fee"
@@ -531,6 +591,11 @@ function ResultScreen({
         <ReviewRow label="Date" value={formatReviewDate(summary.date)} />
         <ReviewRow label="Time" value={summary.time ?? "No time set"} />
         <ReviewRow label="Service" value={summary.service ?? "Not set"} />
+        <ReviewRow label="Location" value={summary.location ?? "Not set"} />
+        <ReviewRow
+          label="Invite"
+          value={summary.customerInvite ?? "No customer invite"}
+        />
         <ReviewRow
           label="Fee"
           value={summary.fee != null ? formatMoney(summary.fee) : "No fee set"}

@@ -143,6 +143,17 @@ describe("renderReminderTemplate — placeholder replacement", () => {
     ).toBe("Sam / Scout / Jun 1, 2026 / 10am");
   });
 
+  it("replaces the appointment location placeholder with a customer-facing label", () => {
+    expect(
+      renderReminderTemplate("See you at [location]", {
+        ownerFirstName: "Sam",
+        petName: "Scout",
+        appointmentDate: "2026-06-01",
+        appointmentLocation: "gina",
+      }),
+    ).toBe("See you at Tidy Tails at Gina's");
+  });
+
   it("uses humane fallbacks for missing values", () => {
     expect(
       renderReminderTemplate("[first name] [pet name] [date] [time]", {

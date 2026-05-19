@@ -16,6 +16,7 @@
 // Unit-tested in reminders.test.ts.
 
 import type { Appointment } from "./data/types";
+import { customerBookingLocationLabel } from "./booking";
 import { digitsOnly, formatDate } from "./format";
 
 function pad(n: number): string {
@@ -48,6 +49,7 @@ export type ReminderContext = {
   ownerFirstName: string;
   petName: string | null; // null → "your dog"
   appointmentDate: string | null; // ISO; null → a generic check-in message
+  appointmentLocation?: string | null;
   appointmentTemplate?: string;
   rebookTemplate?: string;
 };
@@ -57,6 +59,7 @@ export type ReminderTemplateVars = {
   petName: string | null;
   appointmentDate: string | null;
   appointmentTime?: string | null;
+  appointmentLocation?: string | null;
 };
 
 export function renderReminderTemplate(
@@ -67,12 +70,16 @@ export function renderReminderTemplate(
   const pet = (vars.petName ?? "").trim() || "your dog";
   const date = vars.appointmentDate ? formatDate(vars.appointmentDate) : "soon";
   const time = (vars.appointmentTime ?? "").trim() || "the scheduled time";
+  const location =
+    customerBookingLocationLabel(vars.appointmentLocation) ??
+    ((vars.appointmentLocation ?? "").trim() || "Tidy Tails");
 
   return template
     .replaceAll("[first name]", owner)
     .replaceAll("[pet name]", pet)
     .replaceAll("[date]", date)
     .replaceAll("[time]", time)
+    .replaceAll("[location]", location)
     .trim();
 }
 
@@ -87,7 +94,7 @@ export function buildReminderMessage(ctx: ReminderContext): string {
   if (ctx.appointmentDate) {
     return renderReminderTemplate(
       ctx.appointmentTemplate ??
-        "Hi [first name], a friendly reminder that [pet name] has a grooming appointment at Tidy Tails on [date]. See you then! — Samantha",
+        "Hi [first name], a friendly reminder that [pet name] has a grooming appointment at [location] on [date]. See you then! — Samantha",
       ctx,
     );
   }

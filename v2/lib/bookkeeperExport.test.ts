@@ -49,6 +49,7 @@ const appointments: Appointment[] = [
     price: 60,
     tip: 10,
     notes: "#4, left ears and tail",
+    location: "gina",
     google_calendar_id: null,
     google_event_id: null,
     google_sync_status: null,
@@ -69,6 +70,7 @@ describe("bookkeeper export rows", () => {
         "705-330-1807",
         "Whiskey",
         "Silver Terrier Yorkie",
+        "Tidy Tails (Gina)",
         "",
         "",
         60,
@@ -109,6 +111,7 @@ describe("createBookkeeperWorkbookBuffer", () => {
 
     expect(sheet?.getRow(1).values).toEqual([, ...BOOKKEEPER_HEADERS]);
     expect(sheet?.getCell("A2").value).toBe("2026-04-10");
-    expect(sheet?.getCell("J2").value).toBe(70);
+    expect(sheet?.getCell("F2").value).toBe("Tidy Tails (Gina)");
+    expect(sheet?.getCell("K2").value).toBe(70);
   });
 });

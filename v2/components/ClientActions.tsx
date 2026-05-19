@@ -128,6 +128,7 @@ function ReminderForm({
       ownerFirstName: client.first_name,
       petName,
       appointmentDate: upcoming?.date ?? null,
+      appointmentLocation: upcoming?.location ?? null,
       appointmentTemplate: reminderSettings.appointmentReminderTemplate,
       rebookTemplate: reminderSettings.rebookReminderTemplate,
     }),
