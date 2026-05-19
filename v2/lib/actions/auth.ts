@@ -8,6 +8,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { recordAuditEvent } from "@/lib/audit.server";
 import { isAllowedOperatorEmail } from "@/lib/operatorAccess";
 import { createServerSupabase } from "@/lib/supabase/server";
 
@@ -60,10 +61,18 @@ export async function signIn(
 
   // Drop any cached render produced while signed out, then enter the app.
   revalidatePath("/", "layout");
+  await recordAuditEvent({
+    eventType: "auth.signed_in",
+    summary: `Signed in as ${user?.email ?? "operator"}.`,
+  });
   redirect("/");
 }
 
 export async function signOut() {
+  await recordAuditEvent({
+    eventType: "auth.signed_out",
+    summary: "Signed out.",
+  });
   const supabase = await createServerSupabase();
   await supabase.auth.signOut();
   revalidatePath("/", "layout");

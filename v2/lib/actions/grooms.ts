@@ -19,6 +19,7 @@
 // written. `groomer_id` is stamped by the column DEFAULT auth.uid().
 
 import { revalidatePath } from "next/cache";
+import { recordAuditEvent } from "@/lib/audit.server";
 import { dataMode, getClientRecord } from "@/lib/data/repo";
 import { serviceLabel } from "@/lib/data/live";
 import { createServerSupabase, getCurrentUser } from "@/lib/supabase/server";
@@ -145,5 +146,20 @@ export async function logGroom(
     };
   }
   revalidatePath(`/clients/${groom.client_id}`);
+  await recordAuditEvent({
+    eventType: "groom.logged",
+    clientId: groom.client_id,
+    petId: groom.pet_id,
+    summary: `Logged groom for ${pet.name} under ${summary.ownerName}.`,
+    metadata: {
+      date: summary.date,
+      service: summary.service,
+      fee: summary.fee,
+      tip: summary.tip,
+      paymentMethod: summary.paymentMethod,
+      paymentStatus: summary.paymentStatus,
+      status: "completed",
+    },
+  });
   return { status: "saved", summary };
 }

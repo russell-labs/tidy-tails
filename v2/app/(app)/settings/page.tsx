@@ -2,6 +2,12 @@ import type { Metadata } from "next";
 import { signOut } from "@/lib/actions/auth";
 import { disconnectGoogleCalendarAction } from "@/lib/actions/googleCalendar";
 import { saveOperatorSettings } from "@/lib/actions/settings";
+import {
+  auditEventLabel,
+  auditEventTone,
+  type AuditEvent,
+} from "@/lib/audit";
+import { loadRecentAuditEvents } from "@/lib/audit.server";
 import { readGoogleCalendarConnection } from "@/lib/googleCalendar.server";
 import { LAPSED_THRESHOLD_OPTIONS } from "@/lib/operatorSettings";
 import { readOperatorSettings } from "@/lib/operatorSettings.server";
@@ -41,6 +47,47 @@ function Row({ label, value }: { label: string; value: string }) {
   );
 }
 
+const ACTIVITY_TONE_CLASSES = {
+  neutral: "bg-canvas text-ink-soft",
+  read: "bg-canvas text-ink-soft",
+  warn: "bg-warn-soft text-warn",
+  write: "bg-brand-soft text-brand-ink",
+};
+
+function formatActivityTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  return new Intl.DateTimeFormat("en-CA", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(date);
+}
+
+function ActivityRow({ event }: { event: AuditEvent }) {
+  const tone = auditEventTone(event.event_type);
+  return (
+    <li className="border-b border-line px-3.5 py-3 last:border-b-0">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-ink">
+            {auditEventLabel(event.event_type)}
+          </p>
+          <p className="mt-1 text-xs leading-relaxed text-ink-soft">
+            {event.summary}
+          </p>
+        </div>
+        <span
+          className={`shrink-0 rounded-full px-2 py-1 text-[11px] font-semibold ${ACTIVITY_TONE_CLASSES[tone]}`}
+        >
+          {formatActivityTime(event.created_at)}
+        </span>
+      </div>
+    </li>
+  );
+}
+
 export default async function SettingsPage({
   searchParams,
 }: {
@@ -49,6 +96,7 @@ export default async function SettingsPage({
   const user = await getCurrentUser();
   const settings = await readOperatorSettings();
   const calendar = await readGoogleCalendarConnection();
+  const recentActivity = await loadRecentAuditEvents(12);
   const params = searchParams ? await searchParams : {};
 
   return (
@@ -62,6 +110,22 @@ export default async function SettingsPage({
       <Card title="Business">
         <Row label="Business name" value="Tidy Tails" />
         <Row label="Reminder sender" value="Samantha" />
+      </Card>
+
+      <Card title="Activity">
+        {recentActivity.length > 0 ? (
+          <ul>
+            {recentActivity.map((event) => (
+              <ActivityRow key={event.id} event={event} />
+            ))}
+          </ul>
+        ) : (
+          <p className="px-3.5 py-3 text-sm leading-relaxed text-ink-soft">
+            No activity has been recorded yet. Once the audit table is applied,
+            bookings, edits, exports, calendar changes, and sent reminders will
+            appear here.
+          </p>
+        )}
       </Card>
 
       <Card title="Calendar">

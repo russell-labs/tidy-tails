@@ -13,6 +13,7 @@
 // has no first pet.
 
 import { revalidatePath } from "next/cache";
+import { recordAuditEvent } from "@/lib/audit.server";
 import { dataMode } from "@/lib/data/repo";
 import { createServerSupabase, getCurrentUser } from "@/lib/supabase/server";
 import { isAddHouseholdWriteEnabled } from "@/lib/writeGate";
@@ -141,5 +142,11 @@ export async function saveIntake(
   }
 
   revalidatePath("/");
+  await recordAuditEvent({
+    eventType: "client.created",
+    clientId: clientRow.id,
+    summary: `Added household ${summary.ownerName} with pet ${summary.petName}.`,
+    metadata: { fee: summary.typicalFee },
+  });
   return { status: "saved", summary };
 }

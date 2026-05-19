@@ -17,6 +17,7 @@
 // authenticated insert; it is never set explicitly here.
 
 import { revalidatePath } from "next/cache";
+import { recordAuditEvent } from "@/lib/audit.server";
 import { dataMode, getClientRecord, loadAppointments } from "@/lib/data/repo";
 import { mapAppointmentRow, serviceLabel } from "@/lib/data/live";
 import { createServerSupabase, getCurrentUser } from "@/lib/supabase/server";
@@ -274,6 +275,31 @@ export async function createBooking(
     };
   }
   revalidatePath(`/clients/${booking.client_id}`);
+  await recordAuditEvent({
+    eventType: "appointment.created",
+    clientId: booking.client_id,
+    petId: booking.pet_id,
+    appointmentId: savedAppointment.id,
+    summary: `Booked ${pet.name} for ${summary.ownerName}.`,
+    metadata: {
+      date: summary.date,
+      service: summary.service,
+      location: summary.location,
+      fee: summary.fee,
+      calendarStatus: summary.calendar?.status,
+      status: "booked",
+    },
+  });
+  if (summary.bookingTextSend?.status === "sent") {
+    await recordAuditEvent({
+      eventType: "sms.sent",
+      clientId: booking.client_id,
+      petId: booking.pet_id,
+      appointmentId: savedAppointment.id,
+      summary: `Sent booking text for ${pet.name} to ${summary.ownerName}.`,
+      metadata: { channel: "sms", date: summary.date },
+    });
+  }
   return { status: "saved", summary };
 }
 

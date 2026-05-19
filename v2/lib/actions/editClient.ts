@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { recordAuditEvent } from "@/lib/audit.server";
 import { dataMode, getClientRecord } from "@/lib/data/repo";
 import { createServerSupabase, getCurrentUser } from "@/lib/supabase/server";
 import { isEditClientWriteEnabled } from "@/lib/writeGate";
@@ -94,5 +95,10 @@ export async function editClient(
 
   revalidatePath("/");
   revalidatePath(`/clients/${client.client_id}`);
+  await recordAuditEvent({
+    eventType: "client.updated",
+    clientId: client.client_id,
+    summary: `Edited household ${summary.ownerName}.`,
+  });
   return { status: "saved", summary };
 }

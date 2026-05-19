@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { recordAuditEvent } from "@/lib/audit.server";
 import { dataMode, getClientRecord, loadAppointments } from "@/lib/data/repo";
 import { mapAppointmentRow, serviceLabel } from "@/lib/data/live";
 import type { Appointment } from "@/lib/data/types";
@@ -202,6 +203,23 @@ export async function editAppointment(
 
   revalidatePath(`/clients/${appointment.client_id}`);
   revalidatePath(`/clients/${appointment.client_id}/pets/${existing.pet_id}`);
+  await recordAuditEvent({
+    eventType: "appointment.updated",
+    clientId: appointment.client_id,
+    petId: existing.pet_id,
+    appointmentId: appointment.appointment_id,
+    summary: `Edited visit for ${summary.petName} under ${summary.ownerName}.`,
+    metadata: {
+      date: summary.date,
+      service: summary.service,
+      location: summary.location,
+      fee: summary.fee,
+      tip: summary.tip,
+      paymentMethod: summary.paymentMethod,
+      paymentStatus: summary.paymentStatus,
+      calendarStatus: summary.calendar?.status,
+    },
+  });
   return { status: "saved", summary };
 }
 
@@ -269,6 +287,18 @@ export async function deleteAppointment(
 
   revalidatePath(`/clients/${clientId}`);
   if (existing.pet_id) revalidatePath(`/clients/${clientId}/pets/${existing.pet_id}`);
+  await recordAuditEvent({
+    eventType: "appointment.deleted",
+    clientId,
+    petId: existing.pet_id,
+    summary: `Deleted booking for ${summary.petName} under ${summary.ownerName}.`,
+    metadata: {
+      date: summary.date,
+      service: summary.service,
+      fee: summary.fee,
+      calendarStatus: calendar.status,
+    },
+  });
   return {
     status: "deleted",
     summary,

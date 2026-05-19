@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { recordAuditEvent } from "@/lib/audit.server";
 import { handleGoogleCalendarCallback } from "@/lib/googleCalendar.server";
 
 export async function GET(request: Request) {
@@ -10,6 +11,10 @@ export async function GET(request: Request) {
 
   const target = new URL("/settings", request.url);
   if (result.ok) {
+    await recordAuditEvent({
+      eventType: "google_calendar.connected",
+      summary: "Connected Google Calendar.",
+    });
     target.searchParams.set("calendar", "connected");
   } else {
     target.searchParams.set("calendar", "error");
@@ -17,4 +22,3 @@ export async function GET(request: Request) {
   }
   return NextResponse.redirect(target);
 }
-

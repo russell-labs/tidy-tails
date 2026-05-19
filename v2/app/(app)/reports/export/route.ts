@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { recordAuditEvent } from "@/lib/audit.server";
 import { createBookkeeperWorkbookBuffer } from "@/lib/bookkeeperExport";
 import { loadDataset } from "@/lib/data/repo";
 import { getCurrentUser } from "@/lib/supabase/server";
@@ -58,6 +59,11 @@ export async function GET(request: NextRequest) {
     from,
     to,
     period,
+  });
+  await recordAuditEvent({
+    eventType: "bookkeeper.exported",
+    summary: `Exported bookkeeper report for ${from} to ${to}.`,
+    metadata: { period },
   });
 
   return new NextResponse(workbook, {

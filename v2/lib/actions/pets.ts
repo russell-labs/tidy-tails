@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { recordAuditEvent } from "@/lib/audit.server";
 import { dataMode, getClientRecord } from "@/lib/data/repo";
 import { createServerSupabase, getCurrentUser } from "@/lib/supabase/server";
 import { isAddPetWriteEnabled } from "@/lib/writeGate";
@@ -98,5 +99,11 @@ export async function addPet(
 
   revalidatePath("/");
   revalidatePath(`/clients/${pet.client_id}`);
+  await recordAuditEvent({
+    eventType: "pet.created",
+    clientId: pet.client_id,
+    summary: `Added pet ${summary.petName} to ${summary.ownerName}.`,
+    metadata: { fee: summary.typicalFee },
+  });
   return { status: "saved", summary };
 }

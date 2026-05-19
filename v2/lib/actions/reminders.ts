@@ -15,6 +15,7 @@
 // from the explicit "Confirm & send" submit.
 
 import { revalidatePath } from "next/cache";
+import { recordAuditEvent } from "@/lib/audit.server";
 import { dataMode, getClientRecord } from "@/lib/data/repo";
 import { createServerSupabase, getCurrentUser } from "@/lib/supabase/server";
 import { isReminderSendEnabled } from "@/lib/writeGate";
@@ -162,6 +163,12 @@ export async function prepareReminder(
   });
 
   revalidatePath(`/clients/${clientId}`);
+  await recordAuditEvent({
+    eventType: "sms.sent",
+    clientId,
+    summary: `Sent reminder text to ${summary.ownerName}.`,
+    metadata: { channel: "sms", date: summary.appointmentDate },
+  });
   return {
     status: "sent",
     summary,

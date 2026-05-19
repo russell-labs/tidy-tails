@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { recordAuditEvent } from "@/lib/audit.server";
 import { dataMode, getClientRecord } from "@/lib/data/repo";
 import { createServerSupabase, getCurrentUser } from "@/lib/supabase/server";
 import { isEditPetWriteEnabled } from "@/lib/writeGate";
@@ -108,5 +109,12 @@ export async function editPet(
 
   revalidatePath(`/clients/${pet.client_id}`);
   revalidatePath(`/clients/${pet.client_id}/pets/${pet.pet_id}`);
+  await recordAuditEvent({
+    eventType: "pet.updated",
+    clientId: pet.client_id,
+    petId: pet.pet_id,
+    summary: `Edited ${summary.petName} under ${summary.ownerName}.`,
+    metadata: { fee: summary.typicalFee },
+  });
   return { status: "saved", summary };
 }
