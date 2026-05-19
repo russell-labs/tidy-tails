@@ -143,7 +143,7 @@ describe("renderReminderTemplate — placeholder replacement", () => {
     ).toBe("Sam / Scout / Jun 1, 2026 / 10am");
   });
 
-  it("replaces the appointment location placeholder with a customer-facing label", () => {
+  it("omits the private shop nickname when Gina's address is not known", () => {
     expect(
       renderReminderTemplate("See you at [location]", {
         ownerFirstName: "Sam",
@@ -151,10 +151,10 @@ describe("renderReminderTemplate — placeholder replacement", () => {
         appointmentDate: "2026-06-01",
         appointmentLocation: "gina",
       }),
-    ).toBe("See you at Tidy Tails at Gina's");
+    ).toBe("See you at the grooming location");
   });
 
-  it("includes Annette's address in customer-facing reminder locations", () => {
+  it("uses Annette's address without naming Annette in customer-facing reminder locations", () => {
     expect(
       renderReminderTemplate("See you at [location]", {
         ownerFirstName: "Sam",
@@ -162,7 +162,7 @@ describe("renderReminderTemplate — placeholder replacement", () => {
         appointmentDate: "2026-06-01",
         appointmentLocation: "annette",
       }),
-    ).toBe("See you at Tidy Tails at Annette's, 290 Millard Street, Orillia");
+    ).toBe("See you at 290 Millard Street, Orillia");
   });
 
   it("uses humane fallbacks for missing values", () => {

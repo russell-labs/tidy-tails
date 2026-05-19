@@ -15,12 +15,12 @@ export function SubmitDog({ label }: { label: string }) {
         strokeLinejoin="round"
         aria-hidden="true"
       >
-        <path d="M8 17c0-5.2 3.8-9 8-9s8 3.8 8 9c0 4.6-3.1 7.5-8 7.5S8 21.6 8 17Z" />
-        <path className="submit-dog-accent" d="M10 10 6.5 5.5 6 14" />
-        <path className="submit-dog-accent" d="M22 10 25.5 5.5 26 14" />
-        <path d="M13 17h.01M19 17h.01" />
-        <path className="submit-dog-accent" d="M15 20h2l-1 1.6Z" />
-        <path d="M12.5 23c1.4 1.2 5.6 1.2 7 0" />
+        <path pathLength="1" d="M8 17c0-5.2 3.8-9 8-9s8 3.8 8 9c0 4.6-3.1 7.5-8 7.5S8 21.6 8 17Z" />
+        <path pathLength="1" className="submit-dog-accent" d="M10 10 6.5 5.5 6 14" />
+        <path pathLength="1" className="submit-dog-accent" d="M22 10 25.5 5.5 26 14" />
+        <path pathLength="1" d="M13 17h.01M19 17h.01" />
+        <path pathLength="1" className="submit-dog-accent" d="M15 20h2l-1 1.6Z" />
+        <path pathLength="1" d="M12.5 23c1.4 1.2 5.6 1.2 7 0" />
       </svg>
       <span>{label}</span>
     </span>
@@ -39,7 +39,7 @@ export function SubmitDogOverlay({
   useEffect(() => {
     const timeout = window.setTimeout(
       () => setVisible(show),
-      show ? 1 : 850,
+      show ? 1 : 1400,
     );
     return () => window.clearTimeout(timeout);
   }, [show]);
@@ -63,12 +63,12 @@ export function SubmitDogOverlay({
           strokeLinejoin="round"
           aria-hidden="true"
         >
-          <path d="M8 17c0-5.2 3.8-9 8-9s8 3.8 8 9c0 4.6-3.1 7.5-8 7.5S8 21.6 8 17Z" />
-          <path className="submit-dog-accent" d="M10 10 6.5 5.5 6 14" />
-          <path className="submit-dog-accent" d="M22 10 25.5 5.5 26 14" />
-          <path d="M13 17h.01M19 17h.01" />
-          <path className="submit-dog-accent" d="M15 20h2l-1 1.6Z" />
-          <path d="M12.5 23c1.4 1.2 5.6 1.2 7 0" />
+          <path pathLength="1" d="M8 17c0-5.2 3.8-9 8-9s8 3.8 8 9c0 4.6-3.1 7.5-8 7.5S8 21.6 8 17Z" />
+          <path pathLength="1" className="submit-dog-accent" d="M10 10 6.5 5.5 6 14" />
+          <path pathLength="1" className="submit-dog-accent" d="M22 10 25.5 5.5 26 14" />
+          <path pathLength="1" d="M13 17h.01M19 17h.01" />
+          <path pathLength="1" className="submit-dog-accent" d="M15 20h2l-1 1.6Z" />
+          <path pathLength="1" d="M12.5 23c1.4 1.2 5.6 1.2 7 0" />
         </svg>
         <span className="text-sm font-semibold text-ink">{label}</span>
       </div>

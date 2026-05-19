@@ -70,9 +70,12 @@ export function renderReminderTemplate(
   const pet = (vars.petName ?? "").trim() || "your dog";
   const date = vars.appointmentDate ? formatDate(vars.appointmentDate) : "soon";
   const time = (vars.appointmentTime ?? "").trim() || "the scheduled time";
+  const rawLocation = (vars.appointmentLocation ?? "").trim();
   const location =
     customerBookingLocationLabel(vars.appointmentLocation) ??
-    ((vars.appointmentLocation ?? "").trim() || "Tidy Tails");
+    (rawLocation === "gina" || rawLocation === "annette"
+      ? "the grooming location"
+      : rawLocation || "the grooming location");
 
   return template
     .replaceAll("[first name]", owner)

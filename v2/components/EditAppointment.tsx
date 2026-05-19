@@ -30,7 +30,7 @@ import { Sheet } from "./Sheet";
 import { SubmitDogOverlay } from "./SubmitDog";
 
 const fieldClass =
-  "w-full rounded-xl border border-line bg-surface px-3.5 py-2.5 text-base text-ink placeholder:text-ink-faint";
+  "w-full min-w-0 max-w-full rounded-xl border border-line bg-surface px-3.5 py-2.5 text-base text-ink placeholder:text-ink-faint";
 const labelClass = "text-sm font-medium text-ink-soft";
 
 const SERVICE_LABELS: Record<ServiceType, string> = {
@@ -235,7 +235,12 @@ function EditAppointmentForm({
       />
       <SubmitDogOverlay
         label="Checking calendar"
-        show={Boolean(date) && !availability && !pending && !deletePending}
+        show={
+          Boolean(date) &&
+          (availabilityPending || !availability) &&
+          !pending &&
+          !deletePending
+        }
       />
       <input type="hidden" name="client_id" value={clientId} />
       <input type="hidden" name="appointment_id" value={appointment.id} />
@@ -291,17 +296,19 @@ function EditAppointmentForm({
                     }}
                     disabled={!slot.available}
                     aria-pressed={time === slot.time}
-                    className={`rounded-lg border px-2.5 py-2 text-sm font-semibold ${
+                    className={`flex min-h-11 flex-col items-center justify-center rounded-lg border px-2.5 py-2 text-sm font-semibold ${
                       time === slot.time
                         ? "border-brand bg-brand text-white"
                         : slot.available
                           ? "border-line bg-surface text-ink active:bg-brand-soft"
-                          : "border-line bg-canvas text-ink-faint line-through"
+                          : "border-line bg-canvas text-ink-faint"
                     }`}
                   >
-                    <span>{slot.time}</span>
+                    <span className={slot.available ? "" : "line-through"}>
+                      {slot.time}
+                    </span>
                     {!slot.available ? (
-                      <span className="ml-1 text-[10px] font-medium no-underline">
+                      <span className="mt-0.5 text-[10px] font-medium leading-none no-underline">
                         Busy
                       </span>
                     ) : null}

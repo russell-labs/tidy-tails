@@ -29,7 +29,7 @@ import { SubmitDogOverlay } from "./SubmitDog";
 // ship: fixture mode is a dry-run, live mode is gated (see lib/actions).
 
 const fieldClass =
-  "w-full rounded-xl border border-line bg-surface px-3.5 py-2.5 text-base text-ink placeholder:text-ink-faint";
+  "w-full min-w-0 max-w-full rounded-xl border border-line bg-surface px-3.5 py-2.5 text-base text-ink placeholder:text-ink-faint";
 const labelClass = "text-sm font-medium text-ink-soft";
 
 export function AddAppointment({
@@ -244,7 +244,7 @@ function BookingForm({
       <SubmitDogOverlay label="Saving booking" show={pending} />
       <SubmitDogOverlay
         label="Checking calendar"
-        show={Boolean(date) && !availability && !pending}
+        show={Boolean(date) && (availabilityPending || !availability) && !pending}
       />
       {/* Hidden fields carry the current values into the server action,
           regardless of which step is visible. */}
@@ -335,17 +335,19 @@ function BookingForm({
                     }}
                     disabled={!slot.available}
                     aria-pressed={time === slot.time}
-                    className={`rounded-lg border px-2.5 py-2 text-sm font-semibold ${
+                    className={`flex min-h-11 flex-col items-center justify-center rounded-lg border px-2.5 py-2 text-sm font-semibold ${
                       time === slot.time
                         ? "border-brand bg-brand text-white"
                         : slot.available
                           ? "border-line bg-surface text-ink active:bg-brand-soft"
-                          : "border-line bg-canvas text-ink-faint line-through"
+                          : "border-line bg-canvas text-ink-faint"
                     }`}
                   >
-                    <span>{slot.time}</span>
+                    <span className={slot.available ? "" : "line-through"}>
+                      {slot.time}
+                    </span>
                     {!slot.available ? (
-                      <span className="ml-1 text-[10px] font-medium no-underline">
+                      <span className="mt-0.5 text-[10px] font-medium leading-none no-underline">
                         Busy
                       </span>
                     ) : null}

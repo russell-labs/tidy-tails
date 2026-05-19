@@ -420,10 +420,10 @@ describe("buildBookingTextMessage", () => {
         date: "2026-06-01",
         time: "10:30am",
         service: "Full groom",
-        location: "Tidy Tails at Annette's, 290 Millard Street, Orillia",
+        location: "290 Millard Street, Orillia",
       }),
     ).toBe(
-      "Hi Mary, Whiskey is booked for full groom on 2026-06-01 at 10:30am at Tidy Tails at Annette's, 290 Millard Street, Orillia. See you then! — Samantha",
+      "Hi Mary, Whiskey is booked for full groom on 2026-06-01 at 10:30am at 290 Millard Street, Orillia. See you then! — Samantha",
     );
   });
 

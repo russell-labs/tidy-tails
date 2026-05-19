@@ -61,8 +61,9 @@ body {
 .submit-dog-line path,
 .submit-dog-line circle {
   animation: submit-dog-draw 2.6s ease-in-out infinite;
-  stroke-dasharray: 72;
-  stroke-dashoffset: 72;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  will-change: stroke-dashoffset, opacity;
 }
 
 .submit-dog-line .submit-dog-accent {
@@ -72,7 +73,7 @@ body {
 @keyframes submit-dog-draw {
   0% {
     opacity: 0.45;
-    stroke-dashoffset: 72;
+    stroke-dashoffset: 1;
   }
   42%,
   78% {
@@ -81,16 +82,35 @@ body {
   }
   100% {
     opacity: 0.45;
-    stroke-dashoffset: -72;
+    stroke-dashoffset: -1;
+  }
+}
+
+@keyframes submit-dog-pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: scale(0.96);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.04);
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .submit-dog-line path,
   .submit-dog-line circle {
-    animation: none;
+    animation: submit-dog-pulse 1.8s ease-in-out infinite;
     stroke-dashoffset: 0;
   }
+}
+
+input[type="date"] {
+  min-width: 0;
+  max-width: 100%;
+  -webkit-appearance: none;
+  appearance: none;
 }
 
 button {

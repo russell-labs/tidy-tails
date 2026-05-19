@@ -40,9 +40,9 @@ export function bookingLocationLabel(
 export function customerBookingLocationLabel(
   location: BookingLocation | string | null | undefined,
 ): string | null {
-  if (location === "gina") return "Tidy Tails at Gina's";
+  if (location === "gina") return null;
   if (location === "annette") {
-    return "Tidy Tails at Annette's, 290 Millard Street, Orillia";
+    return "290 Millard Street, Orillia";
   }
   return null;
 }
