@@ -384,12 +384,16 @@ export async function readGoogleCalendarBusyBlocksForDate(
       busy: calendar?.busy ?? [],
     };
   } catch (error) {
+    const rawMessage =
+      error instanceof Error
+        ? error.message
+        : "Google Calendar availability failed.";
+    const message = /insufficient|scope|permission/i.test(rawMessage)
+      ? "Google Calendar needs the new availability permission. Tap Connect Google Calendar in Settings and approve access again."
+      : rawMessage;
     return {
       status: "failed",
-      message:
-        error instanceof Error
-          ? error.message
-          : "Google Calendar availability failed.",
+      message,
       busy: [],
     };
   }
