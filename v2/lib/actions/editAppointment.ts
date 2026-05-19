@@ -1,12 +1,17 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { dataMode, getClientRecord } from "@/lib/data/repo";
+import { dataMode, getClientRecord, loadAppointments } from "@/lib/data/repo";
 import { mapAppointmentRow, serviceLabel } from "@/lib/data/live";
 import type { Appointment } from "@/lib/data/types";
-import { syncAppointmentToGoogleCalendar } from "@/lib/googleCalendar.server";
+import {
+  checkGoogleCalendarAppointmentAvailability,
+  deleteAppointmentFromGoogleCalendar,
+  syncAppointmentToGoogleCalendar,
+} from "@/lib/googleCalendar.server";
 import { createServerSupabase, getCurrentUser } from "@/lib/supabase/server";
 import { isEditAppointmentWriteEnabled } from "@/lib/writeGate";
+import { hasBookedTimeConflict } from "@/lib/booking";
 import {
   buildEditAppointmentUpdate,
   validateEditAppointment,
@@ -35,6 +40,16 @@ export type EditAppointmentState =
   | { status: "demo"; summary: EditAppointmentSummary }
   | { status: "gated"; summary: EditAppointmentSummary; message: string }
   | { status: "saved"; summary: EditAppointmentSummary };
+
+export type DeleteAppointmentState =
+  | { status: "idle" }
+  | { status: "error"; message: string }
+  | {
+      status: "demo" | "gated" | "deleted";
+      summary: EditAppointmentSummary;
+      message?: string;
+      calendar?: { status: string; message: string };
+    };
 
 export async function editAppointment(
   _prev: EditAppointmentState,
@@ -106,6 +121,46 @@ export async function editAppointment(
     };
   }
 
+  if (payload.time_slot) {
+    const allAppointments = (await loadAppointments()).filter(
+      (candidate) => candidate.id !== appointment.appointment_id,
+    );
+    if (hasBookedTimeConflict(allAppointments, payload.date, payload.time_slot)) {
+      return {
+        status: "error",
+        errors: {},
+        formError:
+          "That time is already booked in Tidy Tails. Choose another time.",
+      };
+    }
+
+    const calendarRelevantChanged =
+      payload.date !== existing.date ||
+      payload.time_slot !== existing.time_slot ||
+      payload.service_type !== serviceCodeFromLabel(existing.service);
+    if (calendarRelevantChanged) {
+      const googleAvailability = await checkGoogleCalendarAppointmentAvailability({
+        date: payload.date,
+        timeSlot: payload.time_slot,
+        service: summary.service,
+      });
+      if (googleAvailability.status === "busy") {
+        return {
+          status: "error",
+          errors: {},
+          formError: googleAvailability.message,
+        };
+      }
+      if (googleAvailability.status === "failed") {
+        return {
+          status: "error",
+          errors: {},
+          formError: `Couldn't check Google Calendar availability: ${googleAvailability.message}`,
+        };
+      }
+    }
+  }
+
   const supabase = await createServerSupabase();
   const { data, error } = await supabase
     .from("appointments")
@@ -135,4 +190,80 @@ export async function editAppointment(
   revalidatePath(`/clients/${appointment.client_id}`);
   revalidatePath(`/clients/${appointment.client_id}/pets/${existing.pet_id}`);
   return { status: "saved", summary };
+}
+
+export async function deleteAppointment(
+  _prev: DeleteAppointmentState,
+  formData: FormData,
+): Promise<DeleteAppointmentState> {
+  const user = await getCurrentUser();
+  if (!user) return { status: "error", message: "Your session ended. Sign in again." };
+
+  const clientId = String(formData.get("client_id") ?? "").trim();
+  const appointmentId = String(formData.get("appointment_id") ?? "").trim();
+  if (!clientId || !appointmentId) {
+    return { status: "error", message: "Missing appointment details." };
+  }
+
+  const record = await getClientRecord(clientId);
+  const existing = record?.appointments.find((a) => a.id === appointmentId);
+  if (!record || !existing) {
+    return { status: "error", message: "That appointment could not be found." };
+  }
+  const pet = record.pets.find((candidate) => candidate.id === existing.pet_id);
+  const summary: EditAppointmentSummary = {
+    ownerName: fullName(record.client.first_name, record.client.last_name),
+    petName: pet?.name ?? "the pet",
+    date: existing.date,
+    time: existing.time_slot,
+    service: existing.service,
+    fee: existing.price,
+    tip: existing.tip,
+  };
+
+  if (dataMode() === "fixtures") {
+    return { status: "demo", summary, message: "Demo data was not changed." };
+  }
+  if (!isEditAppointmentWriteEnabled()) {
+    return {
+      status: "gated",
+      summary,
+      message: "Booking deletion is not switched on yet. Nothing was deleted.",
+    };
+  }
+
+  const calendar = await deleteAppointmentFromGoogleCalendar(existing);
+  if (calendar.status === "failed") {
+    return {
+      status: "error",
+      message: `Google Calendar could not remove the event: ${calendar.message}`,
+    };
+  }
+
+  const supabase = await createServerSupabase();
+  const { error } = await supabase
+    .from("appointments")
+    .delete()
+    .eq("id", appointmentId)
+    .eq("client_id", clientId);
+  if (error) {
+    return { status: "error", message: "That booking could not be deleted." };
+  }
+
+  revalidatePath(`/clients/${clientId}`);
+  if (existing.pet_id) revalidatePath(`/clients/${clientId}/pets/${existing.pet_id}`);
+  return {
+    status: "deleted",
+    summary,
+    message: "The booking was removed from Tidy Tails.",
+    calendar: { status: calendar.status, message: calendar.message },
+  };
+}
+
+function serviceCodeFromLabel(label: string | null): string | null {
+  if (label === "Full groom") return "full_groom";
+  if (label === "Bath only") return "bath_only";
+  if (label === "Nail trim") return "nail_trim";
+  if (label === "Other") return "other";
+  return null;
 }

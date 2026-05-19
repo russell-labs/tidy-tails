@@ -6,12 +6,14 @@ import { EditAppointment } from "./EditAppointment";
 function Row({
   appointment,
   clientId,
+  appointments,
   petName,
   mode,
   writesEnabled,
 }: {
   appointment: Appointment;
   clientId: string;
+  appointments: Appointment[];
   petName?: string;
   mode: "fixtures" | "live";
   writesEnabled: boolean;
@@ -39,6 +41,7 @@ function Row({
         <EditAppointment
           clientId={clientId}
           appointment={appointment}
+          appointments={appointments}
           petName={petName}
           mode={mode}
           writesEnabled={writesEnabled}
@@ -79,47 +82,32 @@ export function AppointmentHistory({
     );
   }
 
-  const sorted = sortByDateDesc(appointments);
+  const today = todayISO();
+  const upcoming = appointments
+    .filter((a) => a.status === "booked" && a.date >= today)
+    .sort((a, b) => `${a.date} ${a.time_slot ?? ""}`.localeCompare(`${b.date} ${b.time_slot ?? ""}`));
+  const history = sortByDateDesc(
+    appointments.filter((a) => !(a.status === "booked" && a.date >= today)),
+  );
   // Skip fee-less visits so the all-time total never reads low by treating an
   // unrecorded fee as $0.
-  const total = sorted.reduce((sum, a) => sum + (a.price ?? 0) + (a.tip ?? 0), 0);
-  const head = sorted.slice(0, 10);
-  const rest = sorted.slice(10);
+  const total = history.reduce((sum, a) => sum + (a.price ?? 0) + (a.tip ?? 0), 0);
+  const head = history.slice(0, 10);
+  const rest = history.slice(10);
 
   return (
-    <div>
-      <p className="mb-2 text-sm text-ink-soft">
-        {sorted.length} visit{sorted.length === 1 ? "" : "s"} ·{" "}
-        <span className="font-semibold text-ink">{formatMoney(total)}</span>{" "}
-        all-time
-      </p>
-
-      <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">
-        {head.map((a) => (
-          <Row
-            key={a.id}
-            appointment={a}
-            clientId={clientId}
-            petName={petsById?.[a.pet_id]}
-            mode={mode}
-            writesEnabled={writesEnabled}
-          />
-        ))}
-      </ul>
-
-      {rest.length > 0 ? (
-        <details className="group mt-2">
-          <summary className="cursor-pointer list-none rounded-xl border border-line bg-surface px-3.5 py-2.5 text-sm font-semibold text-brand">
-            <span className="group-open:hidden">
-              Show all {sorted.length} visits
-            </span>
-            <span className="hidden group-open:inline">Show fewer</span>
-          </summary>
-          <ul className="mt-2 divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">
-            {rest.map((a) => (
+    <div className="flex flex-col gap-5">
+      {upcoming.length > 0 ? (
+        <section>
+          <p className="mb-2 text-sm text-ink-soft">
+            {upcoming.length} upcoming booking{upcoming.length === 1 ? "" : "s"}
+          </p>
+          <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">
+            {upcoming.map((a) => (
               <Row
                 key={a.id}
                 appointment={a}
+                appointments={appointments}
                 clientId={clientId}
                 petName={petsById?.[a.pet_id]}
                 mode={mode}
@@ -127,8 +115,63 @@ export function AppointmentHistory({
               />
             ))}
           </ul>
-        </details>
+        </section>
       ) : null}
+
+      <section>
+        <p className="mb-2 text-sm text-ink-soft">
+          {history.length} past visit{history.length === 1 ? "" : "s"} ·{" "}
+          <span className="font-semibold text-ink">{formatMoney(total)}</span>{" "}
+          all-time
+        </p>
+
+        {head.length > 0 ? (
+          <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">
+            {head.map((a) => (
+              <Row
+                key={a.id}
+                appointment={a}
+                appointments={appointments}
+                clientId={clientId}
+                petName={petsById?.[a.pet_id]}
+                mode={mode}
+                writesEnabled={writesEnabled}
+              />
+            ))}
+          </ul>
+        ) : (
+          <p className="text-sm text-ink-faint">No past visits recorded yet.</p>
+        )}
+
+        {rest.length > 0 ? (
+          <details className="group mt-2">
+            <summary className="cursor-pointer list-none rounded-xl border border-line bg-surface px-3.5 py-2.5 text-sm font-semibold text-brand">
+              <span className="group-open:hidden">
+                Show all {history.length} past visits
+              </span>
+              <span className="hidden group-open:inline">Show fewer</span>
+            </summary>
+            <ul className="mt-2 divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">
+              {rest.map((a) => (
+                <Row
+                  key={a.id}
+                  appointment={a}
+                  appointments={appointments}
+                  clientId={clientId}
+                  petName={petsById?.[a.pet_id]}
+                  mode={mode}
+                  writesEnabled={writesEnabled}
+                />
+              ))}
+            </ul>
+          </details>
+        ) : null}
+      </section>
     </div>
   );
+}
+
+function todayISO(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }

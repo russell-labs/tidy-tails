@@ -1,11 +1,22 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useState, useTransition } from "react";
 import {
+  checkBookingAvailability,
+  type BookingAvailabilityState,
+} from "@/lib/actions/availability";
+import {
+  deleteAppointment,
   editAppointment,
+  type DeleteAppointmentState,
   type EditAppointmentState,
 } from "@/lib/actions/editAppointment";
-import { SERVICE_TYPES, type ServiceType } from "@/lib/booking";
+import {
+  availableBookingTimeSlots,
+  bookedTimesForDate,
+  SERVICE_TYPES,
+  type ServiceType,
+} from "@/lib/booking";
 import type { Appointment } from "@/lib/data/types";
 import {
   validateEditAppointment,
@@ -25,7 +36,7 @@ const SERVICE_LABELS: Record<ServiceType, string> = {
   other: "Other",
 };
 
-function serviceCodeFromLabel(label: string | null): string {
+function serviceCodeFromLabel(label: string | null): ServiceType | "" {
   const found = SERVICE_TYPES.find((code) => SERVICE_LABELS[code] === label);
   return found ?? "";
 }
@@ -33,12 +44,14 @@ function serviceCodeFromLabel(label: string | null): string {
 export function EditAppointment({
   clientId,
   appointment,
+  appointments = [appointment],
   petName,
   mode,
   writesEnabled,
 }: {
   clientId: string;
   appointment: Appointment;
+  appointments?: Appointment[];
   petName?: string;
   mode: "fixtures" | "live";
   writesEnabled: boolean;
@@ -65,6 +78,7 @@ export function EditAppointment({
           key={formKey}
           clientId={clientId}
           appointment={appointment}
+          appointments={appointments}
           petName={petName}
           mode={mode}
           writesEnabled={writesEnabled}
@@ -78,6 +92,7 @@ export function EditAppointment({
 function EditAppointmentForm({
   clientId,
   appointment,
+  appointments,
   petName,
   mode,
   writesEnabled,
@@ -85,6 +100,7 @@ function EditAppointmentForm({
 }: {
   clientId: string;
   appointment: Appointment;
+  appointments: Appointment[];
   petName?: string;
   mode: "fixtures" | "live";
   writesEnabled: boolean;
@@ -94,7 +110,12 @@ function EditAppointmentForm({
     EditAppointmentState,
     FormData
   >(editAppointment, { status: "idle" });
+  const [deleteState, deleteAction, deletePending] = useActionState<
+    DeleteAppointmentState,
+    FormData
+  >(deleteAppointment, { status: "idle" });
   const [step, setStep] = useState<"form" | "review">("form");
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [errors, setErrors] = useState<EditAppointmentErrors>({});
   const [date, setDate] = useState(appointment.date);
   const [time, setTime] = useState(appointment.time_slot ?? "");
@@ -108,6 +129,50 @@ function EditAppointmentForm({
     appointment.tip != null ? String(appointment.tip) : "",
   );
   const [notes, setNotes] = useState(appointment.notes ?? "");
+  const canDeleteBooking = appointment.status === "booked";
+  const [availabilityResult, setAvailabilityResult] = useState<{
+    date: string;
+    serviceType: ServiceType | "";
+    result: BookingAvailabilityState;
+  } | null>(null);
+  const [availabilityPending, startAvailabilityTransition] = useTransition();
+
+  const availability =
+    availabilityResult?.date === date &&
+    availabilityResult.serviceType === serviceType
+      ? availabilityResult.result
+      : null;
+  const comparableAppointments = appointments.filter((a) => a.id !== appointment.id);
+  const fallbackSlots = date
+    ? availableBookingTimeSlots(comparableAppointments, date).map((slot) =>
+        slot.available
+          ? ({ ...slot, source: "open" } as const)
+          : ({
+              ...slot,
+              source: "tidy_tails",
+              reason: "Already booked in Tidy Tails",
+            } as const),
+      )
+    : [];
+  const slots = availability?.slots.length ? availability.slots : fallbackSlots;
+  const bookedTimes = date ? bookedTimesForDate(comparableAppointments, date) : [];
+
+  useEffect(() => {
+    if (!date) return;
+    let cancelled = false;
+    startAvailabilityTransition(() => {
+      void checkBookingAvailability({
+        date,
+        service_type: serviceType as ServiceType | "",
+        exclude_appointment_id: appointment.id,
+      }).then((result) => {
+        if (!cancelled) setAvailabilityResult({ date, serviceType, result });
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [appointment.id, date, serviceType]);
 
   function toReview() {
     const validation = validateEditAppointment({
@@ -135,6 +200,13 @@ function EditAppointmentForm({
   ) {
     return <ResultScreen state={state} onDone={onDone} />;
   }
+  if (
+    deleteState.status === "demo" ||
+    deleteState.status === "gated" ||
+    deleteState.status === "deleted"
+  ) {
+    return <DeleteResultScreen state={deleteState} onDone={onDone} />;
+  }
 
   const formError =
     state.status === "error"
@@ -159,6 +231,11 @@ function EditAppointmentForm({
           {formError}
         </p>
       ) : null}
+      {deleteState.status === "error" ? (
+        <p className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger-ink">
+          {deleteState.message}
+        </p>
+      ) : null}
 
       {step === "form" ? (
         <>
@@ -175,6 +252,61 @@ function EditAppointmentForm({
             />
           </Field>
           <Field label="Time" error={errors.time_slot}>
+            {date ? (
+              <div className="mb-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                {slots.map((slot) => (
+                  <button
+                    key={slot.time}
+                    type="button"
+                    onClick={() => {
+                      if (!slot.available) return;
+                      setTime(slot.time);
+                      setErrors((current) => ({
+                        ...current,
+                        time_slot: undefined,
+                      }));
+                    }}
+                    disabled={!slot.available}
+                    aria-pressed={time === slot.time}
+                    className={`rounded-lg border px-2.5 py-2 text-sm font-semibold ${
+                      time === slot.time
+                        ? "border-brand bg-brand text-white"
+                        : slot.available
+                          ? "border-line bg-surface text-ink active:bg-brand-soft"
+                          : "border-line bg-canvas text-ink-faint line-through"
+                    }`}
+                  >
+                    <span>{slot.time}</span>
+                    {!slot.available ? (
+                      <span className="ml-1 text-[10px] font-medium no-underline">
+                        Busy
+                      </span>
+                    ) : null}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+            {date ? (
+              <p
+                className={`mb-2 rounded-lg px-3 py-2 text-xs font-medium ${
+                  availability?.status === "failed"
+                    ? "bg-danger-soft text-danger-ink"
+                    : availability?.status === "ready"
+                      ? "bg-brand-soft text-brand-ink"
+                      : "bg-canvas text-ink-soft"
+                }`}
+              >
+                {availabilityPending
+                  ? "Checking Tidy Tails and Google Calendar..."
+                  : availability?.message ??
+                    "Checking the full production book for open times."}
+              </p>
+            ) : null}
+            {bookedTimes.length > 0 ? (
+              <p className="mb-2 rounded-lg bg-warn-soft px-3 py-2 text-xs font-medium text-warn">
+                Already booked that day: {bookedTimes.join(", ")}
+              </p>
+            ) : null}
             <input
               type="text"
               value={time}
@@ -186,7 +318,7 @@ function EditAppointmentForm({
           <Field label="Service" error={errors.service_type}>
             <select
               value={serviceType}
-              onChange={(e) => setServiceType(e.target.value)}
+              onChange={(e) => setServiceType(e.target.value as ServiceType | "")}
               className={fieldClass}
             >
               <option value="">Not set</option>
@@ -232,6 +364,47 @@ function EditAppointmentForm({
           >
             Review changes
           </button>
+          {canDeleteBooking ? (
+            <div className="rounded-xl border border-line bg-surface p-3">
+              {confirmDelete ? (
+                <div className="flex flex-col gap-2.5">
+                  <p className="text-sm font-semibold text-danger-ink">
+                    Delete this booking?
+                  </p>
+                  <p className="text-xs leading-relaxed text-ink-soft">
+                    This removes it from Tidy Tails and removes the linked Google
+                    Calendar event when one exists.
+                  </p>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setConfirmDelete(false)}
+                      disabled={deletePending}
+                      className="flex-1 rounded-lg border border-line px-3 py-2 text-sm font-semibold text-ink-soft"
+                    >
+                      Keep it
+                    </button>
+                    <button
+                      type="submit"
+                      formAction={deleteAction}
+                      disabled={deletePending}
+                      className="flex-1 rounded-lg bg-danger-ink px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                    >
+                      {deletePending ? "Deleting..." : "Delete booking"}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setConfirmDelete(true)}
+                  className="w-full rounded-lg border border-danger-ink px-3 py-2 text-sm font-semibold text-danger-ink active:bg-danger-soft"
+                >
+                  Delete booking
+                </button>
+              )}
+            </div>
+          ) : null}
         </>
       ) : (
         <>
@@ -337,6 +510,73 @@ function ResultScreen({
           }`}
         >
           {state.summary.calendar.message}
+        </p>
+      ) : null}
+      <button
+        type="button"
+        onClick={onDone}
+        className="rounded-xl bg-brand px-4 py-3 text-base font-semibold text-white active:bg-brand-ink"
+      >
+        Done
+      </button>
+    </div>
+  );
+}
+
+function DeleteResultScreen({
+  state,
+  onDone,
+}: {
+  state: Extract<DeleteAppointmentState, { status: "demo" | "gated" | "deleted" }>;
+  onDone: () => void;
+}) {
+  const deleted = state.status === "deleted";
+  const headline =
+    state.status === "deleted"
+      ? "Deleted - booking removed"
+      : state.status === "demo"
+        ? "Demo only - nothing was deleted"
+        : "Not deleted - booking deletion is switched off";
+  return (
+    <div className="flex flex-col gap-3.5">
+      <div
+        className={`rounded-xl p-3.5 ${
+          deleted ? "bg-brand-soft text-brand-ink" : "bg-warn-soft text-warn"
+        }`}
+      >
+        <p className="text-sm font-semibold">{headline}</p>
+        <p className="mt-0.5 text-xs leading-relaxed">
+          {state.message ?? "Nothing was written."}
+        </p>
+      </div>
+      <p className="text-sm text-ink-soft">
+        The booking was for{" "}
+        <span className="font-semibold text-ink">{state.summary.petName}</span> under{" "}
+        <span className="font-semibold text-ink">{state.summary.ownerName}</span>.
+      </p>
+      <dl className="flex flex-col gap-1.5 rounded-xl border border-line bg-canvas px-3.5 py-3 text-sm">
+        <ReviewRow label="Date" value={state.summary.date} />
+        <ReviewRow label="Time" value={state.summary.time ?? "Not set"} />
+        <ReviewRow label="Service" value={state.summary.service ?? "Not set"} />
+        <ReviewRow
+          label="Fee"
+          value={
+            state.summary.fee != null
+              ? formatMoney(state.summary.fee)
+              : "Not set"
+          }
+        />
+      </dl>
+      {state.calendar ? (
+        <p
+          className={`rounded-lg px-3 py-2 text-xs font-medium ${
+            state.calendar.status === "synced" ||
+            state.calendar.status === "skipped"
+              ? "bg-brand-soft text-brand-ink"
+              : "bg-warn-soft text-warn"
+          }`}
+        >
+          {state.calendar.message}
         </p>
       ) : null}
       <button

@@ -42,6 +42,8 @@ export type Appointment = {
   price: number | null; // null when the live row has no fee recorded
   tip: number | null; // null when the row has no tip recorded
   notes: string | null;
+  status?: string | null;
+  location?: string | null;
   google_calendar_id: string | null;
   google_event_id: string | null;
   google_sync_status: string | null;

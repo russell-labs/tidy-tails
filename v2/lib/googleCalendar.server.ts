@@ -518,3 +518,60 @@ export async function syncAppointmentToGoogleCalendar({
     return { status: "failed", message };
   }
 }
+
+export async function deleteAppointmentFromGoogleCalendar(
+  appointment: Appointment,
+): Promise<GoogleCalendarSyncResult> {
+  if (!isGoogleCalendarSyncEnabled()) {
+    return { status: "disabled", message: "Google Calendar sync is switched off." };
+  }
+  if (!isGoogleCalendarConfigured()) {
+    return { status: "disabled", message: "Google Calendar is not configured." };
+  }
+  if (!appointment.google_event_id) {
+    return { status: "skipped", message: "No Google Calendar event to remove." };
+  }
+
+  const connection = await readConnectionRow();
+  if (!connection) {
+    return {
+      status: "not_connected",
+      message: "No connected Google Calendar was found.",
+    };
+  }
+
+  try {
+    const accessToken = await refreshAccessToken(connection);
+    const calendarId =
+      appointment.google_calendar_id || connection.calendar_id || CALENDAR_ID;
+    const response = await fetch(
+      `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(appointment.google_event_id)}`,
+      {
+        method: "DELETE",
+        headers: { authorization: `Bearer ${accessToken}` },
+        cache: "no-store",
+      },
+    );
+    if (response.status === 404 || response.status === 410) {
+      return {
+        status: "synced",
+        message: "Google Calendar event was already gone.",
+      };
+    }
+    if (!response.ok) {
+      const json = (await response.json().catch(() => null)) as
+        | { error?: { message?: string } }
+        | null;
+      throw new Error(json?.error?.message ?? "Google Calendar event delete failed.");
+    }
+    return { status: "synced", message: "Google Calendar event removed." };
+  } catch (error) {
+    return {
+      status: "failed",
+      message:
+        error instanceof Error
+          ? error.message
+          : "Google Calendar event delete failed.",
+    };
+  }
+}

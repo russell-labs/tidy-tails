@@ -95,6 +95,8 @@ export function mapAppointmentRow(r: Row): Appointment {
     price: numOrNull(r.fee), // live column is `fee`
     tip: numOrNull(r.tip),
     notes: strOrNull(r.notes),
+    status: strOrNull(r.status),
+    location: strOrNull(r.location),
     google_calendar_id: strOrNull(r.google_calendar_id),
     google_event_id: strOrNull(r.google_event_id),
     google_sync_status: strOrNull(r.google_sync_status),
