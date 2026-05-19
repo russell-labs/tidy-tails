@@ -41,6 +41,13 @@ export type GoogleCalendarBusyBlock = {
   end: string;
 };
 
+export type GoogleCalendarEventBlock = {
+  status?: string;
+  summary?: string;
+  start?: { dateTime?: string; date?: string };
+  end?: { dateTime?: string; date?: string };
+};
+
 export type CalendarAwareBookingSlot = {
   time: string;
   available: boolean;
@@ -266,6 +273,18 @@ export function markCalendarUnavailableSlots(
       source: "google",
       reason,
     };
+  });
+}
+
+export function googleCalendarEventsToBusyBlocks(
+  events: GoogleCalendarEventBlock[],
+): GoogleCalendarBusyBlock[] {
+  return events.flatMap((event) => {
+    if (event.status === "cancelled") return [];
+    const start = event.start?.dateTime;
+    const end = event.end?.dateTime;
+    if (!start || !end) return [];
+    return [{ start, end }];
   });
 }
 

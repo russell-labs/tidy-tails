@@ -11,8 +11,10 @@ import {
   defaultDurationMinutes,
   decryptRefreshToken,
   encryptRefreshToken,
+  googleCalendarEventsToBusyBlocks,
   googleFreeBusyRangeForDate,
   isGoogleCalendarWindowBusy,
+  type GoogleCalendarEventBlock,
   type GoogleCalendarBusyBlock,
   type EncryptedToken,
   type GoogleCalendarSyncResult,
@@ -52,6 +54,11 @@ type FreeBusyResponse = {
       errors?: { reason?: string; message?: string }[];
     }
   >;
+  error?: { message?: string };
+};
+
+type EventsResponse = {
+  items?: GoogleCalendarEventBlock[];
   error?: { message?: string };
 };
 
@@ -378,10 +385,32 @@ export async function readGoogleCalendarBusyBlocksForDate(
           "Google Calendar availability failed.",
       );
     }
+    const eventsUrl = new URL(
+      `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(
+        calendarId,
+      )}/events`,
+    );
+    eventsUrl.searchParams.set("timeMin", range.timeMin);
+    eventsUrl.searchParams.set("timeMax", range.timeMax);
+    eventsUrl.searchParams.set("timeZone", range.timeZone);
+    eventsUrl.searchParams.set("singleEvents", "true");
+    eventsUrl.searchParams.set("orderBy", "startTime");
+    eventsUrl.searchParams.set("showDeleted", "false");
+    const eventsResponse = await fetch(eventsUrl, {
+      headers: { authorization: `Bearer ${accessToken}` },
+      cache: "no-store",
+    });
+    const eventsJson = (await eventsResponse.json()) as EventsResponse;
+    if (!eventsResponse.ok) {
+      throw new Error(
+        eventsJson.error?.message ?? "Google Calendar event lookup failed.",
+      );
+    }
+    const eventBusy = googleCalendarEventsToBusyBlocks(eventsJson.items ?? []);
     return {
       status: "ready",
       message: "Google Calendar busy times are blocked.",
-      busy: calendar?.busy ?? [],
+      busy: [...(calendar?.busy ?? []), ...eventBusy],
     };
   } catch (error) {
     const rawMessage =

@@ -6,6 +6,7 @@ import {
   defaultDurationMinutes,
   encryptRefreshToken,
   googleFreeBusyRangeForDate,
+  googleCalendarEventsToBusyBlocks,
   isGoogleCalendarWindowBusy,
   markCalendarUnavailableSlots,
   markGoogleCalendarBusySlots,
@@ -236,6 +237,41 @@ describe("Google Calendar availability", () => {
         reason: "Already booked in Tidy Tails",
       },
     ]);
+  });
+
+  it("converts visible timed Google events into busy blocks", () => {
+    expect(
+      googleCalendarEventsToBusyBlocks([
+        {
+          status: "confirmed",
+          summary: "Virtual visit",
+          start: { dateTime: "2026-05-29T10:30:00-04:00" },
+          end: { dateTime: "2026-05-29T11:00:00-04:00" },
+        },
+      ]),
+    ).toEqual([
+      {
+        start: "2026-05-29T10:30:00-04:00",
+        end: "2026-05-29T11:00:00-04:00",
+      },
+    ]);
+  });
+
+  it("ignores cancelled and all-day Google events for slot blocking", () => {
+    expect(
+      googleCalendarEventsToBusyBlocks([
+        {
+          status: "cancelled",
+          start: { dateTime: "2026-05-29T10:30:00-04:00" },
+          end: { dateTime: "2026-05-29T11:00:00-04:00" },
+        },
+        {
+          status: "confirmed",
+          start: { date: "2026-05-29" },
+          end: { date: "2026-05-30" },
+        },
+      ]),
+    ).toEqual([]);
   });
 });
 
