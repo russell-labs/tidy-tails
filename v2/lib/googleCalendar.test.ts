@@ -119,7 +119,12 @@ describe("Google Calendar event building", () => {
     expect(event?.attendees).toEqual([
       { email: "mary@example.com", displayName: "Mary Anca" },
     ]);
-    expect(event?.location).toBe("Tidy Tails at Annette's");
+    expect(event?.location).toBe(
+      "Tidy Tails at Annette's, 290 Millard Street, Orillia",
+    );
+    expect(event?.description).toContain(
+      "Location: Tidy Tails at Annette's, 290 Millard Street, Orillia",
+    );
   });
 });
 
@@ -141,6 +146,20 @@ describe("Google Calendar availability", () => {
         {
           start: "2026-06-29T10:45:00-04:00",
           end: "2026-06-29T11:15:00-04:00",
+        },
+      ]),
+    ).toBe(true);
+  });
+
+  it("detects a Google busy block that starts at the same time as the slot", () => {
+    const window = buildCalendarEventWindow("2026-05-29", "10:30am", 90);
+
+    expect(window).not.toBeNull();
+    expect(
+      isGoogleCalendarWindowBusy(window!, [
+        {
+          start: "2026-05-29T10:30:00-04:00",
+          end: "2026-05-29T11:30:00-04:00",
         },
       ]),
     ).toBe(true);

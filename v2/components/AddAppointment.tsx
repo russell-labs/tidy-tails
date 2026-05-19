@@ -163,7 +163,20 @@ function BookingForm({
             } as const),
       )
     : [];
-  const slots = availability?.slots.length ? availability.slots : fallbackSlots;
+  const slots = availability?.slots.length
+    ? availability.slots
+    : date
+      ? fallbackSlots.map((slot) =>
+          slot.available
+            ? ({
+                ...slot,
+                available: false,
+                source: "google",
+                reason: "Checking Google Calendar",
+              } as const)
+            : slot,
+        )
+      : fallbackSlots;
   const bookedTimes = date ? bookedTimesForDate(appointments, date) : [];
 
   useEffect(() => {
@@ -324,7 +337,10 @@ function BookingForm({
                     <span>{slot.time}</span>
                     {!slot.available ? (
                       <span className="ml-1 text-[10px] font-medium no-underline">
-                        Busy
+                        {"reason" in slot &&
+                        slot.reason === "Checking Google Calendar"
+                          ? "Checking"
+                          : "Busy"}
                       </span>
                     ) : null}
                   </button>

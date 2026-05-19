@@ -154,6 +154,17 @@ describe("renderReminderTemplate — placeholder replacement", () => {
     ).toBe("See you at Tidy Tails at Gina's");
   });
 
+  it("includes Annette's address in customer-facing reminder locations", () => {
+    expect(
+      renderReminderTemplate("See you at [location]", {
+        ownerFirstName: "Sam",
+        petName: "Scout",
+        appointmentDate: "2026-06-01",
+        appointmentLocation: "annette",
+      }),
+    ).toBe("See you at Tidy Tails at Annette's, 290 Millard Street, Orillia");
+  });
+
   it("uses humane fallbacks for missing values", () => {
     expect(
       renderReminderTemplate("[first name] [pet name] [date] [time]", {
