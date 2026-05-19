@@ -3,11 +3,12 @@
 // Supabase Auth server actions for Ship 2.2a — real email/password auth.
 //
 // This is app-side auth only: it signs the operator in against the existing
-// Supabase project. It does NOT run migrations or change RLS — the database is
-// still on permissive policies until the Ship 2.2b cutover.
+// Supabase project. RLS protects the rows, and this action adds an app-level
+// allowlist so accidental extra Auth users cannot enter the operator shell.
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { isAllowedOperatorEmail } from "@/lib/operatorAccess";
 import { createServerSupabase } from "@/lib/supabase/server";
 
 export type AuthState = { error: string } | null;
@@ -44,6 +45,17 @@ export async function signIn(
 
   if (error) {
     return { error: friendlyAuthError(error.message) };
+  }
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!isAllowedOperatorEmail(user?.email)) {
+    await supabase.auth.signOut();
+    return {
+      error: "This Google/Supabase account is not allowed to access Tidy Tails.",
+    };
   }
 
   // Drop any cached render produced while signed out, then enter the app.

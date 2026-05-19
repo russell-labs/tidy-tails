@@ -10,6 +10,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
+import { isAllowedOperatorEmail } from "@/lib/operatorAccess";
 import { getSupabaseCredentials } from "./env";
 
 // Routes reachable without a session. Everything else requires sign-in.
@@ -65,6 +66,17 @@ export async function updateSession(request: NextRequest) {
     );
   }
 
+  if (user && !isAllowedOperatorEmail(user.email)) {
+    await supabase.auth.signOut();
+    const denied = finalize(
+      NextResponse.redirect(new URL("/login?access=denied", request.url)),
+      response,
+      cacheHeaders,
+    );
+    clearSupabaseCookies(denied, request);
+    return denied;
+  }
+
   if (user && pathname === "/login") {
     return finalize(
       NextResponse.redirect(new URL("/", request.url)),
@@ -90,4 +102,12 @@ function finalize(
     redirect.headers.set(key, val);
   }
   return redirect;
+}
+
+function clearSupabaseCookies(response: NextResponse, request: NextRequest) {
+  for (const cookie of request.cookies.getAll()) {
+    if (cookie.name.startsWith("sb-")) {
+      response.cookies.delete(cookie.name);
+    }
+  }
 }
