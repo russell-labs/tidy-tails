@@ -11,6 +11,7 @@ import {
 } from "@/lib/intake";
 import { formatMoney, formatPhone } from "@/lib/format";
 import { Sheet } from "./Sheet";
+import { SubmitDog } from "./SubmitDog";
 
 // Add household — onboard a new client + their first pet: form → review →
 // result. Fixture mode is a dry-run; live mode persists only when the private
@@ -385,7 +386,7 @@ function IntakeForm({
               disabled={pending}
               className="flex-1 rounded-xl bg-brand px-4 py-3 text-base font-semibold text-white active:bg-brand-ink disabled:opacity-50"
             >
-              {pending ? "Saving…" : "Confirm & save"}
+              {pending ? <SubmitDog label="Saving" /> : "Confirm & save"}
             </button>
           </div>
         </>

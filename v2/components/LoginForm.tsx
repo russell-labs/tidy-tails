@@ -8,6 +8,7 @@
 
 import { useActionState } from "react";
 import { signIn, type AuthState } from "@/lib/actions/auth";
+import { SubmitDog } from "./SubmitDog";
 
 export function LoginForm() {
   const [state, formAction, pending] = useActionState<AuthState, FormData>(
@@ -56,7 +57,7 @@ export function LoginForm() {
         disabled={pending}
         className="mt-2 rounded-xl bg-brand px-4 py-3 text-base font-semibold text-white active:bg-brand-ink disabled:opacity-60"
       >
-        {pending ? "Signing in…" : "Sign in"}
+        {pending ? <SubmitDog label="Signing in" /> : "Sign in"}
       </button>
     </form>
   );

@@ -27,6 +27,7 @@ import {
 } from "@/lib/editAppointment";
 import { formatMoney } from "@/lib/format";
 import { Sheet } from "./Sheet";
+import { SubmitDog } from "./SubmitDog";
 
 const fieldClass =
   "w-full rounded-xl border border-line bg-surface px-3.5 py-2.5 text-base text-ink placeholder:text-ink-faint";
@@ -414,7 +415,7 @@ function EditAppointmentForm({
                       disabled={deletePending}
                       className="flex-1 rounded-lg bg-danger-ink px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
                     >
-                      {deletePending ? "Deleting..." : "Delete booking"}
+                      {deletePending ? <SubmitDog label="Deleting" /> : "Delete booking"}
                     </button>
                   </div>
                 </div>
@@ -466,7 +467,7 @@ function EditAppointmentForm({
               disabled={pending}
               className="flex-1 rounded-xl bg-brand px-4 py-3 text-base font-semibold text-white active:bg-brand-ink disabled:opacity-50"
             >
-              {pending ? "Saving..." : "Confirm & save"}
+              {pending ? <SubmitDog label="Saving" /> : "Confirm & save"}
             </button>
           </div>
         </>

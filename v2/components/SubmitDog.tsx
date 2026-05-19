@@ -1,0 +1,26 @@
+"use client";
+
+export function SubmitDog({ label }: { label: string }) {
+  return (
+    <span className="inline-flex items-center justify-center gap-2">
+      <svg
+        className="submit-dog-line h-5 w-5 shrink-0"
+        viewBox="0 0 32 32"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M8 17c0-5.2 3.8-9 8-9s8 3.8 8 9c0 4.6-3.1 7.5-8 7.5S8 21.6 8 17Z" />
+        <path className="submit-dog-accent" d="M10 10 6.5 5.5 6 14" />
+        <path className="submit-dog-accent" d="M22 10 25.5 5.5 26 14" />
+        <path d="M13 17h.01M19 17h.01" />
+        <path className="submit-dog-accent" d="M15 20h2l-1 1.6Z" />
+        <path d="M12.5 23c1.4 1.2 5.6 1.2 7 0" />
+      </svg>
+      <span>{label}</span>
+    </span>
+  );
+}

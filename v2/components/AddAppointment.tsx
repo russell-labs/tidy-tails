@@ -22,6 +22,7 @@ import { serviceLabel } from "@/lib/data/live";
 import type { Appointment, Client, Pet } from "@/lib/data/types";
 import { formatMoney, formatReviewDate, fullName } from "@/lib/format";
 import { Sheet } from "./Sheet";
+import { SubmitDog } from "./SubmitDog";
 
 // M2 — "Add appointment" booking flow: form → review → result. The wedge
 // becomes Call/Text → Identify → Add Booking. Nothing is persisted in this
@@ -482,7 +483,7 @@ function BookingForm({
               disabled={pending}
               className="flex-1 rounded-xl bg-brand px-4 py-3 text-base font-semibold text-white active:bg-brand-ink disabled:opacity-50"
             >
-              {pending ? "Saving…" : "Confirm & save"}
+              {pending ? <SubmitDog label="Saving" /> : "Confirm & save"}
             </button>
           </div>
         </>

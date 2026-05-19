@@ -12,6 +12,7 @@ import type { Appointment, Client, Pet } from "@/lib/data/types";
 import { formatDate, formatPhone, fullName } from "@/lib/format";
 import type { OperatorSettings } from "@/lib/operatorSettings";
 import { Sheet } from "./Sheet";
+import { SubmitDog } from "./SubmitDog";
 
 // Reminder Prep — prepare an appointment reminder text: draft → review →
 // result. Nothing is ever sent automatically — Sam reviews and explicitly
@@ -260,7 +261,7 @@ function ReminderForm({
               disabled={pending}
               className="flex-1 rounded-xl bg-brand px-4 py-3 text-base font-semibold text-white active:bg-brand-ink disabled:opacity-50"
             >
-              {pending ? "Sending…" : "Confirm & send"}
+              {pending ? <SubmitDog label="Sending" /> : "Confirm & send"}
             </button>
           </div>
         </>

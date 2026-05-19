@@ -81,7 +81,7 @@ export function Sheet({
             </svg>
           </button>
         </header>
-        <div className="overscroll-contain overflow-y-auto px-5 py-4 nav-safe">
+        <div className="overscroll-contain overflow-y-auto px-5 py-4 sheet-bottom-room">
           {children}
         </div>
       </div>
