@@ -5,7 +5,11 @@ import {
   decryptRefreshToken,
   defaultDurationMinutes,
   encryptRefreshToken,
+  googleFreeBusyRangeForDate,
+  isGoogleCalendarWindowBusy,
+  markGoogleCalendarBusySlots,
   parseAppointmentTime,
+  toCalendarLocalDateTime,
 } from "./googleCalendar";
 
 const baseSecret = Buffer.from("0123456789abcdef0123456789abcdef").toString(
@@ -82,6 +86,77 @@ describe("Google Calendar event building", () => {
   });
 });
 
+describe("Google Calendar availability", () => {
+  it("builds a full Toronto-day free/busy query range", () => {
+    const range = googleFreeBusyRangeForDate("2026-06-29");
+
+    expect(range.timeZone).toBe("America/Toronto");
+    expect(toCalendarLocalDateTime(range.timeMin)).toBe("2026-06-29T00:00:00");
+    expect(toCalendarLocalDateTime(range.timeMax)).toBe("2026-06-30T00:00:00");
+  });
+
+  it("detects Google busy blocks that overlap the appointment window", () => {
+    const window = buildCalendarEventWindow("2026-06-29", "10:30am", 90);
+
+    expect(window).not.toBeNull();
+    expect(
+      isGoogleCalendarWindowBusy(window!, [
+        {
+          start: "2026-06-29T10:45:00-04:00",
+          end: "2026-06-29T11:15:00-04:00",
+        },
+      ]),
+    ).toBe(true);
+  });
+
+  it("does not block adjacent Google busy windows", () => {
+    const window = buildCalendarEventWindow("2026-06-29", "10:30am", 90);
+
+    expect(
+      isGoogleCalendarWindowBusy(window!, [
+        {
+          start: "2026-06-29T12:00:00-04:00",
+          end: "2026-06-29T13:00:00-04:00",
+        },
+      ]),
+    ).toBe(false);
+  });
+
+  it("marks Google-busy slots while preserving Tidy Tails conflicts", () => {
+    const slots = markGoogleCalendarBusySlots(
+      [
+        { time: "9:00am", available: false },
+        { time: "10:30am", available: true },
+        { time: "12:00pm", available: true },
+      ],
+      "2026-06-29",
+      "Full groom",
+      [
+        {
+          start: "2026-06-29T10:45:00-04:00",
+          end: "2026-06-29T11:15:00-04:00",
+        },
+      ],
+    );
+
+    expect(slots).toEqual([
+      {
+        time: "9:00am",
+        available: false,
+        source: "tidy_tails",
+        reason: "Already booked in Tidy Tails",
+      },
+      {
+        time: "10:30am",
+        available: false,
+        source: "google",
+        reason: "Busy in Google Calendar",
+      },
+      { time: "12:00pm", available: true, source: "open" },
+    ]);
+  });
+});
+
 describe("Google Calendar refresh-token encryption", () => {
   it("round-trips a refresh token without storing it in plaintext", () => {
     const encrypted = encryptRefreshToken(
@@ -102,4 +177,3 @@ describe("Google Calendar refresh-token encryption", () => {
     );
   });
 });
-

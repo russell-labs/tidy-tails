@@ -1,6 +1,10 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useState, useTransition } from "react";
+import {
+  checkBookingAvailability,
+  type BookingAvailabilityState,
+} from "@/lib/actions/availability";
 import { createBooking, type BookingState } from "@/lib/actions/appointments";
 import {
   availableBookingTimeSlots,
@@ -125,11 +129,48 @@ function BookingForm({
   const [serviceType, setServiceType] = useState(initialDefaults.serviceType);
   const [fee, setFee] = useState(initialDefaults.fee);
   const [notes, setNotes] = useState("");
+  const [availabilityResult, setAvailabilityResult] = useState<{
+    date: string;
+    serviceType: ServiceType | "";
+    result: BookingAvailabilityState;
+  } | null>(null);
+  const [availabilityPending, startAvailabilityTransition] = useTransition();
 
   const selectedPet = pets.find((p) => p.id === petId) ?? pets[0];
   const ownerName = fullName(client.first_name, client.last_name);
-  const slots = date ? availableBookingTimeSlots(appointments, date) : [];
+  const availability =
+    availabilityResult?.date === date &&
+    availabilityResult.serviceType === serviceType
+      ? availabilityResult.result
+      : null;
+  const fallbackSlots = date
+    ? availableBookingTimeSlots(appointments, date).map((slot) =>
+        slot.available
+          ? ({ ...slot, source: "open" } as const)
+          : ({
+              ...slot,
+              source: "tidy_tails",
+              reason: "Already booked in Tidy Tails",
+            } as const),
+      )
+    : [];
+  const slots = availability?.slots.length ? availability.slots : fallbackSlots;
   const bookedTimes = date ? bookedTimesForDate(appointments, date) : [];
+
+  useEffect(() => {
+    if (!date) return;
+    let cancelled = false;
+    startAvailabilityTransition(() => {
+      void checkBookingAvailability({ date, service_type: serviceType }).then(
+        (result) => {
+          if (!cancelled) setAvailabilityResult({ date, serviceType, result });
+        },
+      );
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [date, serviceType]);
 
   function onPetChange(id: string) {
     setPetId(id);
@@ -261,10 +302,31 @@ function BookingForm({
                           : "border-line bg-canvas text-ink-faint line-through"
                     }`}
                   >
-                    {slot.time}
+                    <span>{slot.time}</span>
+                    {!slot.available ? (
+                      <span className="ml-1 text-[10px] font-medium no-underline">
+                        Busy
+                      </span>
+                    ) : null}
                   </button>
                 ))}
               </div>
+            ) : null}
+            {date ? (
+              <p
+                className={`mb-2 rounded-lg px-3 py-2 text-xs font-medium ${
+                  availability?.status === "failed"
+                    ? "bg-danger-soft text-danger-ink"
+                    : availability?.status === "ready"
+                      ? "bg-brand-soft text-brand-ink"
+                      : "bg-canvas text-ink-soft"
+                }`}
+              >
+                {availabilityPending
+                  ? "Checking Tidy Tails and Google Calendar…"
+                  : availability?.message ??
+                    "Checking the full production book for open times."}
+              </p>
             ) : null}
             {bookedTimes.length > 0 ? (
               <p className="mb-2 rounded-lg bg-warn-soft px-3 py-2 text-xs font-medium text-warn">

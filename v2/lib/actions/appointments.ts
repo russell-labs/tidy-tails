@@ -17,14 +17,18 @@
 // authenticated insert; it is never set explicitly here.
 
 import { revalidatePath } from "next/cache";
-import { dataMode, getClientRecord } from "@/lib/data/repo";
+import { dataMode, getClientRecord, loadAppointments } from "@/lib/data/repo";
 import { mapAppointmentRow, serviceLabel } from "@/lib/data/live";
 import { createServerSupabase, getCurrentUser } from "@/lib/supabase/server";
 import { isAddAppointmentWriteEnabled } from "@/lib/writeGate";
-import { syncAppointmentToGoogleCalendar } from "@/lib/googleCalendar.server";
+import {
+  checkGoogleCalendarAppointmentAvailability,
+  syncAppointmentToGoogleCalendar,
+} from "@/lib/googleCalendar.server";
 import {
   buildAppointmentInsert,
   findOwnedPet,
+  hasBookedTimeConflict,
   validateBookingInput,
   type BookingErrors,
 } from "@/lib/booking";
@@ -126,6 +130,36 @@ export async function createBooking(
       status: "gated",
       summary,
       message: "Booking writes aren't switched on yet. Nothing was saved.",
+    };
+  }
+
+  const allAppointments = await loadAppointments();
+  if (hasBookedTimeConflict(allAppointments, payload.date, payload.time_slot)) {
+    return {
+      status: "error",
+      errors: {},
+      formError:
+        "That time is already booked in Tidy Tails. Choose another time.",
+    };
+  }
+
+  const googleAvailability = await checkGoogleCalendarAppointmentAvailability({
+    date: payload.date,
+    timeSlot: payload.time_slot,
+    service: summary.service,
+  });
+  if (googleAvailability.status === "busy") {
+    return {
+      status: "error",
+      errors: {},
+      formError: googleAvailability.message,
+    };
+  }
+  if (googleAvailability.status === "failed") {
+    return {
+      status: "error",
+      errors: {},
+      formError: `Couldn't check Google Calendar availability: ${googleAvailability.message}`,
     };
   }
 

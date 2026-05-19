@@ -6,6 +6,7 @@ export const GOOGLE_CALENDAR_SCOPES = [
   "openid",
   "email",
   "https://www.googleapis.com/auth/calendar.events",
+  "https://www.googleapis.com/auth/calendar.freebusy",
 ] as const;
 
 export const GOOGLE_CALENDAR_TIME_ZONE = "America/Toronto";
@@ -32,6 +33,18 @@ export type CalendarEventWindow = {
   startDateTime: string;
   endDateTime: string;
   timeZone: string;
+};
+
+export type GoogleCalendarBusyBlock = {
+  start: string;
+  end: string;
+};
+
+export type CalendarAwareBookingSlot = {
+  time: string;
+  available: boolean;
+  source: "open" | "tidy_tails" | "google";
+  reason?: string;
 };
 
 export type CalendarEventInput = {
@@ -61,6 +74,12 @@ const SECRET_BYTES = 32;
 
 function pad(n: number): string {
   return String(n).padStart(2, "0");
+}
+
+function addDaysISO(date: string, days: number): string {
+  const d = new Date(`${date}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
 }
 
 function compact(raw: string): string {
@@ -128,6 +147,101 @@ export function buildCalendarEventWindow(
     endDateTime: toLocal(end),
     timeZone: GOOGLE_CALENDAR_TIME_ZONE,
   };
+}
+
+function localDateTimeToUtcIso(
+  localDateTime: string,
+  timeZone = GOOGLE_CALENDAR_TIME_ZONE,
+): string {
+  let utc = new Date(`${localDateTime}Z`);
+  for (let i = 0; i < 3; i += 1) {
+    const rendered = toCalendarLocalDateTime(utc.toISOString(), timeZone);
+    if (!rendered) break;
+    const drift =
+      Date.parse(`${rendered}Z`) - Date.parse(`${localDateTime}Z`);
+    utc = new Date(utc.getTime() - drift);
+  }
+  return utc.toISOString();
+}
+
+export function googleFreeBusyRangeForDate(date: string): {
+  timeMin: string;
+  timeMax: string;
+  timeZone: string;
+} {
+  return {
+    timeMin: localDateTimeToUtcIso(`${date}T00:00:00`),
+    timeMax: localDateTimeToUtcIso(`${addDaysISO(date, 1)}T00:00:00`),
+    timeZone: GOOGLE_CALENDAR_TIME_ZONE,
+  };
+}
+
+export function toCalendarLocalDateTime(
+  isoDateTime: string,
+  timeZone = GOOGLE_CALENDAR_TIME_ZONE,
+): string | null {
+  const date = new Date(isoDateTime);
+  if (Number.isNaN(date.getTime())) return null;
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).formatToParts(date);
+  const get = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((p) => p.type === type)?.value;
+  const hour = get("hour") === "24" ? "00" : get("hour");
+  const year = get("year");
+  const month = get("month");
+  const day = get("day");
+  const minute = get("minute");
+  const second = get("second");
+  if (!year || !month || !day || !hour || !minute || !second) return null;
+  return `${year}-${month}-${day}T${hour}:${minute}:${second}`;
+}
+
+export function isGoogleCalendarWindowBusy(
+  window: CalendarEventWindow,
+  busyBlocks: GoogleCalendarBusyBlock[],
+): boolean {
+  return busyBlocks.some((block) => {
+    const busyStart = toCalendarLocalDateTime(block.start, window.timeZone);
+    const busyEnd = toCalendarLocalDateTime(block.end, window.timeZone);
+    if (!busyStart || !busyEnd) return false;
+    return window.startDateTime < busyEnd && window.endDateTime > busyStart;
+  });
+}
+
+export function markGoogleCalendarBusySlots(
+  slots: { time: string; available: boolean }[],
+  date: string,
+  service: string | null,
+  busyBlocks: GoogleCalendarBusyBlock[],
+): CalendarAwareBookingSlot[] {
+  const duration = defaultDurationMinutes(service);
+  return slots.map((slot) => {
+    if (!slot.available) {
+      return {
+        ...slot,
+        source: "tidy_tails",
+        reason: "Already booked in Tidy Tails",
+      };
+    }
+    const window = buildCalendarEventWindow(date, slot.time, duration);
+    if (window && isGoogleCalendarWindowBusy(window, busyBlocks)) {
+      return {
+        ...slot,
+        available: false,
+        source: "google",
+        reason: "Busy in Google Calendar",
+      };
+    }
+    return { ...slot, source: "open" };
+  });
 }
 
 export function buildGoogleCalendarEvent({
@@ -207,4 +321,3 @@ export function decryptRefreshToken(
     decipher.final(),
   ]).toString("utf8");
 }
-

@@ -7,8 +7,13 @@ import { isGoogleCalendarSyncEnabled } from "@/lib/writeGate";
 import {
   GOOGLE_CALENDAR_SCOPES,
   buildGoogleCalendarEvent,
+  buildCalendarEventWindow,
+  defaultDurationMinutes,
   decryptRefreshToken,
   encryptRefreshToken,
+  googleFreeBusyRangeForDate,
+  isGoogleCalendarWindowBusy,
+  type GoogleCalendarBusyBlock,
   type EncryptedToken,
   type GoogleCalendarSyncResult,
 } from "./googleCalendar";
@@ -38,6 +43,29 @@ type TokenResponse = {
   error?: string;
   error_description?: string;
 };
+
+type FreeBusyResponse = {
+  calendars?: Record<
+    string,
+    {
+      busy?: GoogleCalendarBusyBlock[];
+      errors?: { reason?: string; message?: string }[];
+    }
+  >;
+  error?: { message?: string };
+};
+
+export type GoogleCalendarBusyReadResult =
+  | { status: "disabled"; message: string; busy: [] }
+  | { status: "not_connected"; message: string; busy: [] }
+  | { status: "ready"; message: string; busy: GoogleCalendarBusyBlock[] }
+  | { status: "failed"; message: string; busy: [] };
+
+export type GoogleCalendarAvailabilityResult =
+  | { status: "available"; message: string }
+  | { status: "busy"; message: string }
+  | { status: "disabled" | "not_connected" | "skipped"; message: string }
+  | { status: "failed"; message: string };
 
 const STATE_COOKIE = "tt_google_calendar_oauth_state";
 const VERIFIER_COOKIE = "tt_google_calendar_oauth_verifier";
@@ -290,6 +318,115 @@ async function refreshAccessToken(row: ConnectionRow): Promise<string> {
   );
   if (!token.access_token) throw new Error("Google did not return an access token.");
   return token.access_token;
+}
+
+export async function readGoogleCalendarBusyBlocksForDate(
+  date: string,
+): Promise<GoogleCalendarBusyReadResult> {
+  if (!isGoogleCalendarSyncEnabled()) {
+    return {
+      status: "disabled",
+      message: "Google Calendar availability is switched off.",
+      busy: [],
+    };
+  }
+  if (!isGoogleCalendarConfigured()) {
+    return {
+      status: "disabled",
+      message: "Google Calendar is not configured.",
+      busy: [],
+    };
+  }
+
+  const connection = await readConnectionRow();
+  if (!connection) {
+    return {
+      status: "not_connected",
+      message: "Connect Google Calendar in Settings to check open times.",
+      busy: [],
+    };
+  }
+
+  try {
+    const accessToken = await refreshAccessToken(connection);
+    const calendarId = connection.calendar_id || CALENDAR_ID;
+    const range = googleFreeBusyRangeForDate(date);
+    const response = await fetch("https://www.googleapis.com/calendar/v3/freeBusy", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${accessToken}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        timeMin: range.timeMin,
+        timeMax: range.timeMax,
+        timeZone: range.timeZone,
+        items: [{ id: calendarId }],
+      }),
+      cache: "no-store",
+    });
+    const json = (await response.json()) as FreeBusyResponse;
+    if (!response.ok) {
+      throw new Error(json.error?.message ?? "Google Calendar availability failed.");
+    }
+    const calendar = json.calendars?.[calendarId];
+    const calendarError = calendar?.errors?.[0];
+    if (calendarError) {
+      throw new Error(
+        calendarError.message ??
+          calendarError.reason ??
+          "Google Calendar availability failed.",
+      );
+    }
+    return {
+      status: "ready",
+      message: "Google Calendar busy times are blocked.",
+      busy: calendar?.busy ?? [],
+    };
+  } catch (error) {
+    return {
+      status: "failed",
+      message:
+        error instanceof Error
+          ? error.message
+          : "Google Calendar availability failed.",
+      busy: [],
+    };
+  }
+}
+
+export async function checkGoogleCalendarAppointmentAvailability({
+  date,
+  timeSlot,
+  service,
+}: {
+  date: string;
+  timeSlot: string | null;
+  service: string | null;
+}): Promise<GoogleCalendarAvailabilityResult> {
+  const window = buildCalendarEventWindow(
+    date,
+    timeSlot,
+    defaultDurationMinutes(service),
+  );
+  if (!window) {
+    return {
+      status: "skipped",
+      message: "Google Calendar needs a specific time to check availability.",
+    };
+  }
+  const read = await readGoogleCalendarBusyBlocksForDate(date);
+  if (read.status !== "ready") {
+    return { status: read.status, message: read.message };
+  }
+  if (isGoogleCalendarWindowBusy(window, read.busy)) {
+    return {
+      status: "busy",
+      message:
+        "That time is busy in Google Calendar, including any out-of-office blocks. Choose another time.",
+    };
+  }
+  return { status: "available", message: "Google Calendar shows that time open." };
 }
 
 async function markAppointmentSync(

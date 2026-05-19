@@ -5,6 +5,7 @@ import {
   bookedTimesForDate,
   buildAppointmentInsert,
   findOwnedPet,
+  hasBookedTimeConflict,
   validateBookingInput,
 } from "./booking";
 
@@ -320,5 +321,22 @@ describe("booking time slots", () => {
     expect(slots.find((slot) => slot.time === "9:00am")).toMatchObject({
       available: true,
     });
+  });
+
+  it("detects a same-day booked-time conflict for server-side saves", () => {
+    expect(
+      hasBookedTimeConflict(
+        [appointment({ date: "2026-06-01", time_slot: "10:30 AM" })],
+        "2026-06-01",
+        "10:30am",
+      ),
+    ).toBe(true);
+    expect(
+      hasBookedTimeConflict(
+        [appointment({ date: "2026-06-01", time_slot: "10:30 AM" })],
+        "2026-06-01",
+        "12:00pm",
+      ),
+    ).toBe(false);
   });
 });

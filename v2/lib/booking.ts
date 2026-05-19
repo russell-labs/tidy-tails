@@ -86,12 +86,24 @@ function optionalText(v: string | undefined): string | null {
   return t === "" ? null : t;
 }
 
-function normalizeTimeForCompare(raw: string | null | undefined): string {
+export function normalizeTimeForCompare(raw: string | null | undefined): string {
   return (raw ?? "")
     .trim()
     .toLowerCase()
     .replace(/\s+/g, "")
     .replace(/\./g, "");
+}
+
+export function hasBookedTimeConflict(
+  appointments: Appointment[],
+  date: string,
+  timeSlot: string | null | undefined,
+): boolean {
+  const key = normalizeTimeForCompare(timeSlot);
+  if (!key) return false;
+  return bookedTimesForDate(appointments, date)
+    .map(normalizeTimeForCompare)
+    .includes(key);
 }
 
 export function bookedTimesForDate(
