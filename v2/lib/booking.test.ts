@@ -95,7 +95,7 @@ describe("validateBookingInput — required fields", () => {
       TODAY,
     );
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.errors.time_slot).toBe("Choose a time.");
+    if (!r.ok) expect(r.errors.time_slot).toBe("Choose a drop-off time.");
   });
 
   it("rejects a missing client_id", () => {

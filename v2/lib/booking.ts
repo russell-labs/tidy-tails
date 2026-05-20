@@ -219,9 +219,9 @@ export function validateBookingInput(
 
   const time_slot = (raw.time_slot ?? "").trim();
   if (!time_slot) {
-    errors.time_slot = "Choose a time.";
+    errors.time_slot = "Choose a drop-off time.";
   } else if (time_slot.length > TIME_SLOT_MAX) {
-    errors.time_slot = "That time is too long.";
+    errors.time_slot = "That drop-off time is too long.";
   }
 
   const serviceRaw = (raw.service_type ?? "").trim();

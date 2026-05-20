@@ -150,6 +150,12 @@ export default async function SettingsPage({
                 New bookings can create calendar events after Sam connects her
                 Google account. The booking still saves if Google is unavailable.
               </p>
+              <p className="mt-2 text-xs leading-relaxed text-ink-soft">
+                Availability blocks timed busy events. All-day personal notes are
+                ignored unless Sam adds <span className="font-semibold">[TT BLOCK]</span>;
+                add <span className="font-semibold">[TT FREE]</span> to a timed
+                personal event that should not block grooming.
+              </p>
             </div>
             <span
               className={`shrink-0 rounded-full px-2 py-1 text-xs font-semibold ${

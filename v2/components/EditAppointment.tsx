@@ -299,7 +299,7 @@ function EditAppointmentForm({
               className={fieldClass}
             />
           </Field>
-          <Field label="Time" error={errors.time_slot}>
+          <Field label="Drop-off time" error={errors.time_slot}>
             {date && availability ? (
               <div className="mb-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
                 {slots.map((slot) => (
@@ -347,9 +347,9 @@ function EditAppointmentForm({
                 }`}
               >
                 {availabilityPending
-                  ? "Checking Tidy Tails and Google Calendar..."
+                  ? "Checking Tidy Tails and Google Calendar for drop-off openings..."
                   : availability?.message ??
-                    "Checking the full production book for open times."}
+                    "Checking the full production book for open drop-off times."}
               </p>
             ) : null}
             {bookedTimes.length > 0 ? (
@@ -504,7 +504,7 @@ function EditAppointmentForm({
           <p className="text-sm text-ink">Review this visit update.</p>
           <dl className="flex flex-col gap-1.5 rounded-xl border border-line bg-canvas px-3.5 py-3 text-sm">
             <ReviewRow label="Date" value={date} />
-            <ReviewRow label="Time" value={time.trim() || "Not set"} />
+            <ReviewRow label="Drop-off" value={time.trim() || "Not set"} />
             <ReviewRow
               label="Service"
               value={
@@ -660,7 +660,7 @@ function DeleteResultScreen({
       </p>
       <dl className="flex flex-col gap-1.5 rounded-xl border border-line bg-canvas px-3.5 py-3 text-sm">
         <ReviewRow label="Date" value={state.summary.date} />
-        <ReviewRow label="Time" value={state.summary.time ?? "Not set"} />
+        <ReviewRow label="Drop-off" value={state.summary.time ?? "Not set"} />
         <ReviewRow label="Service" value={state.summary.service ?? "Not set"} />
         <ReviewRow label="Location" value={state.summary.location ?? "Not set"} />
         <ReviewRow

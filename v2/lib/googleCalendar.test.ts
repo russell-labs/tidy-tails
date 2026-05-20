@@ -255,7 +255,7 @@ describe("Google Calendar availability", () => {
     ]);
   });
 
-  it("ignores cancelled and all-day Google events for slot blocking", () => {
+  it("ignores cancelled, transparent, and all-day personal Google events for slot blocking", () => {
     expect(
       googleCalendarEventsToBusyBlocks([
         {
@@ -265,11 +265,50 @@ describe("Google Calendar availability", () => {
         },
         {
           status: "confirmed",
+          transparency: "transparent",
+          summary: "Dentist, visible but free",
+          start: { dateTime: "2026-05-29T10:30:00-04:00" },
+          end: { dateTime: "2026-05-29T11:00:00-04:00" },
+        },
+        {
+          status: "confirmed",
+          summary: "Family in Mexico",
           start: { date: "2026-05-29" },
           end: { date: "2026-05-30" },
         },
       ]),
     ).toEqual([]);
+  });
+
+  it("lets Sam tag a timed personal event as non-blocking", () => {
+    expect(
+      googleCalendarEventsToBusyBlocks([
+        {
+          status: "confirmed",
+          summary: "[TT FREE] Family errand",
+          start: { dateTime: "2026-05-29T10:30:00-04:00" },
+          end: { dateTime: "2026-05-29T11:00:00-04:00" },
+        },
+      ]),
+    ).toEqual([]);
+  });
+
+  it("lets Sam deliberately block a full day with a Tidy Tails block tag", () => {
+    expect(
+      googleCalendarEventsToBusyBlocks([
+        {
+          status: "confirmed",
+          summary: "[TT BLOCK] Personal day",
+          start: { date: "2026-05-29" },
+          end: { date: "2026-05-30" },
+        },
+      ]),
+    ).toEqual([
+      {
+        start: "2026-05-29T00:00:00-04:00",
+        end: "2026-05-30T00:00:00-04:00",
+      },
+    ]);
   });
 });
 

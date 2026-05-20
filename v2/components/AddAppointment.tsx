@@ -311,12 +311,12 @@ function BookingForm({
           </Field>
 
           <Field
-            label="Time"
+            label="Drop-off time"
             error={errors.time_slot}
             hint={
               date
-                ? "Tap an open slot or type a custom time."
-                : "Choose a date first to see open slots."
+                ? "Tap an open drop-off slot or type a custom time. Pickup is end of business day unless Sam says otherwise."
+                : "Choose a date first to see open drop-off slots."
             }
           >
             {date && availability ? (
@@ -366,9 +366,9 @@ function BookingForm({
                 }`}
               >
                 {availabilityPending
-                  ? "Checking Tidy Tails and Google Calendar…"
+                  ? "Checking Tidy Tails and Google Calendar for drop-off openings…"
                   : availability?.message ??
-                    "Checking the full production book for open times."}
+                    "Checking the full production book for open drop-off times."}
               </p>
             ) : null}
             {bookedTimes.length > 0 ? (
@@ -380,7 +380,7 @@ function BookingForm({
               type="text"
               value={time}
               onChange={(e) => setTime(e.target.value)}
-              placeholder="e.g. 10:00am or morning"
+              placeholder="e.g. 10:00am"
               className={fieldClass}
             />
           </Field>
@@ -536,7 +536,7 @@ function BookingForm({
 
           <dl className="flex flex-col gap-1.5 rounded-xl border border-line bg-canvas px-3.5 py-3 text-sm">
             <ReviewRow label="Date" value={formatReviewDate(date)} />
-            <ReviewRow label="Time" value={time || "No time set"} />
+            <ReviewRow label="Drop-off" value={time || "No time set"} />
             <ReviewRow
               label="Service"
               value={serviceType ? serviceLabel(serviceType) ?? "Not set" : "Not set"}
@@ -693,7 +693,7 @@ function ResultScreen({
 
       <dl className="flex flex-col gap-1.5 rounded-xl border border-line bg-canvas px-3.5 py-3 text-sm">
         <ReviewRow label="Date" value={formatReviewDate(summary.date)} />
-        <ReviewRow label="Time" value={summary.time ?? "No time set"} />
+        <ReviewRow label="Drop-off" value={summary.time ?? "No time set"} />
         <ReviewRow label="Service" value={summary.service ?? "Not set"} />
         <ReviewRow label="Location" value={summary.location ?? "Not set"} />
         <ReviewRow

@@ -409,8 +409,13 @@ export async function readGoogleCalendarBusyBlocksForDate(
     const eventBusy = googleCalendarEventsToBusyBlocks(eventsJson.items ?? []);
     return {
       status: "ready",
-      message: "Google Calendar busy times are blocked.",
-      busy: [...(calendar?.busy ?? []), ...eventBusy],
+      message:
+        "Timed Google Calendar events are blocked. All-day personal events are ignored unless tagged [TT BLOCK].",
+      // The freeBusy endpoint treats ordinary all-day personal events as busy,
+      // which can wipe out Sam's grooming availability for things like family
+      // travel notes. Use the event list as the blocking source of truth so we
+      // can ignore all-day personal events and honor [TT FREE]/[TT BLOCK] tags.
+      busy: eventBusy,
     };
   } catch (error) {
     const rawMessage =
@@ -456,7 +461,7 @@ export async function checkGoogleCalendarAppointmentAvailability({
     return {
       status: "busy",
       message:
-        "That time is busy in Google Calendar, including any out-of-office blocks. Choose another time.",
+        "That drop-off time is busy in Google Calendar. Choose another time.",
     };
   }
   return { status: "available", message: "Google Calendar shows that time open." };
