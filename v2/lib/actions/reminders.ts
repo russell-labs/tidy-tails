@@ -27,6 +27,7 @@ import {
 } from "@/lib/reminders";
 import { getTwilioConfig, sendTwilioSms, toTwilioPhone } from "@/lib/twilio";
 import { fullName } from "@/lib/format";
+import { buildOutboundSmsInsert } from "@/lib/inboundSms";
 
 // A human-readable echo of the prepared reminder — for the review/result screens.
 export type ReminderSummary = {
@@ -161,6 +162,16 @@ export async function prepareReminder(
     status: "sent",
     sent_at: new Date().toISOString(),
   });
+  const { error: smsLogError } = await supabase.from("sms_messages").insert(
+    buildOutboundSmsInsert({
+      clientId,
+      groomerId: user.id,
+      from: twilioConfig.value.fromNumber,
+      to,
+      body: draft.message,
+      messageSid: sendResult.sid,
+    }),
+  );
 
   revalidatePath(`/clients/${clientId}`);
   await recordAuditEvent({
@@ -172,8 +183,8 @@ export async function prepareReminder(
   return {
     status: "sent",
     summary,
-    logWarning: logError
-      ? "The text was sent, but the send log could not be recorded."
+    logWarning: logError || smsLogError
+      ? "The text was sent, but one of the send logs could not be recorded."
       : undefined,
   };
 }

@@ -38,6 +38,7 @@ import {
   type BookingErrors,
 } from "@/lib/booking";
 import { fullName } from "@/lib/format";
+import { buildOutboundSmsInsert } from "@/lib/inboundSms";
 import { getTwilioConfig, sendTwilioSms, toTwilioPhone } from "@/lib/twilio";
 
 // A human-readable echo of the booking — for the review and result screens.
@@ -260,6 +261,8 @@ export async function createBooking(
   summary.calendar = { status: calendar.status, message: calendar.message };
   if (booking.send_booking_text && effectiveClient.phone) {
     summary.bookingTextSend = await sendBookingText({
+      clientId: booking.client_id,
+      groomerId: user.id,
       to: effectiveClient.phone,
       ownerFirstName: effectiveClient.first_name,
       petName: pet.name,
@@ -304,6 +307,8 @@ export async function createBooking(
 }
 
 async function sendBookingText({
+  clientId,
+  groomerId,
   to,
   ownerFirstName,
   petName,
@@ -312,6 +317,8 @@ async function sendBookingText({
   service,
   location,
 }: {
+  clientId: string;
+  groomerId: string;
   to: string;
   ownerFirstName: string | null;
   petName: string;
@@ -362,5 +369,16 @@ async function sendBookingText({
       message: `${result.message} Booking text was not sent.`,
     };
   }
+  const supabase = await createServerSupabase();
+  await supabase.from("sms_messages").insert(
+    buildOutboundSmsInsert({
+      clientId,
+      groomerId,
+      from: twilioConfig.value.fromNumber,
+      to: normalizedPhone,
+      body,
+      messageSid: result.sid,
+    }),
+  );
   return { status: "sent", message: "Booking text sent to the customer." };
 }

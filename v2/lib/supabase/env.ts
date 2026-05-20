@@ -13,6 +13,10 @@ export type SupabaseCredentials = {
   anonKey: string;
 };
 
+export type SupabaseServiceCredentials = SupabaseCredentials & {
+  serviceRoleKey: string;
+};
+
 export function getSupabaseCredentials(): SupabaseCredentials {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -25,4 +29,18 @@ export function getSupabaseCredentials(): SupabaseCredentials {
   }
 
   return { url, anonKey };
+}
+
+export function getSupabaseServiceCredentials(): SupabaseServiceCredentials {
+  const { url, anonKey } = getSupabaseCredentials();
+  const serviceRoleKey = process.env.TIDYTAILS_SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!serviceRoleKey) {
+    throw new Error(
+      "Supabase service-role access is not configured. Set " +
+        "TIDYTAILS_SUPABASE_SERVICE_ROLE_KEY for trusted webhook writes.",
+    );
+  }
+
+  return { url, anonKey, serviceRoleKey };
 }

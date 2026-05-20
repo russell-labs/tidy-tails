@@ -8,6 +8,7 @@ import { ClientActions } from "@/components/ClientActions";
 import { EditClient } from "@/components/EditClient";
 import { LogGroom } from "@/components/LogGroom";
 import { PetCard } from "@/components/PetCard";
+import { SmsMessages } from "@/components/SmsMessages";
 import { dataMode, getClientRecord, loadVaccinations } from "@/lib/data/repo";
 import { groupPetsForDisplay, lastAppointment } from "@/lib/derive";
 import { digitsOnly, formatPhone, fullName } from "@/lib/format";
@@ -18,6 +19,7 @@ import {
   isEditClientWriteEnabled,
   isLogGroomWriteEnabled,
 } from "@/lib/writeGate";
+import { loadClientSmsMessages } from "@/lib/smsMessages.server";
 
 export async function generateMetadata({
   params,
@@ -44,6 +46,7 @@ export default async function ClientDetailPage({
 
   const { client, pets, appointments } = record;
   const operatorSettings = await readOperatorSettings();
+  const recentSmsMessages = await loadClientSmsMessages(client.id, 6);
   const allVaccinations = await loadVaccinations();
   const petsById = Object.fromEntries(pets.map((p) => [p.id, p.name]));
   const petGroups = groupPetsForDisplay(pets, appointments);
@@ -108,6 +111,16 @@ export default async function ClientDetailPage({
           {client.notes}
         </p>
       ) : null}
+
+      <section className="mt-6">
+        <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-ink-faint">
+          Recent texts
+        </h2>
+        <SmsMessages
+          messages={recentSmsMessages}
+          emptyText="No text messages recorded for this household yet."
+        />
+      </section>
 
       {combinedGroups.length > 0 ? (
         <div className="mt-4 rounded-xl bg-warn-soft px-3.5 py-3 text-sm text-warn">

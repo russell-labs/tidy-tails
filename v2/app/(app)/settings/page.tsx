@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { signOut } from "@/lib/actions/auth";
 import { disconnectGoogleCalendarAction } from "@/lib/actions/googleCalendar";
 import { saveOperatorSettings } from "@/lib/actions/settings";
+import { SmsMessages } from "@/components/SmsMessages";
 import {
   auditEventLabel,
   auditEventTone,
@@ -11,6 +12,7 @@ import { loadRecentAuditEvents } from "@/lib/audit.server";
 import { readGoogleCalendarConnection } from "@/lib/googleCalendar.server";
 import { LAPSED_THRESHOLD_OPTIONS } from "@/lib/operatorSettings";
 import { readOperatorSettings } from "@/lib/operatorSettings.server";
+import { loadRecentSmsMessages } from "@/lib/smsMessages.server";
 import { getCurrentUser } from "@/lib/supabase/server";
 
 export const metadata: Metadata = { title: "Settings" };
@@ -97,6 +99,7 @@ export default async function SettingsPage({
   const settings = await readOperatorSettings();
   const calendar = await readGoogleCalendarConnection();
   const recentActivity = await loadRecentAuditEvents(12);
+  const recentSmsMessages = await loadRecentSmsMessages(8);
   const params = searchParams ? await searchParams : {};
 
   return (
@@ -126,6 +129,14 @@ export default async function SettingsPage({
             appear here.
           </p>
         )}
+      </Card>
+
+      <Card title="Text message replies">
+        <SmsMessages
+          messages={recentSmsMessages}
+          emptyText="No SMS replies have been recorded yet. Replies to Sam's Twilio number will appear here once inbound SMS is connected."
+          framed={false}
+        />
       </Card>
 
       <Card title="Calendar">
