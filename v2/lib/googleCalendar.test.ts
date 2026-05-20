@@ -280,35 +280,35 @@ describe("Google Calendar availability", () => {
     ).toEqual([]);
   });
 
-  it("lets Sam tag a timed personal event as non-blocking", () => {
+  it("blocks timed events by default without requiring special title text", () => {
     expect(
       googleCalendarEventsToBusyBlocks([
         {
           status: "confirmed",
-          summary: "[TT FREE] Family errand",
+          summary: "Family errand",
           start: { dateTime: "2026-05-29T10:30:00-04:00" },
           end: { dateTime: "2026-05-29T11:00:00-04:00" },
         },
       ]),
-    ).toEqual([]);
+    ).toEqual([
+      {
+        start: "2026-05-29T10:30:00-04:00",
+        end: "2026-05-29T11:00:00-04:00",
+      },
+    ]);
   });
 
-  it("lets Sam deliberately block a full day with a Tidy Tails block tag", () => {
+  it("ignores all-day personal events for grooming availability", () => {
     expect(
       googleCalendarEventsToBusyBlocks([
         {
           status: "confirmed",
-          summary: "[TT BLOCK] Personal day",
+          summary: "Personal day",
           start: { date: "2026-05-29" },
           end: { date: "2026-05-30" },
         },
       ]),
-    ).toEqual([
-      {
-        start: "2026-05-29T00:00:00-04:00",
-        end: "2026-05-30T00:00:00-04:00",
-      },
-    ]);
+    ).toEqual([]);
   });
 });
 

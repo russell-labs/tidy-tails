@@ -176,23 +176,6 @@ function localDateTimeToUtcIso(
   return utc.toISOString();
 }
 
-function localDateStartWithOffset(
-  date: string,
-  timeZone = GOOGLE_CALENDAR_TIME_ZONE,
-): string | null {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
-  const localDateTime = `${date}T00:00:00`;
-  const utcIso = localDateTimeToUtcIso(localDateTime, timeZone);
-  const offsetMinutes =
-    (Date.parse(`${localDateTime}Z`) - Date.parse(utcIso)) / 60_000;
-  if (!Number.isFinite(offsetMinutes)) return null;
-  const sign = offsetMinutes >= 0 ? "+" : "-";
-  const absolute = Math.abs(offsetMinutes);
-  const hours = Math.floor(absolute / 60);
-  const minutes = absolute % 60;
-  return `${localDateTime}${sign}${pad(hours)}:${pad(minutes)}`;
-}
-
 export function googleFreeBusyRangeForDate(date: string): {
   timeMin: string;
   timeMax: string;
@@ -300,24 +283,9 @@ export function googleCalendarEventsToBusyBlocks(
   return events.flatMap((event) => {
     if (event.status === "cancelled") return [];
     if (event.transparency === "transparent") return [];
-    const summary = event.summary ?? "";
-    if (/\[(tt|tidy tails)\s*free\]|#tt-free|#tidytails-free/i.test(summary)) {
-      return [];
-    }
     const start = event.start?.dateTime;
     const end = event.end?.dateTime;
-    if (!start || !end) {
-      const isTidyTailsBlock = /\[(tt|tidy tails)\s*block\]|#tt-block|#tidytails-block/i.test(
-        summary,
-      );
-      if (!isTidyTailsBlock || !event.start?.date || !event.end?.date) {
-        return [];
-      }
-      const allDayStart = localDateStartWithOffset(event.start.date);
-      const allDayEnd = localDateStartWithOffset(event.end.date);
-      if (!allDayStart || !allDayEnd) return [];
-      return [{ start: allDayStart, end: allDayEnd }];
-    }
+    if (!start || !end) return [];
     return [{ start, end }];
   });
 }

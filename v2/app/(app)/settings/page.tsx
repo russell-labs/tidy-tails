@@ -151,10 +151,9 @@ export default async function SettingsPage({
                 Google account. The booking still saves if Google is unavailable.
               </p>
               <p className="mt-2 text-xs leading-relaxed text-ink-soft">
-                Availability blocks timed busy events. All-day personal notes are
-                ignored unless Sam adds <span className="font-semibold">[TT BLOCK]</span>;
-                add <span className="font-semibold">[TT FREE]</span> to a timed
-                personal event that should not block grooming.
+                Availability follows Google Calendar&apos;s own setting: Busy events
+                block drop-off slots, and Free events stay open. All-day notes are
+                ignored for grooming availability.
               </p>
             </div>
             <span

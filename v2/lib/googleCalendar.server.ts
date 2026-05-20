@@ -410,11 +410,11 @@ export async function readGoogleCalendarBusyBlocksForDate(
     return {
       status: "ready",
       message:
-        "Timed Google Calendar events are blocked. All-day personal events are ignored unless tagged [TT BLOCK].",
+        "Google Calendar events marked Busy are blocked. Events marked Free are left open.",
       // The freeBusy endpoint treats ordinary all-day personal events as busy,
       // which can wipe out Sam's grooming availability for things like family
       // travel notes. Use the event list as the blocking source of truth so we
-      // can ignore all-day personal events and honor [TT FREE]/[TT BLOCK] tags.
+      // can honor Google's Busy/Free setting and ignore all-day notes.
       busy: eventBusy,
     };
   } catch (error) {
