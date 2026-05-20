@@ -2,7 +2,8 @@ import { digitsOnly } from "./format";
 
 export type TwilioConfig = {
   accountSid: string;
-  authToken: string;
+  authUsername: string;
+  authPassword: string;
   fromNumber: string;
 };
 
@@ -26,6 +27,8 @@ type TwilioErrorPayload = {
 
 const TWILIO_ACCOUNT_SID = "TIDYTAILS_TWILIO_ACCOUNT_SID";
 const TWILIO_AUTH_TOKEN = "TIDYTAILS_TWILIO_AUTH_TOKEN";
+const TWILIO_API_KEY_SID = "TIDYTAILS_TWILIO_API_KEY_SID";
+const TWILIO_API_KEY_SECRET = "TIDYTAILS_TWILIO_API_KEY_SECRET";
 const TWILIO_FROM_NUMBER = "TIDYTAILS_TWILIO_FROM_NUMBER";
 
 function requiredEnv(name: string): string | null {
@@ -36,13 +39,17 @@ function requiredEnv(name: string): string | null {
 export function getTwilioConfig(): TwilioConfigResult {
   const accountSid = requiredEnv(TWILIO_ACCOUNT_SID);
   const authToken = requiredEnv(TWILIO_AUTH_TOKEN);
+  const apiKeySid = requiredEnv(TWILIO_API_KEY_SID);
+  const apiKeySecret = requiredEnv(TWILIO_API_KEY_SECRET);
   const fromNumber = requiredEnv(TWILIO_FROM_NUMBER);
+  const hasApiKeyPair = Boolean(apiKeySid && apiKeySecret);
 
   const missing = [
     [TWILIO_ACCOUNT_SID, accountSid],
-    [TWILIO_AUTH_TOKEN, authToken],
+    hasApiKeyPair ? null : [TWILIO_AUTH_TOKEN, authToken],
     [TWILIO_FROM_NUMBER, fromNumber],
   ]
+    .filter((entry): entry is [string, string | null] => Boolean(entry))
     .filter(([, value]) => !value)
     .map(([name]) => String(name));
 
@@ -52,7 +59,8 @@ export function getTwilioConfig(): TwilioConfigResult {
     ok: true,
     value: {
       accountSid: accountSid!,
-      authToken: authToken!,
+      authUsername: apiKeySid ?? accountSid!,
+      authPassword: apiKeySecret ?? authToken!,
       fromNumber: fromNumber!,
     },
   };
@@ -82,7 +90,7 @@ export function buildTwilioMessageRequest(
     url: `https://api.twilio.com/2010-04-01/Accounts/${config.accountSid}/Messages.json`,
     headers: {
       Authorization: `Basic ${Buffer.from(
-        `${config.accountSid}:${config.authToken}`,
+        `${config.authUsername}:${config.authPassword}`,
       ).toString("base64")}`,
       "Content-Type": "application/x-www-form-urlencoded",
     },

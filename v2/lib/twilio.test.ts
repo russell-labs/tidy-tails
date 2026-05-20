@@ -31,10 +31,38 @@ describe("getTwilioConfig", () => {
       ok: true,
       value: {
         accountSid: "AC123",
-        authToken: "secret",
+        authUsername: "AC123",
+        authPassword: "secret",
         fromNumber: "+17055550123",
       },
     });
+  });
+
+  it("prefers API key credentials when they are present", () => {
+    vi.stubEnv("TIDYTAILS_TWILIO_ACCOUNT_SID", "AC123");
+    vi.stubEnv("TIDYTAILS_TWILIO_AUTH_TOKEN", "account-secret");
+    vi.stubEnv("TIDYTAILS_TWILIO_API_KEY_SID", "SK123");
+    vi.stubEnv("TIDYTAILS_TWILIO_API_KEY_SECRET", "key-secret");
+    vi.stubEnv("TIDYTAILS_TWILIO_FROM_NUMBER", "+17055550123");
+
+    expect(getTwilioConfig()).toEqual({
+      ok: true,
+      value: {
+        accountSid: "AC123",
+        authUsername: "SK123",
+        authPassword: "key-secret",
+        fromNumber: "+17055550123",
+      },
+    });
+  });
+
+  it("does not require the account auth token when an API key pair is present", () => {
+    vi.stubEnv("TIDYTAILS_TWILIO_ACCOUNT_SID", "AC123");
+    vi.stubEnv("TIDYTAILS_TWILIO_API_KEY_SID", "SK123");
+    vi.stubEnv("TIDYTAILS_TWILIO_API_KEY_SECRET", "key-secret");
+    vi.stubEnv("TIDYTAILS_TWILIO_FROM_NUMBER", "+17055550123");
+
+    expect(getTwilioConfig()).toMatchObject({ ok: true });
   });
 });
 
@@ -61,7 +89,8 @@ describe("buildTwilioMessageRequest", () => {
     const request = buildTwilioMessageRequest(
       {
         accountSid: "AC123",
-        authToken: "secret",
+        authUsername: "SK123",
+        authPassword: "secret",
         fromNumber: "+17055550123",
       },
       { to: "+17055550106", body: "Hi there" },
@@ -71,7 +100,7 @@ describe("buildTwilioMessageRequest", () => {
       "https://api.twilio.com/2010-04-01/Accounts/AC123/Messages.json",
     );
     expect(request.headers.Authorization).toBe(
-      `Basic ${Buffer.from("AC123:secret").toString("base64")}`,
+      `Basic ${Buffer.from("SK123:secret").toString("base64")}`,
     );
     expect(request.body.get("To")).toBe("+17055550106");
     expect(request.body.get("From")).toBe("+17055550123");
@@ -90,7 +119,8 @@ describe("sendTwilioSms", () => {
     const result = await sendTwilioSms(
       {
         accountSid: "AC123",
-        authToken: "secret",
+        authUsername: "AC123",
+        authPassword: "secret",
         fromNumber: "+17055550123",
       },
       { to: "+17055550106", body: "Hi there" },
@@ -111,7 +141,8 @@ describe("sendTwilioSms", () => {
     const result = await sendTwilioSms(
       {
         accountSid: "AC123",
-        authToken: "secret",
+        authUsername: "AC123",
+        authPassword: "secret",
         fromNumber: "+17055550123",
       },
       { to: "+17055550106", body: "Hi there" },
@@ -135,7 +166,8 @@ describe("sendTwilioSms", () => {
     const result = await sendTwilioSms(
       {
         accountSid: "AC123",
-        authToken: "secret",
+        authUsername: "AC123",
+        authPassword: "secret",
         fromNumber: "+17055550123",
       },
       { to: "+17055550106", body: "Hi there" },
