@@ -13,15 +13,15 @@ export function AppHeader() {
           Tidy Tails
         </span>
       </Link>
-      <div className="flex items-center gap-1.5">
+      <div className="flex items-center gap-2">
         <Link
           href="/inbox"
           aria-label="Inbox"
-          className="rounded-lg p-2 text-ink-soft active:bg-brand-soft active:text-brand"
+          className="rounded-full p-2 text-ink-soft active:bg-brand-soft active:text-brand"
         >
           <svg
-            width="19"
-            height="19"
+            width="20"
+            height="20"
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
@@ -38,11 +38,14 @@ export function AppHeader() {
         <Link
           href="/settings"
           aria-label="Settings"
-          className="rounded-lg p-2 text-ink-soft active:bg-brand-soft active:text-brand"
+          className="relative flex h-9 w-9 items-center justify-center rounded-full border border-line bg-canvas text-brand shadow-sm active:bg-brand-soft"
         >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/icon.svg" alt="" className="h-5 w-5" />
           <svg
-            width="19"
-            height="19"
+            className="absolute -bottom-0.5 -right-0.5 rounded-full bg-surface p-0.5 text-ink-soft"
+            width="14"
+            height="14"
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
