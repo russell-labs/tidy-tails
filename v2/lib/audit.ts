@@ -14,6 +14,7 @@ export type AuditEventType =
   | "appointment.deleted"
   | "groom.logged"
   | "sms.sent"
+  | "sms.handled"
   | "sms.failed"
   | "bookkeeper.exported"
   | "google_calendar.connected"
@@ -52,6 +53,7 @@ const SAFE_METADATA_KEYS = new Set([
   "paymentStatus",
   "period",
   "service",
+  "smsMessageId",
   "status",
   "tip",
 ]);
@@ -70,6 +72,7 @@ const LABELS: Record<AuditEventType, string> = {
   "appointment.deleted": "Deleted booking",
   "groom.logged": "Logged groom",
   "sms.sent": "Sent SMS",
+  "sms.handled": "Handled SMS",
   "sms.failed": "SMS failed",
   "bookkeeper.exported": "Exported report",
   "google_calendar.connected": "Connected calendar",
@@ -114,6 +117,7 @@ export function auditEventTone(type: string): "write" | "read" | "warn" | "neutr
     type.includes("created") ||
     type.includes("updated") ||
     type.includes("logged") ||
+    type.includes("handled") ||
     type.includes("sent") ||
     type.includes("exported") ||
     type.includes("connected")

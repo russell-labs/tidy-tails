@@ -24,6 +24,7 @@ export type InboxPriority = "action" | "info" | "log";
 
 export type InboxItem = {
   id: string;
+  sourceId: string;
   kind: InboxItemKind;
   priority: InboxPriority;
   badge: string;
@@ -39,13 +40,15 @@ export function buildInboxItems({
   smsMessages,
   bookingRequests,
   auditEvents,
+  handledSmsIds = new Set<string>(),
 }: {
   smsMessages: SmsMessage[];
   bookingRequests: BookingRequestInboxRow[];
   auditEvents: AuditEvent[];
+  handledSmsIds?: Set<string>;
 }): InboxItem[] {
   return [
-    ...smsMessages.map(smsToInboxItem),
+    ...smsMessages.map((message) => smsToInboxItem(message, handledSmsIds)),
     ...bookingRequests.map(bookingRequestToInboxItem),
     ...auditEvents.map(auditToInboxItem),
   ].sort(compareInboxItems);
@@ -62,6 +65,7 @@ export function inboxCounts(items: InboxItem[]) {
 }
 
 export function smsActionLabel(message: SmsMessage): string {
+  if (message.status === "handled") return "Handled";
   if (message.direction !== "inbound") return "Sent";
   if (message.match_status === "unmatched") return "Unmatched reply";
   if (message.match_status === "ambiguous") return "Needs matching";
@@ -77,11 +81,13 @@ export function smsActionLabel(message: SmsMessage): string {
   return labels[bodyClass];
 }
 
-function smsToInboxItem(message: SmsMessage): InboxItem {
+function smsToInboxItem(message: SmsMessage, handledSmsIds: Set<string>): InboxItem {
   const inbound = message.direction === "inbound";
+  const handled = message.status === "handled" || handledSmsIds.has(message.id);
   const unmatched = message.match_status === "unmatched" || message.match_status === "ambiguous";
   const bodyClass = inbound ? classifyInboundSmsBody(message.body) : null;
   const needsAction =
+    !handled &&
     inbound &&
     (unmatched || bodyClass === "needs_follow_up" || bodyClass === "needs_reply");
   const createdAt = message.received_at ?? message.sent_at ?? message.created_at;
@@ -89,9 +95,10 @@ function smsToInboxItem(message: SmsMessage): InboxItem {
 
   return {
     id: `sms:${inbound ? "inbound" : "outbound"}:${message.id}`,
+    sourceId: message.id,
     kind: "sms",
     priority: needsAction ? "action" : inbound ? "info" : "log",
-    badge: smsActionLabel(message),
+    badge: handled ? "Handled" : smsActionLabel(message),
     title: inbound ? `Text from ${from}` : "Text sent",
     body: message.body,
     createdAt,
@@ -111,6 +118,7 @@ function bookingRequestToInboxItem(request: BookingRequestInboxRow): InboxItem {
 
   return {
     id: `booking-request:${request.id}`,
+    sourceId: request.id,
     kind: "booking_request",
     priority: actionStatus ? "action" : "info",
     badge: status === "pending" ? "Request" : status,
@@ -126,6 +134,7 @@ function bookingRequestToInboxItem(request: BookingRequestInboxRow): InboxItem {
 function auditToInboxItem(event: AuditEvent): InboxItem {
   return {
     id: `activity:${event.id}`,
+    sourceId: event.id,
     kind: "activity",
     priority: "log",
     badge: auditEventLabel(event.event_type),

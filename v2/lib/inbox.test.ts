@@ -92,6 +92,33 @@ describe("buildInboxItems", () => {
     });
   });
 
+  it("does not keep handled inbound SMS in needs action", () => {
+    const items = buildInboxItems({
+      smsMessages: [sms({ body: "Can we change?", status: "handled" })],
+      bookingRequests: [],
+      auditEvents: [],
+    });
+
+    expect(items[0]).toMatchObject({
+      priority: "info",
+      badge: "Handled",
+    });
+  });
+
+  it("does not keep audit-handled inbound SMS in needs action", () => {
+    const items = buildInboxItems({
+      smsMessages: [sms({ id: "sms-1", body: "Can we change?" })],
+      bookingRequests: [],
+      auditEvents: [],
+      handledSmsIds: new Set(["sms-1"]),
+    });
+
+    expect(items[0]).toMatchObject({
+      priority: "info",
+      badge: "Handled",
+    });
+  });
+
   it("keeps confirmations and thanks as informational replies", () => {
     const items = buildInboxItems({
       smsMessages: [sms({ body: "Confirmed, thanks!" })],

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { InboxSmsActions } from "@/components/InboxSmsActions";
 import { auditEventLabel, auditEventTone, type AuditEvent } from "@/lib/audit";
 import { loadRecentAuditEvents } from "@/lib/audit.server";
 import { loadRecentBookingRequests } from "@/lib/bookingRequests.server";
@@ -14,17 +15,23 @@ export default async function InboxPage() {
   const [smsMessages, bookingRequests, auditEvents, clients] = await Promise.all([
     loadRecentSmsMessages(30),
     loadRecentBookingRequests(25),
-    loadRecentAuditEvents(12),
+    loadRecentAuditEvents(100),
     loadClients(),
   ]);
 
   const clientsById = new Map(
     clients.map((client) => [client.id, fullName(client.first_name, client.last_name)]),
   );
-  const items = buildInboxItems({ smsMessages, bookingRequests, auditEvents });
+  const items = buildInboxItems({
+    smsMessages,
+    bookingRequests,
+    auditEvents,
+    handledSmsIds: handledSmsIdsFromAudit(auditEvents),
+  });
   const counts = inboxCounts(items);
   const needsAction = items.filter((item) => item.priority === "action");
   const recentMessages = items.filter((item) => item.kind === "sms").slice(0, 12);
+  const recentActivity = auditEvents.slice(0, 12);
 
   return (
     <main className="min-h-full px-5 py-8">
@@ -78,8 +85,8 @@ export default async function InboxPage() {
       <section>
         <SectionHeader title="Recent activity" detail="Operational audit trail." />
         <div className="mt-3 overflow-hidden rounded-2xl border border-line bg-surface">
-          {auditEvents.length ? (
-            auditEvents.map((event) => (
+          {recentActivity.length ? (
+            recentActivity.map((event) => (
               <ActivityRow key={event.id} event={event} clientName={event.client_id ? clientsById.get(event.client_id) : null} />
             ))
           ) : (
@@ -122,6 +129,7 @@ function SectionHeader({ title, detail }: { title: string; detail: string }) {
 }
 
 function InboxCard({ item, clientName }: { item: InboxItem; clientName: string }) {
+  const showSmsActions = item.kind === "sms" && item.priority === "action";
   const card = (
     <article className="rounded-2xl border border-line bg-surface p-4 shadow-soft">
       <div className="flex items-start justify-between gap-3">
@@ -135,9 +143,19 @@ function InboxCard({ item, clientName }: { item: InboxItem; clientName: string }
       </div>
       <p className="mt-3 text-sm leading-relaxed text-ink-muted">{item.body}</p>
       <p className="mt-3 text-xs text-ink-faint">{formatDateTime(item.createdAt)}</p>
+      {showSmsActions ? <InboxSmsActions smsId={item.sourceId} /> : null}
+      {item.href && showSmsActions ? (
+        <Link
+          href={item.href}
+          className="mt-3 inline-flex text-sm font-bold text-brand"
+        >
+          Open household
+        </Link>
+      ) : null}
     </article>
   );
 
+  if (showSmsActions) return card;
   if (!item.href) return card;
   return (
     <Link href={item.href} className="block">
@@ -203,4 +221,17 @@ function formatDateTime(iso: string): string {
     hour: "numeric",
     minute: "2-digit",
   });
+}
+
+function handledSmsIdsFromAudit(events: AuditEvent[]): Set<string> {
+  return new Set(
+    events
+      .filter(
+        (event) =>
+          event.event_type === "sms.handled" ||
+          event.event_type === "sms.sent",
+      )
+      .map((event) => event.metadata.smsMessageId)
+      .filter((value): value is string => typeof value === "string" && value.length > 0),
+  );
 }
