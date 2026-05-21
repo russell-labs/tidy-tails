@@ -1,3 +1,4 @@
+import { createHmac, timingSafeEqual } from "node:crypto";
 import { digitsOnly } from "./format";
 
 export type TwilioConfig = {
@@ -64,6 +65,44 @@ export function getTwilioConfig(): TwilioConfigResult {
       fromNumber: fromNumber!,
     },
   };
+}
+
+export function getTwilioWebhookAuthToken(): string | null {
+  return requiredEnv(TWILIO_AUTH_TOKEN);
+}
+
+export function buildTwilioRequestSignature(
+  url: string,
+  params: URLSearchParams,
+  authToken: string,
+): string {
+  const payload = Array.from(params.entries())
+    .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
+    .reduce((value, [key, paramValue]) => `${value}${key}${paramValue}`, url);
+
+  return createHmac("sha1", authToken).update(payload).digest("base64");
+}
+
+export function validateTwilioRequestSignature({
+  url,
+  params,
+  signature,
+  authToken,
+}: {
+  url: string;
+  params: URLSearchParams;
+  signature: string | null;
+  authToken: string;
+}): boolean {
+  if (!signature) return false;
+
+  const expected = buildTwilioRequestSignature(url, params, authToken);
+  const actualBuffer = Buffer.from(signature);
+  const expectedBuffer = Buffer.from(expected);
+  return (
+    actualBuffer.length === expectedBuffer.length &&
+    timingSafeEqual(actualBuffer, expectedBuffer)
+  );
 }
 
 export function toTwilioPhone(raw: string): string | null {

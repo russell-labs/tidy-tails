@@ -14,6 +14,13 @@ export type InboundSmsMatch =
   | { status: "unmatched"; client: null }
   | { status: "ambiguous"; client: null };
 
+export type InboundSmsBodyClass =
+  | "confirmed"
+  | "thanks"
+  | "needs_follow_up"
+  | "needs_reply"
+  | "received";
+
 export type SmsMessage = {
   id: string;
   groomer_id: string;
@@ -61,11 +68,26 @@ export function matchClientByPhone(
   fromPhone: string,
 ): InboundSmsMatch {
   const incoming = comparablePhone(fromPhone);
-  const matches = clients.filter((client) => comparablePhone(client.phone) === incoming);
+  const matches = clients.filter((client) => clientPhones(client).includes(incoming));
 
   if (matches.length === 1) return { status: "matched", client: matches[0] };
   if (matches.length > 1) return { status: "ambiguous", client: null };
   return { status: "unmatched", client: null };
+}
+
+export function classifyInboundSmsBody(body: string): InboundSmsBodyClass {
+  const normalized = body.toLowerCase().trim();
+  if (/\b(confirm(ed)?|yes|yep|yeah|see you|sounds good)\b/.test(normalized)) {
+    return "confirmed";
+  }
+  if (/\b(thank(s| you)?|ty)\b/.test(normalized)) return "thanks";
+  if (/\b(cancel|reschedule|rebook|change|can't|cannot|wont|won't)\b/.test(normalized)) {
+    return "needs_follow_up";
+  }
+  if (normalized.includes("?") || /\b(when|what|where|how much|time)\b/.test(normalized)) {
+    return "needs_reply";
+  }
+  return "received";
 }
 
 export function buildInboundSmsInsert({
@@ -119,8 +141,12 @@ export function buildOutboundSmsInsert({
   };
 }
 
-export function buildTwilioWebhookResponse(): string {
-  return '<?xml version="1.0" encoding="UTF-8"?><Response></Response>';
+export function buildTwilioWebhookResponse(replyBody?: string | null): string {
+  if (!replyBody) {
+    return '<?xml version="1.0" encoding="UTF-8"?><Response></Response>';
+  }
+
+  return `<?xml version="1.0" encoding="UTF-8"?><Response><Message>${escapeXml(replyBody)}</Message></Response>`;
 }
 
 export function mapSmsMessageRow(row: Row): SmsMessage {
@@ -146,10 +172,25 @@ function comparablePhone(value: string): string {
   return digits.length === 11 && digits.startsWith("1") ? digits.slice(1) : digits;
 }
 
+function clientPhones(client: Client): string[] {
+  return [client.phone, client.alt_contact ?? ""]
+    .map(comparablePhone)
+    .filter(Boolean);
+}
+
 function stringValue(value: unknown): string {
   return typeof value === "string" ? value : value == null ? "" : String(value);
 }
 
 function nullableString(value: unknown): string | null {
   return typeof value === "string" && value !== "" ? value : null;
+}
+
+function escapeXml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&apos;");
 }

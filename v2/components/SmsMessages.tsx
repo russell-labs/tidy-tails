@@ -1,4 +1,5 @@
 import type { SmsMessage } from "@/lib/inboundSms";
+import { classifyInboundSmsBody } from "@/lib/inboundSms";
 import { formatPhone } from "@/lib/format";
 
 function messageTime(message: SmsMessage): string {
@@ -28,6 +29,22 @@ function directionClass(message: SmsMessage): string {
     ? "bg-brand-soft text-brand-ink"
     : "bg-canvas text-ink-soft";
 }
+
+const INBOUND_CLASS_LABELS = {
+  confirmed: "Confirmed",
+  thanks: "Thanks",
+  needs_follow_up: "Needs follow-up",
+  needs_reply: "Question",
+  received: "Reply",
+};
+
+const INBOUND_CLASS_STYLES = {
+  confirmed: "bg-brand-soft text-brand-ink",
+  thanks: "bg-canvas text-ink-soft",
+  needs_follow_up: "bg-warn-soft text-warn",
+  needs_reply: "bg-warn-soft text-warn",
+  received: "bg-canvas text-ink-soft",
+};
 
 export function SmsMessages({
   messages,
@@ -64,6 +81,15 @@ export function SmsMessages({
                 >
                   {directionLabel(message)}
                 </span>
+                {message.direction === "inbound" ? (
+                  <span
+                    className={`rounded-full px-2 py-1 text-[11px] font-semibold ${
+                      INBOUND_CLASS_STYLES[classifyInboundSmsBody(message.body)]
+                    }`}
+                  >
+                    {INBOUND_CLASS_LABELS[classifyInboundSmsBody(message.body)]}
+                  </span>
+                ) : null}
                 <span className="text-xs font-medium text-ink-soft">
                   {phoneForMessage(message)}
                 </span>

@@ -3,6 +3,7 @@ import {
   buildInboundSmsInsert,
   buildOutboundSmsInsert,
   buildTwilioWebhookResponse,
+  classifyInboundSmsBody,
   matchClientByPhone,
   parseTwilioInboundForm,
 } from "./inboundSms";
@@ -81,6 +82,21 @@ describe("matchClientByPhone", () => {
     });
   });
 
+  it("matches a Twilio sender to the household alternate contact", () => {
+    const withAlternate = [
+      {
+        ...clients[0],
+        alt_contact: "705-555-0199",
+      },
+      clients[1],
+    ];
+
+    expect(matchClientByPhone(withAlternate, "+1 705 555 0199")).toEqual({
+      status: "matched",
+      client: withAlternate[0],
+    });
+  });
+
   it("returns unmatched when no household has that phone number", () => {
     expect(matchClientByPhone(clients, "+1 705 555 0000")).toEqual({
       status: "unmatched",
@@ -95,6 +111,18 @@ describe("matchClientByPhone", () => {
       status: "ambiguous",
       client: null,
     });
+  });
+});
+
+describe("classifyInboundSmsBody", () => {
+  it.each([
+    ["Yes, confirmed", "confirmed"],
+    ["thanks!", "thanks"],
+    ["Can we reschedule?", "needs_follow_up"],
+    ["What time again?", "needs_reply"],
+    ["ok", "received"],
+  ] as const)("classifies %s as %s", (body, status) => {
+    expect(classifyInboundSmsBody(body)).toBe(status);
   });
 });
 
@@ -172,6 +200,12 @@ describe("buildTwilioWebhookResponse", () => {
   it("returns an empty TwiML response so Twilio does not auto-reply", () => {
     expect(buildTwilioWebhookResponse()).toBe(
       '<?xml version="1.0" encoding="UTF-8"?><Response></Response>',
+    );
+  });
+
+  it("can wrap a future agent reply in valid escaped TwiML", () => {
+    expect(buildTwilioWebhookResponse("Tom & Kiwi <3")).toBe(
+      '<?xml version="1.0" encoding="UTF-8"?><Response><Message>Tom &amp; Kiwi &lt;3</Message></Response>',
     );
   });
 });

@@ -10,13 +10,13 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
-import { isAllowedOperatorEmail } from "@/lib/operatorAccess";
+import { isAllowedOperatorEmail } from "../operatorAccess";
 import { getSupabaseCredentials } from "./env";
 
 // Routes reachable without a session. Everything else requires sign-in.
-const PUBLIC_PATHS = ["/login"];
+const PUBLIC_PATHS = ["/login", "/api/twilio/inbound-sms"];
 
-function isPublic(pathname: string): boolean {
+export function isPublicRoute(pathname: string): boolean {
   return PUBLIC_PATHS.some(
     (p) => pathname === p || pathname.startsWith(`${p}/`),
   );
@@ -58,7 +58,7 @@ export async function updateSession(request: NextRequest) {
 
   const { pathname } = request.nextUrl;
 
-  if (!user && !isPublic(pathname)) {
+  if (!user && !isPublicRoute(pathname)) {
     return finalize(
       NextResponse.redirect(new URL("/login", request.url)),
       response,

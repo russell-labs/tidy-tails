@@ -1,9 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildTwilioMessageRequest,
+  buildTwilioRequestSignature,
+  getTwilioWebhookAuthToken,
   getTwilioConfig,
   sendTwilioSms,
   toTwilioPhone,
+  validateTwilioRequestSignature,
 } from "./twilio";
 
 afterEach(() => {
@@ -63,6 +66,64 @@ describe("getTwilioConfig", () => {
     vi.stubEnv("TIDYTAILS_TWILIO_FROM_NUMBER", "+17055550123");
 
     expect(getTwilioConfig()).toMatchObject({ ok: true });
+  });
+});
+
+describe("getTwilioWebhookAuthToken", () => {
+  it("returns the Twilio Auth Token for signed webhook validation", () => {
+    vi.stubEnv("TIDYTAILS_TWILIO_AUTH_TOKEN", "account-auth-token");
+
+    expect(getTwilioWebhookAuthToken()).toBe("account-auth-token");
+  });
+
+  it("returns null when the webhook Auth Token is not configured", () => {
+    expect(getTwilioWebhookAuthToken()).toBeNull();
+  });
+});
+
+describe("Twilio request signature validation", () => {
+  const url = "https://tidy-tails-v2.vercel.app/api/twilio/inbound-sms";
+  const authToken = "12345";
+  const params = new URLSearchParams({
+    Body: "Yes, confirmed",
+    From: "+17053301807",
+    MessageSid: "SM123",
+    To: "+16414664592",
+  });
+
+  it("builds a stable HMAC-SHA1 signature from the URL and sorted form params", () => {
+    expect(buildTwilioRequestSignature(url, params, authToken)).toBe(
+      "xzAgDUdo34By8M2TFHOr3L1JN7U=",
+    );
+  });
+
+  it("accepts a matching Twilio request signature", () => {
+    const signature = buildTwilioRequestSignature(url, params, authToken);
+
+    expect(
+      validateTwilioRequestSignature({ url, params, signature, authToken }),
+    ).toBe(true);
+  });
+
+  it("rejects a changed body even when the signature is otherwise well-formed", () => {
+    const signature = buildTwilioRequestSignature(url, params, authToken);
+    const tamperedParams = new URLSearchParams(params);
+    tamperedParams.set("Body", "Cancel that");
+
+    expect(
+      validateTwilioRequestSignature({
+        url,
+        params: tamperedParams,
+        signature,
+        authToken,
+      }),
+    ).toBe(false);
+  });
+
+  it("rejects a missing signature", () => {
+    expect(
+      validateTwilioRequestSignature({ url, params, signature: "", authToken }),
+    ).toBe(false);
   });
 });
 
