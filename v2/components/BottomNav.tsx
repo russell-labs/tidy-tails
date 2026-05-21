@@ -64,14 +64,13 @@ const TABS: Tab[] = [
     ),
   },
   {
-    href: "/inbox",
-    label: "Inbox",
-    isActive: (p) => p.startsWith("/inbox"),
+    href: "/settings",
+    label: "Settings",
+    isActive: (p) => p.startsWith("/settings"),
     icon: (
       <svg {...iconProps} aria-hidden="true">
-        <path d="M4 5h16v11H7l-3 3V5Z" />
-        <path d="M8 9h8" />
-        <path d="M8 13h5" />
+        <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.38a2 2 0 0 0-.73-2.73l-.15-.09a2 2 0 0 1-1-1.74v-.51a2 2 0 0 1 1-1.72l.15-.1a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2Z" />
+        <circle cx="12" cy="12" r="3" />
       </svg>
     ),
   },
@@ -81,7 +80,7 @@ export function BottomNav() {
   const pathname = usePathname();
 
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-30 mx-auto w-full max-w-md border-t border-line bg-surface/95 backdrop-blur nav-safe">
+    <nav className="fixed inset-x-0 bottom-0 z-30 mx-auto w-full max-w-md border-t border-line bg-surface/95 shadow-[0_-12px_28px_rgba(28,27,34,0.08)] backdrop-blur nav-safe">
       <ul className="flex">
         {TABS.map((tab) => {
           const active = tab.isActive(pathname);

@@ -30,6 +30,11 @@ export const BOOKING_LOCATION_LABELS: Record<BookingLocation, string> = {
   annette: "Tidy Tails (Annette)",
 };
 
+export const CUSTOMER_BOOKING_LOCATION_LABELS: Record<BookingLocation, string> = {
+  gina: "60 Olive Crescent, Orillia",
+  annette: "290 Millard Street, Orillia",
+};
+
 export function bookingLocationLabel(
   location: BookingLocation | string | null | undefined,
 ): string | null {
@@ -40,11 +45,8 @@ export function bookingLocationLabel(
 export function customerBookingLocationLabel(
   location: BookingLocation | string | null | undefined,
 ): string | null {
-  if (location === "gina") return null;
-  if (location === "annette") {
-    return "290 Millard Street, Orillia";
-  }
-  return null;
+  if (!location) return null;
+  return CUSTOMER_BOOKING_LOCATION_LABELS[location as BookingLocation] ?? null;
 }
 
 // First-pass day-book slots. This is not external calendar sync; it makes the
@@ -74,6 +76,7 @@ export type BookingInput = {
   send_invite: string;
   customer_email: string;
   send_booking_text: string;
+  booking_message: string;
   save_reminder_phone: string;
   customer_phone: string;
   fee: string;
@@ -91,6 +94,7 @@ export type ValidatedBooking = {
   send_invite: boolean;
   customer_email: string | null;
   send_booking_text: boolean;
+  booking_message: string | null;
   save_reminder_phone: boolean;
   customer_phone: string | null;
   fee: number | null;
@@ -107,6 +111,7 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const TIME_SLOT_MAX = 40;
 const NOTES_MAX = 1000;
+export const BOOKING_MESSAGE_MAX = 480;
 
 function pad(n: number): string {
   return String(n).padStart(2, "0");
@@ -257,6 +262,17 @@ export function validateBookingInput(
   }
 
   const send_booking_text = isChecked(raw.send_booking_text);
+  const booking_message = optionalText(raw.booking_message);
+  if (send_booking_text) {
+    if (!booking_message) {
+      errors.booking_message = "Write the booking text before sending.";
+    } else if (booking_message.length > BOOKING_MESSAGE_MAX) {
+      errors.booking_message = `Keep the booking text under ${BOOKING_MESSAGE_MAX} characters.`;
+    }
+  } else if (booking_message && booking_message.length > BOOKING_MESSAGE_MAX) {
+    errors.booking_message = `Keep the booking text under ${BOOKING_MESSAGE_MAX} characters.`;
+  }
+
   const save_reminder_phone = isChecked(raw.save_reminder_phone);
   const customer_phone = optionalText(raw.customer_phone);
   if (send_booking_text || save_reminder_phone) {
@@ -301,6 +317,7 @@ export function validateBookingInput(
       send_invite,
       customer_email,
       send_booking_text,
+      booking_message: send_booking_text ? booking_message : null,
       save_reminder_phone,
       customer_phone,
       fee,
@@ -379,4 +396,25 @@ export function buildBookingTextMessage({
   const servicePart = service ? ` for ${service.toLowerCase()}` : "";
   const locationPart = location ? ` at ${location}` : "";
   return `Hi ${who}, ${petName} is booked${servicePart} on ${when}${locationPart}. See you then! — Samantha`;
+}
+
+export function renderBookingMessageTemplate(
+  template: string,
+  vars: {
+    ownerFirstName: string | null;
+    petName: string;
+    date: string;
+    time: string | null;
+    service: string | null;
+    location: string | null;
+  },
+): string {
+  return template
+    .replace(/\[first name\]/gi, vars.ownerFirstName?.trim() || "there")
+    .replace(/\[pet name\]/gi, vars.petName)
+    .replace(/\[date\]/gi, vars.date)
+    .replace(/\[time\]/gi, vars.time || "the scheduled time")
+    .replace(/\[service\]/gi, vars.service ?? "grooming")
+    .replace(/\[location\]/gi, vars.location ?? "the grooming location")
+    .trim();
 }

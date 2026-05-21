@@ -82,14 +82,14 @@ describe("Google Calendar event building", () => {
     });
 
     expect(event?.summary).toBe("Tidy Tails: Whiskey");
-    expect(event?.location).toBeUndefined();
+    expect(event?.location).toBe("60 Olive Crescent, Orillia");
     expect(event?.start).toEqual({
       dateTime: "2026-06-29T10:00:00",
       timeZone: "America/Toronto",
     });
     expect(event?.description).toContain("Owner: Mary Anca");
     expect(event?.description).toContain("Fee: $80.00");
-    expect(event?.description).not.toContain("Location:");
+    expect(event?.description).toContain("Location: 60 Olive Crescent, Orillia");
     expect(event?.attendees).toBeUndefined();
   });
 

@@ -60,6 +60,7 @@ function formatActivityTime(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "—";
   return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Toronto",
     month: "short",
     day: "numeric",
     hour: "numeric",
@@ -70,22 +71,47 @@ function formatActivityTime(value: string) {
 function ActivityRow({ event }: { event: AuditEvent }) {
   const tone = auditEventTone(event.event_type);
   return (
-    <li className="border-b border-line px-3.5 py-3 last:border-b-0">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-sm font-semibold text-ink">
-            {auditEventLabel(event.event_type)}
+    <li className="border-b border-line last:border-b-0">
+      <details className="group px-3.5 py-3">
+        <summary className="flex cursor-pointer list-none items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-ink">
+              {auditEventLabel(event.event_type)}
+            </p>
+            <p className="mt-1 text-xs leading-relaxed text-ink-soft">
+              {event.summary}
+            </p>
+          </div>
+          <span
+            className={`shrink-0 rounded-full px-2 py-1 text-[11px] font-semibold ${ACTIVITY_TONE_CLASSES[tone]}`}
+          >
+            {formatActivityTime(event.created_at)}
+          </span>
+        </summary>
+        <div className="mt-3 rounded-lg bg-canvas px-3 py-2 text-xs leading-relaxed text-ink-soft">
+          <p>
+            <span className="font-semibold text-ink">Type:</span>{" "}
+            {event.event_type}
           </p>
-          <p className="mt-1 text-xs leading-relaxed text-ink-soft">
-            {event.summary}
-          </p>
+          {event.client_id ? (
+            <p>
+              <span className="font-semibold text-ink">Client:</span>{" "}
+              {event.client_id}
+            </p>
+          ) : null}
+          {event.pet_id ? (
+            <p>
+              <span className="font-semibold text-ink">Pet:</span>{" "}
+              {event.pet_id}
+            </p>
+          ) : null}
+          {Object.keys(event.metadata ?? {}).length > 0 ? (
+            <pre className="mt-2 whitespace-pre-wrap break-words text-[11px] text-ink-faint">
+              {JSON.stringify(event.metadata, null, 2)}
+            </pre>
+          ) : null}
         </div>
-        <span
-          className={`shrink-0 rounded-full px-2 py-1 text-[11px] font-semibold ${ACTIVITY_TONE_CLASSES[tone]}`}
-        >
-          {formatActivityTime(event.created_at)}
-        </span>
-      </div>
+      </details>
     </li>
   );
 }
@@ -207,7 +233,7 @@ export default async function SettingsPage({
 
       <section className="mt-4">
         <h2 className="mb-1.5 text-sm font-semibold uppercase tracking-wide text-ink-faint">
-          Reminders
+          Message drafts
         </h2>
         <form
           action={saveOperatorSettings}
@@ -217,6 +243,18 @@ export default async function SettingsPage({
             The app prepares drafts only. Sam still reviews and confirms every
             message before anything sends.
           </p>
+
+          <label className="mt-3 flex flex-col gap-1.5">
+            <span className="text-sm font-semibold text-ink">
+              Booking confirmation
+            </span>
+            <textarea
+              name="bookingConfirmationTemplate"
+              rows={5}
+              defaultValue={settings.bookingConfirmationTemplate}
+              className="w-full resize-none rounded-lg border border-line bg-canvas px-3 py-2 text-sm leading-relaxed text-ink"
+            />
+          </label>
 
           <label className="mt-3 flex flex-col gap-1.5">
             <span className="text-sm font-semibold text-ink">
@@ -266,15 +304,15 @@ export default async function SettingsPage({
           </fieldset>
 
           <p className="mt-3 text-xs leading-relaxed text-ink-faint">
-            Placeholders: [first name], [pet name], [date], [time]. Reports use
-            this threshold by default.
+            Placeholders: [first name], [pet name], [date], [time], [service],
+            [location]. Reports use this threshold by default.
           </p>
 
           <button
             type="submit"
             className="mt-3 w-full rounded-xl bg-brand px-4 py-3 text-base font-semibold text-white active:bg-brand-ink"
           >
-            Save reminder settings
+            Save message settings
           </button>
         </form>
       </section>

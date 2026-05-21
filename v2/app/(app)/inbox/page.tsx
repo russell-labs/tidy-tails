@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { InboxSmsActions } from "@/components/InboxSmsActions";
-import { auditEventLabel, auditEventTone, type AuditEvent } from "@/lib/audit";
+import type { AuditEvent } from "@/lib/audit";
 import { loadRecentAuditEvents } from "@/lib/audit.server";
 import { loadRecentBookingRequests } from "@/lib/bookingRequests.server";
 import { loadClients } from "@/lib/data/repo";
@@ -31,23 +31,16 @@ export default async function InboxPage() {
   const counts = inboxCounts(items);
   const needsAction = items.filter((item) => item.priority === "action");
   const recentMessages = items.filter((item) => item.kind === "sms").slice(0, 12);
-  const recentActivity = auditEvents.slice(0, 12);
 
   return (
     <main className="min-h-full px-5 py-8">
-      <div className="mb-8 flex items-start justify-between gap-4">
+      <div className="mb-8">
         <div>
           <h1 className="text-xl font-bold text-ink">Inbox</h1>
           <p className="mt-2 text-sm text-ink-muted">
-            Replies, booking requests, and activity that may need Sam&apos;s attention.
+            Customer replies and booking requests that may need Sam&apos;s attention.
           </p>
         </div>
-        <Link
-          href="/settings"
-          className="shrink-0 rounded-xl border border-brand px-4 py-2 text-sm font-semibold text-brand"
-        >
-          Settings
-        </Link>
       </div>
 
       <section className="mb-8 grid grid-cols-3 gap-2">
@@ -82,18 +75,9 @@ export default async function InboxPage() {
         </div>
       </section>
 
-      <section>
-        <SectionHeader title="Recent activity" detail="Operational audit trail." />
-        <div className="mt-3 overflow-hidden rounded-2xl border border-line bg-surface">
-          {recentActivity.length ? (
-            recentActivity.map((event) => (
-              <ActivityRow key={event.id} event={event} clientName={event.client_id ? clientsById.get(event.client_id) : null} />
-            ))
-          ) : (
-            <EmptyState text="No activity logged yet." />
-          )}
-        </div>
-      </section>
+      <p className="text-xs leading-relaxed text-ink-faint">
+        The full operational audit log lives in Settings.
+      </p>
     </main>
   );
 }
@@ -164,29 +148,6 @@ function InboxCard({ item, clientName }: { item: InboxItem; clientName: string }
   );
 }
 
-function ActivityRow({
-  event,
-  clientName,
-}: {
-  event: AuditEvent;
-  clientName: string | null | undefined;
-}) {
-  return (
-    <div className="border-b border-line px-4 py-3 last:border-b-0">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-sm font-semibold text-ink">{auditEventLabel(event.event_type)}</p>
-          <p className="mt-1 text-sm text-ink-muted">{event.summary}</p>
-          {clientName ? <p className="mt-1 text-xs text-ink-faint">{clientName}</p> : null}
-        </div>
-        <span className={`rounded-full px-2 py-1 text-[11px] font-bold ${toneClass(event.event_type)}`}>
-          {formatDateTime(event.created_at)}
-        </span>
-      </div>
-    </div>
-  );
-}
-
 function EmptyState({ text }: { text: string }) {
   return (
     <div className="rounded-2xl border border-line bg-surface p-4 text-sm text-ink-muted shadow-soft">
@@ -203,13 +164,6 @@ function clientName(item: InboxItem, clientsById: Map<string, string>): string {
 function badgeClass(priority: InboxItem["priority"]): string {
   if (priority === "action") return "bg-canvas text-warn";
   if (priority === "info") return "bg-brand-soft text-brand";
-  return "bg-canvas text-ink-muted";
-}
-
-function toneClass(type: string): string {
-  const tone = auditEventTone(type);
-  if (tone === "warn") return "bg-canvas text-warn";
-  if (tone === "write") return "bg-brand-soft text-brand";
   return "bg-canvas text-ink-muted";
 }
 

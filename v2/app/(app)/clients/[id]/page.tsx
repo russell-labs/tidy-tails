@@ -37,10 +37,13 @@ export async function generateMetadata({
 
 export default async function ClientDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams?: Promise<{ from?: string; week?: string }>;
 }) {
   const { id } = await params;
+  const source = searchParams ? await searchParams : {};
   const record = await getClientRecord(id);
   if (!record) notFound();
 
@@ -55,7 +58,14 @@ export default async function ClientDetailPage({
 
   return (
     <main className="px-4 py-4">
-      <BackLink href="/" label="Search" />
+      <BackLink
+        href={
+          source.from === "schedule"
+            ? `/schedule${source.week ? `?week=${source.week}` : ""}`
+            : "/"
+        }
+        label={source.from === "schedule" ? "Schedule" : "Search"}
+      />
 
       <header className="mt-2">
         <h1 className="text-2xl font-bold text-ink">
@@ -89,6 +99,9 @@ export default async function ClientDetailPage({
           appointments={appointments}
           mode={dataMode()}
           writesEnabled={isAddAppointmentWriteEnabled()}
+          bookingConfirmationTemplate={
+            operatorSettings.bookingConfirmationTemplate
+          }
         />
         <LogGroom
           client={client}

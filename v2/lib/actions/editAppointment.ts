@@ -12,7 +12,11 @@ import {
 } from "@/lib/googleCalendar.server";
 import { createServerSupabase, getCurrentUser } from "@/lib/supabase/server";
 import { isEditAppointmentWriteEnabled } from "@/lib/writeGate";
-import { bookingLocationLabel, hasBookedTimeConflict } from "@/lib/booking";
+import {
+  bookingLocationLabel,
+  customerBookingLocationLabel,
+  hasBookedTimeConflict,
+} from "@/lib/booking";
 import {
   buildEditAppointmentUpdate,
   validateEditAppointment,
@@ -115,7 +119,9 @@ export async function editAppointment(
     date: payload.date,
     time: payload.time_slot,
     service: serviceLabel(payload.service_type),
-    location: bookingLocationLabel(payload.location),
+    location:
+      customerBookingLocationLabel(payload.location) ??
+      bookingLocationLabel(payload.location),
     fee: payload.fee,
     tip: payload.tip,
     paymentMethod: appointment.payment_method,
@@ -250,7 +256,9 @@ export async function deleteAppointment(
     time: existing.time_slot,
     service: existing.service,
     fee: existing.price,
-    location: bookingLocationLabel(existing.location),
+    location:
+      customerBookingLocationLabel(existing.location) ??
+      bookingLocationLabel(existing.location),
     tip: existing.tip,
     paymentMethod: payment.method ?? "cash",
     paymentStatus: payment.status ?? "paid",

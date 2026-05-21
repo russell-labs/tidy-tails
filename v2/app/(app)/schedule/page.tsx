@@ -130,7 +130,7 @@ export default async function SchedulePage({
 
       <section className="mt-6">
         <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-ink-faint">
-          This week
+          Appointments this week
         </h2>
         {rows.length === 0 ? (
           <p className="rounded-xl border border-line bg-surface px-3.5 py-4 text-sm text-ink-soft">
@@ -143,7 +143,11 @@ export default async function SchedulePage({
               return (
                 <Link
                   key={appointment.id}
-                  href={client ? `/clients/${client.id}` : "/"}
+                  href={
+                    client
+                      ? `/clients/${client.id}?from=schedule&week=${range.start}`
+                      : "/schedule"
+                  }
                   className="rounded-xl border border-line bg-surface px-3.5 py-3 shadow-sm active:bg-brand-soft"
                 >
                   <div className="flex items-start justify-between gap-3">

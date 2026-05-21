@@ -320,7 +320,7 @@ function EditAppointmentForm({
                       time === slot.time
                         ? "border-brand bg-brand text-white"
                         : slot.available
-                          ? "border-line bg-surface text-ink active:bg-brand-soft"
+                          ? "border-line bg-surface text-ink"
                           : "border-line bg-canvas text-ink-faint"
                     }`}
                   >

@@ -5,12 +5,15 @@ export const LAPSED_THRESHOLD_OPTIONS = [60, 90, 120, 180] as const;
 export type LapsedThresholdDays = (typeof LAPSED_THRESHOLD_OPTIONS)[number];
 
 export type OperatorSettings = {
+  bookingConfirmationTemplate: string;
   appointmentReminderTemplate: string;
   rebookReminderTemplate: string;
   lapsedThresholdDays: LapsedThresholdDays;
 };
 
 export const DEFAULT_OPERATOR_SETTINGS: OperatorSettings = {
+  bookingConfirmationTemplate:
+    "Hi [first name], [pet name] is booked for [service] on [date] at [time] at [location]. See you then! — Samantha",
   appointmentReminderTemplate:
     "Hi [first name], reminder that [pet name] is booked with Tidy Tails on [date]. See you soon! — Samantha",
   rebookReminderTemplate:
@@ -32,12 +35,17 @@ function normalizeTemplate(raw: unknown, fallback: string): string {
 }
 
 export function normalizeOperatorSettings(raw: {
+  bookingConfirmationTemplate?: unknown;
   appointmentReminderTemplate?: unknown;
   rebookReminderTemplate?: unknown;
   lapsedThresholdDays?: unknown;
 }): OperatorSettings {
   const threshold = Number(raw.lapsedThresholdDays);
   return {
+    bookingConfirmationTemplate: normalizeTemplate(
+      raw.bookingConfirmationTemplate,
+      DEFAULT_OPERATOR_SETTINGS.bookingConfirmationTemplate,
+    ),
     appointmentReminderTemplate: normalizeTemplate(
       raw.appointmentReminderTemplate,
       DEFAULT_OPERATOR_SETTINGS.appointmentReminderTemplate,
@@ -69,6 +77,7 @@ export function serializeOperatorSettings(settings: OperatorSettings): string {
 
 export function operatorSettingsFromForm(formData: FormData): OperatorSettings {
   return normalizeOperatorSettings({
+    bookingConfirmationTemplate: formData.get("bookingConfirmationTemplate"),
     appointmentReminderTemplate: formData.get("appointmentReminderTemplate"),
     rebookReminderTemplate: formData.get("rebookReminderTemplate"),
     lapsedThresholdDays: Number(formData.get("lapsedThresholdDays")),

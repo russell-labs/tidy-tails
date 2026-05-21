@@ -143,7 +143,7 @@ describe("renderReminderTemplate — placeholder replacement", () => {
     ).toBe("Sam / Scout / Jun 1, 2026 / 10am");
   });
 
-  it("omits the private shop nickname when Gina's address is not known", () => {
+  it("uses Gina's address without naming Gina in customer-facing reminder locations", () => {
     expect(
       renderReminderTemplate("See you at [location]", {
         ownerFirstName: "Sam",
@@ -151,7 +151,7 @@ describe("renderReminderTemplate — placeholder replacement", () => {
         appointmentDate: "2026-06-01",
         appointmentLocation: "gina",
       }),
-    ).toBe("See you at the grooming location");
+    ).toBe("See you at 60 Olive Crescent, Orillia");
   });
 
   it("uses Annette's address without naming Annette in customer-facing reminder locations", () => {

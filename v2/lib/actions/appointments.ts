@@ -95,6 +95,7 @@ export async function createBooking(
     send_invite: String(formData.get("send_invite") ?? ""),
     customer_email: String(formData.get("customer_email") ?? ""),
     send_booking_text: String(formData.get("send_booking_text") ?? ""),
+    booking_message: String(formData.get("booking_message") ?? ""),
     save_reminder_phone: String(formData.get("save_reminder_phone") ?? ""),
     customer_phone: String(formData.get("customer_phone") ?? ""),
     fee: String(formData.get("fee") ?? ""),
@@ -149,7 +150,9 @@ export async function createBooking(
     date: payload.date,
     time: payload.time_slot,
     service: serviceLabel(payload.service_type),
-    location: bookingLocationLabel(payload.location),
+    location:
+      customerBookingLocationLabel(payload.location) ??
+      bookingLocationLabel(payload.location),
     customerInvite:
       booking.send_invite && effectiveClient.email ? effectiveClient.email : null,
     bookingText:
@@ -269,7 +272,8 @@ export async function createBooking(
       date: summary.date,
       time: summary.time,
       service: summary.service,
-      location: customerBookingLocationLabel(payload.location) ?? summary.location,
+      location: summary.location,
+      message: booking.booking_message,
     });
   } else {
     summary.bookingTextSend = {
@@ -316,6 +320,7 @@ async function sendBookingText({
   time,
   service,
   location,
+  message,
 }: {
   clientId: string;
   groomerId: string;
@@ -326,6 +331,7 @@ async function sendBookingText({
   time: string | null;
   service: string | null;
   location: string | null;
+  message: string | null;
 }): Promise<NonNullable<BookingSummary["bookingTextSend"]>> {
   if (!isReminderSendEnabled()) {
     return {
@@ -351,14 +357,16 @@ async function sendBookingText({
     };
   }
 
-  const body = buildBookingTextMessage({
-    ownerFirstName,
-    petName,
-    date,
-    time,
-    service,
-    location,
-  });
+  const body =
+    message?.trim() ||
+    buildBookingTextMessage({
+      ownerFirstName,
+      petName,
+      date,
+      time,
+      service,
+      location,
+    });
   const result = await sendTwilioSms(twilioConfig.value, {
     to: normalizedPhone,
     body,

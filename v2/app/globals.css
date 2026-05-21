@@ -38,6 +38,11 @@ body {
   height: 100%;
 }
 
+html {
+  background-color: var(--color-canvas);
+  overscroll-behavior-y: none;
+}
+
 body {
   background-color: var(--color-canvas);
   color: var(--color-ink);
@@ -49,10 +54,11 @@ body {
 /* iOS safe-area helpers for fixed navigation and bottom sheets. The extra room
    keeps final buttons clear of Safari's toolbar and the in-app tab bar. */
 .pad-bottom-nav {
-  padding-bottom: calc(7.5rem + env(safe-area-inset-bottom));
+  padding-bottom: calc(9rem + env(safe-area-inset-bottom));
 }
 .nav-safe {
-  padding-bottom: env(safe-area-inset-bottom);
+  min-height: calc(4.75rem + env(safe-area-inset-bottom));
+  padding-bottom: calc(0.75rem + env(safe-area-inset-bottom));
 }
 .sheet-bottom-room {
   padding-bottom: calc(2rem + env(safe-area-inset-bottom));

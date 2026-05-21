@@ -5,8 +5,10 @@ import {
   buildBookingTextMessage,
   bookedTimesForDate,
   buildAppointmentInsert,
+  customerBookingLocationLabel,
   findOwnedPet,
   hasBookedTimeConflict,
+  renderBookingMessageTemplate,
   validateBookingInput,
 } from "./booking";
 
@@ -75,6 +77,7 @@ describe("validateBookingInput — required fields", () => {
         send_invite: false,
         customer_email: null,
         send_booking_text: false,
+        booking_message: null,
         save_reminder_phone: false,
         customer_phone: null,
         fee: null,
@@ -159,6 +162,7 @@ describe("validateBookingInput — optional fields", () => {
         send_invite: "on",
         customer_email: "mary@example.com",
         send_booking_text: "on",
+        booking_message: "Hi Mary, Whiskey is booked.",
         save_reminder_phone: "on",
         customer_phone: "705-330-1807",
         fee: "72.50",
@@ -174,6 +178,7 @@ describe("validateBookingInput — optional fields", () => {
       expect(r.value.send_invite).toBe(true);
       expect(r.value.customer_email).toBe("mary@example.com");
       expect(r.value.send_booking_text).toBe(true);
+      expect(r.value.booking_message).toBe("Hi Mary, Whiskey is booked.");
       expect(r.value.save_reminder_phone).toBe(true);
       expect(r.value.customer_phone).toBe("705-330-1807");
       expect(r.value.fee).toBe(72.5);
@@ -224,6 +229,22 @@ describe("validateBookingInput — optional fields", () => {
     );
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.errors.customer_phone).toBeTruthy();
+  });
+
+  it("requires editable booking text when booking text is selected", () => {
+    const r = validateBookingInput(
+      {
+        client_id: "c1",
+        pet_id: "p1",
+        date: "2026-06-01",
+        time_slot: "10:30am",
+        send_booking_text: "on",
+        customer_phone: "705-330-1807",
+      },
+      TODAY,
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.errors.booking_message).toBeTruthy();
   });
 
   it("requires a usable phone when reminder phone saving is selected", () => {
@@ -346,6 +367,7 @@ describe("buildAppointmentInsert — payload + null policy", () => {
       send_invite: false,
       customer_email: null,
       send_booking_text: false,
+      booking_message: null,
       save_reminder_phone: false,
       customer_phone: null,
       fee: null,
@@ -375,6 +397,7 @@ describe("buildAppointmentInsert — payload + null policy", () => {
       send_invite: true,
       customer_email: "owner@example.com",
       send_booking_text: true,
+      booking_message: "Hi, you're booked.",
       save_reminder_phone: true,
       customer_phone: "705-555-0199",
       fee: 25,
@@ -400,6 +423,7 @@ describe("buildAppointmentInsert — payload + null policy", () => {
       send_invite: false,
       customer_email: null,
       send_booking_text: false,
+      booking_message: null,
       save_reminder_phone: false,
       customer_phone: null,
       fee: null,
@@ -438,6 +462,35 @@ describe("buildBookingTextMessage", () => {
         location: null,
       }),
     ).toBe("Hi there, Kiwi is booked on 2026-06-01. See you then! — Samantha");
+  });
+});
+
+describe("customer-facing booking labels", () => {
+  it("uses addresses, not private location nicknames, for customers", () => {
+    expect(customerBookingLocationLabel("gina")).toBe(
+      "60 Olive Crescent, Orillia",
+    );
+    expect(customerBookingLocationLabel("annette")).toBe(
+      "290 Millard Street, Orillia",
+    );
+  });
+
+  it("renders editable booking confirmation templates", () => {
+    expect(
+      renderBookingMessageTemplate(
+        "Hi [first name], [pet name] is booked for [service] on [date] at [time] at [location].",
+        {
+          ownerFirstName: "Mary",
+          petName: "Whiskey",
+          date: "Jun 29, 2026",
+          time: "10am",
+          service: "Full groom",
+          location: "60 Olive Crescent, Orillia",
+        },
+      ),
+    ).toBe(
+      "Hi Mary, Whiskey is booked for Full groom on Jun 29, 2026 at 10am at 60 Olive Crescent, Orillia.",
+    );
   });
 });
 

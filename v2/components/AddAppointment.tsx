@@ -11,6 +11,8 @@ import {
   BOOKING_LOCATIONS,
   bookingLocationLabel,
   bookedTimesForDate,
+  customerBookingLocationLabel,
+  renderBookingMessageTemplate,
   SERVICE_TYPES,
   validateBookingInput,
   type BookingLocation,
@@ -39,12 +41,14 @@ export function AddAppointment({
   appointments,
   mode,
   writesEnabled,
+  bookingConfirmationTemplate,
 }: {
   client: Client;
   pets: Pet[];
   appointments: Appointment[];
   mode: "fixtures" | "live";
   writesEnabled: boolean;
+  bookingConfirmationTemplate: string;
 }) {
   const [open, setOpen] = useState(false);
   // Remount the form on each close so a reopened sheet starts fresh.
@@ -94,6 +98,7 @@ export function AddAppointment({
           appointments={appointments}
           mode={mode}
           writesEnabled={writesEnabled}
+          bookingConfirmationTemplate={bookingConfirmationTemplate}
           onDone={close}
         />
       </Sheet>
@@ -107,6 +112,7 @@ function BookingForm({
   appointments,
   mode,
   writesEnabled,
+  bookingConfirmationTemplate,
   onDone,
 }: {
   client: Client;
@@ -114,6 +120,7 @@ function BookingForm({
   appointments: Appointment[];
   mode: "fixtures" | "live";
   writesEnabled: boolean;
+  bookingConfirmationTemplate: string;
   onDone: () => void;
 }) {
   const [state, formAction, pending] = useActionState<BookingState, FormData>(
@@ -136,6 +143,7 @@ function BookingForm({
   const [sendInvite, setSendInvite] = useState(Boolean(client.email));
   const [customerEmail, setCustomerEmail] = useState(client.email ?? "");
   const [sendBookingText, setSendBookingText] = useState(false);
+  const [bookingMessage, setBookingMessage] = useState("");
   const [saveReminderPhone, setSaveReminderPhone] = useState(
     Boolean(client.phone),
   );
@@ -182,6 +190,19 @@ function BookingForm({
         serviceType,
       })
     : null;
+  const customerLocation = customerBookingLocationLabel(location);
+  const defaultBookingMessage = () =>
+    renderBookingMessageTemplate(bookingConfirmationTemplate, {
+      ownerFirstName: client.first_name,
+      petName: selectedPet.name,
+      date: date ? formatReviewDate(date) : "the selected date",
+      time: time || null,
+      service: serviceType ? serviceLabel(serviceType) : null,
+      location: customerLocation,
+    });
+  const currentBookingMessage = sendBookingText
+    ? bookingMessage.trim() || defaultBookingMessage()
+    : "";
 
   useEffect(() => {
     if (!date) return;
@@ -208,6 +229,9 @@ function BookingForm({
   }
 
   function toReview() {
+    const bookingMessageForReview = sendBookingText
+      ? bookingMessage.trim() || defaultBookingMessage()
+      : "";
     const v = validateBookingInput({
       client_id: client.id,
       pet_id: petId,
@@ -218,6 +242,7 @@ function BookingForm({
       send_invite: sendInvite ? "on" : "",
       customer_email: customerEmail,
       send_booking_text: sendBookingText ? "on" : "",
+      booking_message: bookingMessageForReview,
       save_reminder_phone: saveReminderPhone ? "on" : "",
       customer_phone: customerPhone,
       fee,
@@ -228,6 +253,9 @@ function BookingForm({
       return;
     }
     setErrors({});
+    if (sendBookingText && !bookingMessage.trim()) {
+      setBookingMessage(bookingMessageForReview);
+    }
     setStep("review");
   }
 
@@ -271,6 +299,7 @@ function BookingForm({
         name="send_booking_text"
         value={sendBookingText ? "on" : ""}
       />
+      <input type="hidden" name="booking_message" value={currentBookingMessage} />
       <input
         type="hidden"
         name="save_reminder_phone"
@@ -349,7 +378,7 @@ function BookingForm({
                       time === slot.time
                         ? "border-brand bg-brand text-white"
                         : slot.available
-                          ? "border-line bg-surface text-ink active:bg-brand-soft"
+                          ? "border-line bg-surface text-ink"
                           : "border-line bg-canvas text-ink-faint"
                     }`}
                   >
@@ -473,7 +502,8 @@ function BookingForm({
               </span>
               <span className="block text-xs leading-relaxed">
                 Send one SMS with the booking date, time, service, and location
-                after Sam confirms.
+                after Sam confirms. Sam can edit the exact text on the review
+                step.
               </span>
             </span>
           </label>
@@ -555,7 +585,13 @@ function BookingForm({
             />
             <ReviewRow
               label="Location"
-              value={location ? bookingLocationLabel(location) ?? "Not set" : "Not set"}
+              value={
+                location
+                  ? customerBookingLocationLabel(location) ??
+                    bookingLocationLabel(location) ??
+                    "Not set"
+                  : "Not set"
+              }
             />
             <ReviewRow
               label="Invite"
@@ -583,6 +619,21 @@ function BookingForm({
             />
             {notes.trim() ? <ReviewRow label="Notes" value={notes} /> : null}
           </dl>
+
+          {sendBookingText ? (
+            <Field
+              label="Booking text to send"
+              error={errors.booking_message}
+              hint={`${currentBookingMessage.length}/480 characters. This is what the customer will receive if Sam confirms.`}
+            >
+              <textarea
+                value={currentBookingMessage}
+                onChange={(event) => setBookingMessage(event.target.value)}
+                rows={5}
+                className={`${fieldClass} resize-none leading-relaxed`}
+              />
+            </Field>
+          ) : null}
 
           <div className="flex gap-2.5">
             <button
@@ -627,8 +678,9 @@ function DayFitCard({ assessment }: { assessment: DayFitAssessment }) {
     <section className={`rounded-xl px-3.5 py-3 text-sm ${tone}`}>
       <p className="font-semibold">{headline}</p>
       <p className="mt-1 leading-relaxed">
-        {assessment.projectedDogs} dog{assessment.projectedDogs === 1 ? "" : "s"}{" "}
-        projected · {assessment.projectedLargeDogs} large ·{" "}
+        With this booking: {assessment.projectedDogs} dog
+        {assessment.projectedDogs === 1 ? "" : "s"} projected ·{" "}
+        {assessment.projectedLargeDogs} large ·{" "}
         {assessment.projectedLoadPoints.toFixed(2).replace(/\.00$/, "")} load
         points.
       </p>
