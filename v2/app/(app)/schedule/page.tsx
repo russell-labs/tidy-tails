@@ -7,6 +7,7 @@ import {
   shiftWeek,
   weekRangeForDate,
 } from "@/lib/schedule";
+import { summarizeDayLoad, type DaySummary } from "@/lib/dayCapacity";
 import { formatMoney, formatPhone, fullName } from "@/lib/format";
 
 export const metadata: Metadata = { title: "Schedule" };
@@ -26,6 +27,15 @@ function dayLabel(date: string): string {
   });
 }
 
+function weekDays(start: string): string[] {
+  const d = new Date(`${start}T12:00:00`);
+  return Array.from({ length: 7 }, (_, i) => {
+    const copy = new Date(d);
+    copy.setDate(d.getDate() + i);
+    return `${copy.getFullYear()}-${String(copy.getMonth() + 1).padStart(2, "0")}-${String(copy.getDate()).padStart(2, "0")}`;
+  });
+}
+
 export default async function SchedulePage({
   searchParams,
 }: {
@@ -36,6 +46,9 @@ export default async function SchedulePage({
   const range = weekRangeForDate(selected);
   const { clients, pets, appointments } = await loadDataset();
   const rows = appointmentsForWeek({ appointments, clients, pets, range });
+  const daySummaries = weekDays(range.start).map((date) =>
+    summarizeDayLoad({ date, appointments, pets }),
+  );
   const prev = shiftWeek(range.start, -1);
   const next = shiftWeek(range.start, 1);
 
@@ -100,6 +113,22 @@ export default async function SchedulePage({
       </section>
 
       <section className="mt-6">
+        <div className="mb-2">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-faint">
+            Day fit
+          </h2>
+          <p className="mt-1 text-sm text-ink-soft">
+            A first-pass read on how full each day is. Sam still decides.
+          </p>
+        </div>
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          {daySummaries.map((summary) => (
+            <DaySummaryCard key={summary.date} summary={summary} />
+          ))}
+        </div>
+      </section>
+
+      <section className="mt-6">
         <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-ink-faint">
           This week
         </h2>
@@ -159,5 +188,45 @@ export default async function SchedulePage({
         )}
       </section>
     </main>
+  );
+}
+
+function DaySummaryCard({ summary }: { summary: DaySummary }) {
+  const tone =
+    summary.status === "not_recommended" || summary.status === "heavy"
+      ? "border-warn/40 bg-warn-soft text-warn"
+      : summary.status === "possible"
+        ? "border-line bg-surface text-ink"
+        : "border-line bg-surface text-ink";
+  const status =
+    summary.status === "not_recommended"
+      ? "Too full"
+      : summary.status === "heavy"
+        ? "Heavy"
+        : summary.status === "possible"
+          ? "Possible"
+          : "Open";
+
+  return (
+    <div className={`rounded-xl border px-3.5 py-3 ${tone}`}>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-sm font-bold">{dayLabel(summary.date)}</p>
+          <p className="mt-1 text-xs opacity-80">
+            {summary.totalDogs} dog{summary.totalDogs === 1 ? "" : "s"} ·{" "}
+            {summary.largeDogs} large ·{" "}
+            {summary.loadPoints.toFixed(2).replace(/\.00$/, "")} pts
+          </p>
+        </div>
+        <span className="rounded-full bg-white/70 px-2 py-1 text-xs font-semibold">
+          {status}
+        </span>
+      </div>
+      {summary.messages[1] ? (
+        <p className="mt-2 text-xs leading-relaxed opacity-85">
+          {summary.messages[1]}
+        </p>
+      ) : null}
+    </div>
   );
 }

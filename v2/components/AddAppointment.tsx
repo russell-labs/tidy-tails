@@ -17,6 +17,7 @@ import {
   type BookingErrors,
   type ServiceType,
 } from "@/lib/booking";
+import { assessDayFit, type DayFitAssessment } from "@/lib/dayCapacity";
 import { lastKnownPrice, lastKnownService } from "@/lib/derive";
 import { serviceLabel } from "@/lib/data/live";
 import type { Appointment, Client, Pet } from "@/lib/data/types";
@@ -172,6 +173,15 @@ function BookingForm({
       : fallbackSlots
     : [];
   const bookedTimes = date ? bookedTimesForDate(appointments, date) : [];
+  const dayFit = date
+    ? assessDayFit({
+        date,
+        appointments,
+        pets,
+        candidatePet: selectedPet,
+        serviceType,
+      })
+    : null;
 
   useEffect(() => {
     if (!date) return;
@@ -400,6 +410,8 @@ function BookingForm({
             </select>
           </Field>
 
+          {dayFit ? <DayFitCard assessment={dayFit} /> : null}
+
           <Field
             label="Location"
             error={errors.location}
@@ -592,6 +604,40 @@ function BookingForm({
         </>
       )}
     </form>
+  );
+}
+
+function DayFitCard({ assessment }: { assessment: DayFitAssessment }) {
+  const tone =
+    assessment.status === "not_recommended" || assessment.status === "heavy"
+      ? "bg-warn-soft text-warn"
+      : assessment.status === "possible"
+        ? "bg-canvas text-ink-soft"
+        : "bg-brand-soft text-brand-ink";
+  const headline =
+    assessment.status === "not_recommended"
+      ? "This looks like too much for the day"
+      : assessment.status === "heavy"
+        ? "This would make a heavy day"
+        : assessment.status === "possible"
+          ? "This looks possible, but worth checking"
+          : "This day looks open";
+
+  return (
+    <section className={`rounded-xl px-3.5 py-3 text-sm ${tone}`}>
+      <p className="font-semibold">{headline}</p>
+      <p className="mt-1 leading-relaxed">
+        {assessment.projectedDogs} dog{assessment.projectedDogs === 1 ? "" : "s"}{" "}
+        projected · {assessment.projectedLargeDogs} large ·{" "}
+        {assessment.projectedLoadPoints.toFixed(2).replace(/\.00$/, "")} load
+        points.
+      </p>
+      <ul className="mt-2 list-disc space-y-1 pl-5 text-xs leading-relaxed">
+        {assessment.messages.slice(0, 3).map((message) => (
+          <li key={message}>{message}</li>
+        ))}
+      </ul>
+    </section>
   );
 }
 
