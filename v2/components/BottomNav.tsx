@@ -64,15 +64,14 @@ const TABS: Tab[] = [
     ),
   },
   {
-    href: "/settings",
-    label: "Settings",
-    isActive: (p) => p.startsWith("/settings"),
+    href: "/inbox",
+    label: "Inbox",
+    isActive: (p) => p.startsWith("/inbox"),
     icon: (
       <svg {...iconProps} aria-hidden="true">
-        <line x1="4" y1="8" x2="20" y2="8" />
-        <circle cx="9" cy="8" r="2.5" />
-        <line x1="4" y1="16" x2="20" y2="16" />
-        <circle cx="15" cy="16" r="2.5" />
+        <path d="M4 5h16v11H7l-3 3V5Z" />
+        <path d="M8 9h8" />
+        <path d="M8 13h5" />
       </svg>
     ),
   },
