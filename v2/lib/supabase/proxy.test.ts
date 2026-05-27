@@ -10,6 +10,10 @@ describe("isPublicRoute", () => {
     expect(isPublicRoute("/api/twilio/inbound-sms")).toBe(true);
   });
 
+  it("keeps the Twilio message status webhook public so delivery callbacks are not redirected to login", () => {
+    expect(isPublicRoute("/api/twilio/message-status")).toBe(true);
+  });
+
   it("keeps application pages private by default", () => {
     expect(isPublicRoute("/")).toBe(false);
     expect(isPublicRoute("/clients/c01")).toBe(false);

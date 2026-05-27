@@ -12,6 +12,10 @@ const fieldClass =
   "w-full rounded-xl border border-line bg-surface px-3.5 py-2.5 text-base text-ink placeholder:text-ink-faint";
 const labelClass = "text-sm font-medium text-ink-soft";
 
+function ownerLabel(firstName: string, lastName: string | null): string {
+  return `${firstName} ${lastName ?? ""}`.trim() || "Unnamed owner";
+}
+
 export function EditClient({
   client,
   mode,
@@ -36,9 +40,9 @@ export function EditClient({
         onClick={() => setOpen(true)}
         className="mt-3 rounded-xl border border-brand bg-brand-soft px-4 py-2.5 text-sm font-semibold text-brand-ink active:bg-brand-soft/70"
       >
-        Edit household
+        Edit household / owner
       </button>
-      <Sheet open={open} onClose={close} title="Edit household">
+      <Sheet open={open} onClose={close} title="Edit household / owner">
         <EditClientForm
           key={formKey}
           client={client}
@@ -107,7 +111,8 @@ function EditClientForm({
     state.status === "error"
       ? (state.formError ?? "Please check the household details and try again.")
       : undefined;
-  const ownerName = `${firstName} ${lastName}`.trim();
+  const originalOwnerName = ownerLabel(client.first_name, client.last_name);
+  const ownerName = ownerLabel(firstName, lastName);
 
   return (
     <form action={formAction} className="flex flex-col gap-3.5">
@@ -131,7 +136,12 @@ function EditClientForm({
 
       {step === "form" ? (
         <>
-          <Field label="First name" error={errors.first_name}>
+          <p className="rounded-lg bg-canvas px-3 py-2 text-xs leading-relaxed text-ink-soft">
+            Use this when the household is under the wrong owner name. It
+            changes who appears as the owner across search, schedule, messages,
+            and reports.
+          </p>
+          <Field label="Owner first name (optional)" error={errors.first_name}>
             <input
               type="text"
               value={firstName}
@@ -139,7 +149,7 @@ function EditClientForm({
               className={fieldClass}
             />
           </Field>
-          <Field label="Last name (optional)" error={errors.last_name}>
+          <Field label="Owner last name" error={errors.last_name}>
             <input
               type="text"
               value={lastName}
@@ -202,10 +212,12 @@ function EditClientForm({
       ) : (
         <>
           <p className="text-sm text-ink">
-            This will update <span className="font-semibold">{ownerName}</span>.
+            This will update the household owner from{" "}
+            <span className="font-semibold">{originalOwnerName}</span> to{" "}
+            <span className="font-semibold">{ownerName}</span>.
           </p>
           <dl className="flex flex-col gap-1.5 rounded-xl border border-line bg-canvas px-3.5 py-3 text-sm">
-            <ReviewRow label="Name" value={ownerName} />
+            <ReviewRow label="Owner" value={ownerName} />
             <ReviewRow label="Phone" value={formatPhone(phone)} />
             <ReviewRow label="Address" value={address.trim() || "Not set"} />
             <ReviewRow label="Notes" value={notes.trim() || "Not set"} />

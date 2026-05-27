@@ -1,6 +1,7 @@
 import type { Appointment } from "@/lib/data/types";
 import { sortByDateDesc } from "@/lib/derive";
 import { formatDateShort, formatMoney } from "@/lib/format";
+import type { LocationSettingsMap } from "@/lib/operatorSettings";
 import { EditAppointment } from "./EditAppointment";
 
 function Row({
@@ -8,22 +9,32 @@ function Row({
   clientId,
   appointments,
   petName,
+  customerPhone,
   mode,
   writesEnabled,
+  locationSettings,
 }: {
   appointment: Appointment;
   clientId: string;
   appointments: Appointment[];
   petName?: string;
+  customerPhone?: string;
   mode: "fixtures" | "live";
   writesEnabled: boolean;
+  locationSettings: LocationSettingsMap;
 }) {
   const total = (appointment.price ?? 0) + (appointment.tip ?? 0);
-  return (
-    <li className="flex items-start justify-between gap-3 px-3.5 py-3">
+  const trigger = (
+    <div className="flex items-start justify-between gap-3 px-3.5 py-3">
       <div className="min-w-0">
         <p className="text-sm font-semibold text-ink">
           {formatDateShort(appointment.date)}
+          {appointment.time_slot ? (
+            <span className="font-normal text-ink-soft">
+              {" "}
+              · {appointment.time_slot}
+            </span>
+          ) : null}
           {petName ? (
             <span className="font-normal text-ink-soft"> · {petName}</span>
           ) : null}
@@ -38,14 +49,9 @@ function Row({
             {appointment.notes}
           </p>
         ) : null}
-        <EditAppointment
-          clientId={clientId}
-          appointment={appointment}
-          appointments={appointments}
-          petName={petName}
-          mode={mode}
-          writesEnabled={writesEnabled}
-        />
+        <span className="mt-2 inline-flex rounded-lg border border-line px-2.5 py-1 text-xs font-semibold text-brand">
+          Edit visit
+        </span>
       </div>
       <div className="shrink-0 text-right">
         <p className="text-sm font-semibold text-ink">
@@ -59,6 +65,21 @@ function Row({
           </p>
         ) : null}
       </div>
+    </div>
+  );
+  return (
+    <li>
+      <EditAppointment
+        clientId={clientId}
+        appointment={appointment}
+        appointments={appointments}
+        petName={petName}
+        customerPhone={customerPhone}
+        mode={mode}
+        writesEnabled={writesEnabled}
+        locationSettings={locationSettings}
+        trigger={trigger}
+      />
     </li>
   );
 }
@@ -67,14 +88,18 @@ export function AppointmentHistory({
   appointments,
   clientId,
   petsById,
+  customerPhone,
   mode,
   writesEnabled,
+  locationSettings,
 }: {
   appointments: Appointment[];
   clientId: string;
   petsById?: Record<string, string>;
+  customerPhone?: string;
   mode: "fixtures" | "live";
   writesEnabled: boolean;
+  locationSettings: LocationSettingsMap;
 }) {
   if (appointments.length === 0) {
     return (
@@ -110,8 +135,10 @@ export function AppointmentHistory({
                 appointments={appointments}
                 clientId={clientId}
                 petName={petsById?.[a.pet_id]}
+                customerPhone={customerPhone}
                 mode={mode}
                 writesEnabled={writesEnabled}
+                locationSettings={locationSettings}
               />
             ))}
           </ul>
@@ -134,8 +161,10 @@ export function AppointmentHistory({
                 appointments={appointments}
                 clientId={clientId}
                 petName={petsById?.[a.pet_id]}
+                customerPhone={customerPhone}
                 mode={mode}
                 writesEnabled={writesEnabled}
+                locationSettings={locationSettings}
               />
             ))}
           </ul>
@@ -159,8 +188,10 @@ export function AppointmentHistory({
                   appointments={appointments}
                   clientId={clientId}
                   petName={petsById?.[a.pet_id]}
+                  customerPhone={customerPhone}
                   mode={mode}
                   writesEnabled={writesEnabled}
+                  locationSettings={locationSettings}
                 />
               ))}
             </ul>

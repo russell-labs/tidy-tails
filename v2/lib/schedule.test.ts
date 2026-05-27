@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { Appointment, Client, Pet } from "./data/types";
+import { FIXTURE_APPOINTMENTS } from "./data/fixtures";
 import {
+  appointmentsForDay,
   appointmentsForWeek,
+  bookedFeesForDate,
+  scheduleView,
+  shiftDay,
   shiftWeek,
   weekRangeForDate,
 } from "./schedule";
@@ -71,6 +76,18 @@ describe("week schedule helpers", () => {
     expect(shiftWeek("2026-05-17", -1)).toBe("2026-05-10");
   });
 
+  it("shifts a selected day by one-day increments", () => {
+    expect(shiftDay("2026-05-21", 1)).toBe("2026-05-22");
+    expect(shiftDay("2026-05-21", -1)).toBe("2026-05-20");
+  });
+
+  it("defaults to week view unless day view is requested", () => {
+    expect(scheduleView("day")).toBe("day");
+    expect(scheduleView("week")).toBe("week");
+    expect(scheduleView(undefined)).toBe("week");
+    expect(scheduleView("month")).toBe("week");
+  });
+
   it("returns booked appointments for the selected week in date/time order", () => {
     const range = weekRangeForDate("2026-05-19");
     const rows = appointmentsForWeek({
@@ -88,5 +105,46 @@ describe("week schedule helpers", () => {
     expect(rows.map((row) => row.appointment.id)).toEqual(["earlier", "later"]);
     expect(rows[0].client?.first_name).toBe("Mary");
     expect(rows[0].pet?.name).toBe("Whiskey");
+  });
+
+  it("returns booked appointments for a selected day in time order", () => {
+    const rows = appointmentsForDay({
+      appointments: [
+        appt({ id: "tomorrow", date: "2026-05-22", time_slot: "9:00am" }),
+        appt({ id: "later", date: "2026-05-21", time_slot: "1:30pm" }),
+        appt({ id: "earlier", date: "2026-05-21", time_slot: "9:00am" }),
+      ],
+      clients,
+      pets,
+      date: "2026-05-21",
+    });
+
+    expect(rows.map((row) => row.appointment.id)).toEqual(["earlier", "later"]);
+  });
+
+  it("totals booked fees for a selected day", () => {
+    expect(
+      bookedFeesForDate([
+        appt({ id: "one", date: "2026-05-21", price: 80 }),
+        appt({ id: "two", date: "2026-05-21", price: 45 }),
+        appt({ id: "no-fee", date: "2026-05-21", price: null }),
+        appt({ id: "completed", date: "2026-05-21", status: "completed", price: 90 }),
+        appt({ id: "other-day", date: "2026-05-22", price: 100 }),
+      ], "2026-05-21"),
+    ).toBe(125);
+  });
+});
+
+describe("fixture schedule coverage", () => {
+  it("includes at least one future booked appointment for local QA", () => {
+    const today = new Date("2026-05-27T12:00:00");
+    const todayISO = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+
+    expect(
+      FIXTURE_APPOINTMENTS.some(
+        (appointment) =>
+          appointment.status === "booked" && appointment.date >= todayISO,
+      ),
+    ).toBe(true);
   });
 });

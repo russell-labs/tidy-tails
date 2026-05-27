@@ -6,6 +6,9 @@ const valid = {
   pet_id: "pet-1",
   name: "Whiskey",
   breed: "Silver Terrier Yorkie",
+  size: "small",
+  color: "Silver and tan",
+  date_of_birth: "2021-06-15",
   allergy_state: "no",
   allergies_detail: "ignored when no",
   grooming_notes: "Long hair; typical fee $50-$60.",
@@ -22,6 +25,9 @@ describe("validateEditPet", () => {
       pet_id: "pet-1",
       name: "Whiskey",
       breed: "Silver Terrier Yorkie",
+      size: "small",
+      color: "Silver and tan",
+      date_of_birth: "2021-06-15",
       allergies: false,
       allergies_detail: null,
       grooming_notes: "Long hair; typical fee $50-$60.",
@@ -59,6 +65,9 @@ describe("validateEditPet", () => {
     const result = validateEditPet({
       ...valid,
       breed: "",
+      size: "",
+      color: "",
+      date_of_birth: "",
       allergy_state: "unknown",
       allergies_detail: "",
       grooming_notes: "",
@@ -67,20 +76,27 @@ describe("validateEditPet", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value.breed).toBeNull();
+    expect(result.value.size).toBeNull();
+    expect(result.value.color).toBeNull();
+    expect(result.value.date_of_birth).toBeNull();
     expect(result.value.allergies).toBeNull();
     expect(result.value.allergies_detail).toBeNull();
     expect(result.value.grooming_notes).toBeNull();
     expect(result.value.typical_fee).toBeNull();
   });
 
-  it("rejects invalid allergy states and negative fees", () => {
+  it("rejects invalid size, birth date, allergy states, and negative fees", () => {
     const result = validateEditPet({
       ...valid,
+      size: "giant",
+      date_of_birth: "not-a-date",
       allergy_state: "maybe",
       typical_fee: "-5",
     });
     expect(result.ok).toBe(false);
     if (result.ok) return;
+    expect(result.errors.size).toBeTruthy();
+    expect(result.errors.date_of_birth).toBeTruthy();
     expect(result.errors.allergy_state).toBeTruthy();
     expect(result.errors.typical_fee).toBeTruthy();
   });
@@ -94,6 +110,9 @@ describe("buildEditPetUpdate", () => {
     expect(buildEditPetUpdate(result.value)).toEqual({
       name: "Whiskey",
       breed: "Silver Terrier Yorkie",
+      size: "small",
+      color: "Silver and tan",
+      age: "2021-06-15",
       allergies: false,
       allergies_detail: null,
       grooming_notes: "Long hair; typical fee $50-$60.",

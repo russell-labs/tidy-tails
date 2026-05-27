@@ -52,14 +52,14 @@ const TABS: Tab[] = [
     ),
   },
   {
-    href: "/reports",
-    label: "Reports",
-    isActive: (p) => p.startsWith("/reports"),
+    href: "/inbox",
+    label: "Messages",
+    isActive: (p) => p.startsWith("/inbox"),
     icon: (
       <svg {...iconProps} aria-hidden="true">
-        <line x1="6" y1="20" x2="6" y2="13" />
-        <line x1="12" y1="20" x2="12" y2="8" />
-        <line x1="18" y1="20" x2="18" y2="4" />
+        <path d="M4 5h16v11H7l-3 3V5Z" />
+        <path d="M8 9h8" />
+        <path d="M8 13h5" />
       </svg>
     ),
   },
@@ -69,7 +69,7 @@ export function BottomNav() {
   const pathname = usePathname();
 
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-30 mx-auto w-full max-w-md border-t border-line bg-surface/95 shadow-[0_-12px_28px_rgba(28,27,34,0.08)] backdrop-blur nav-safe">
+    <nav className="app-bottom-nav fixed inset-x-0 bottom-0 z-30 mx-auto w-full max-w-md border-t border-line bg-surface/95 shadow-[0_-12px_28px_rgba(28,27,34,0.08)] backdrop-blur nav-safe md:max-w-3xl lg:max-w-4xl">
       <ul className="flex">
         {TABS.map((tab) => {
           const active = tab.isActive(pathname);

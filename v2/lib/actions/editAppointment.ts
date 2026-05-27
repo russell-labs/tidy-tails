@@ -11,20 +11,31 @@ import {
   syncAppointmentToGoogleCalendar,
 } from "@/lib/googleCalendar.server";
 import { createServerSupabase, getCurrentUser } from "@/lib/supabase/server";
-import { isEditAppointmentWriteEnabled } from "@/lib/writeGate";
+import {
+  isEditAppointmentWriteEnabled,
+  isReminderSendEnabled,
+} from "@/lib/writeGate";
 import {
   bookingLocationLabel,
-  customerBookingLocationLabel,
+  googleAvailabilityBlocksBooking,
   hasBookedTimeConflict,
 } from "@/lib/booking";
 import {
+  appointmentDeleteKind,
+  buildCancellationTextDraft,
   buildEditAppointmentUpdate,
+  shouldBlockAppointmentDeleteForCalendarStatus,
+  validateCancellationTextInput,
   validateEditAppointment,
   type EditAppointmentErrors,
   type EditAppointmentUpdate,
 } from "@/lib/editAppointment";
 import { fullName } from "@/lib/format";
+import { buildOutboundSmsInsert } from "@/lib/inboundSms";
+import { customerLocationLabelFromSettings } from "@/lib/locationFinance";
+import { readOperatorSettings } from "@/lib/operatorSettings.server";
 import { parsePaymentInfo, type PaymentMethod, type PaymentStatus } from "@/lib/payments";
+import { getTwilioConfig, sendTwilioSms, toTwilioPhone } from "@/lib/twilio";
 
 export type EditAppointmentSummary = {
   ownerName: string;
@@ -50,6 +61,11 @@ export type EditAppointmentState =
   | { status: "gated"; summary: EditAppointmentSummary; message: string }
   | { status: "saved"; summary: EditAppointmentSummary };
 
+type CancellationTextSend = {
+  status: "skipped" | "sent" | "gated" | "failed";
+  message: string;
+};
+
 export type DeleteAppointmentState =
   | { status: "idle" }
   | { status: "error"; message: string }
@@ -58,7 +74,12 @@ export type DeleteAppointmentState =
       summary: EditAppointmentSummary;
       message?: string;
       calendar?: { status: string; message: string };
+      cancellationText?: CancellationTextSend;
     };
+
+function checked(value: FormDataEntryValue | null): boolean {
+  return ["on", "true", "1", "yes"].includes(String(value ?? "").trim().toLowerCase());
+}
 
 export async function editAppointment(
   _prev: EditAppointmentState,
@@ -111,6 +132,7 @@ export async function editAppointment(
   }
   const petName =
     record.pets.find((pet) => pet.id === existing.pet_id)?.name ?? "the pet";
+  const operatorSettings = await readOperatorSettings();
 
   const payload: EditAppointmentUpdate = buildEditAppointmentUpdate(appointment);
   const summary: EditAppointmentSummary = {
@@ -120,7 +142,10 @@ export async function editAppointment(
     time: payload.time_slot,
     service: serviceLabel(payload.service_type),
     location:
-      customerBookingLocationLabel(payload.location) ??
+      customerLocationLabelFromSettings(
+        payload.location,
+        operatorSettings.locationSettings,
+      ) ??
       bookingLocationLabel(payload.location),
     fee: payload.fee,
     tip: payload.tip,
@@ -161,21 +186,11 @@ export async function editAppointment(
         timeSlot: payload.time_slot,
         service: summary.service,
       });
-      if (googleAvailability.status === "busy") {
+      if (googleAvailabilityBlocksBooking(googleAvailability.status)) {
         return {
           status: "error",
           errors: {},
           formError: googleAvailability.message,
-        };
-      }
-      if (
-        googleAvailability.status === "failed" ||
-        googleAvailability.status === "not_connected"
-      ) {
-        return {
-          status: "error",
-          errors: {},
-          formError: `Couldn't check Google Calendar availability: ${googleAvailability.message}`,
         };
       }
     }
@@ -238,6 +253,8 @@ export async function deleteAppointment(
 
   const clientId = String(formData.get("client_id") ?? "").trim();
   const appointmentId = String(formData.get("appointment_id") ?? "").trim();
+  const wantsCancellationText = checked(formData.get("send_cancellation_text"));
+  const cancellationMessage = String(formData.get("cancellation_message") ?? "").trim();
   if (!clientId || !appointmentId) {
     return { status: "error", message: "Missing appointment details." };
   }
@@ -249,15 +266,20 @@ export async function deleteAppointment(
   }
   const pet = record.pets.find((candidate) => candidate.id === existing.pet_id);
   const payment = parsePaymentInfo(existing.notes);
+  const ownerName = fullName(record.client.first_name, record.client.last_name);
+  const operatorSettings = await readOperatorSettings();
   const summary: EditAppointmentSummary = {
-    ownerName: fullName(record.client.first_name, record.client.last_name),
+    ownerName,
     petName: pet?.name ?? "the pet",
     date: existing.date,
     time: existing.time_slot,
     service: existing.service,
     fee: existing.price,
     location:
-      customerBookingLocationLabel(existing.location) ??
+      customerLocationLabelFromSettings(
+        existing.location,
+        operatorSettings.locationSettings,
+      ) ??
       bookingLocationLabel(existing.location),
     tip: existing.tip,
     paymentMethod: payment.method ?? "cash",
@@ -275,8 +297,22 @@ export async function deleteAppointment(
     };
   }
 
+  const deleteKind = appointmentDeleteKind({
+    status: existing.status,
+    date: existing.date,
+    today: new Date().toISOString().slice(0, 10),
+  });
+  let cancellationDraft: ReturnType<typeof buildCancellationTextDraft> | null = null;
+  if (wantsCancellationText && deleteKind === "future_booking") {
+    const cancellationText = validateCancellationTextInput(cancellationMessage);
+    if (!cancellationText.ok) {
+      return { status: "error", message: cancellationText.message };
+    }
+    cancellationDraft = buildCancellationTextDraft(cancellationText.value);
+  }
+
   const calendar = await deleteAppointmentFromGoogleCalendar(existing);
-  if (calendar.status === "failed") {
+  if (shouldBlockAppointmentDeleteForCalendarStatus(calendar.status)) {
     return {
       status: "error",
       message: `Google Calendar could not remove the event: ${calendar.message}`,
@@ -307,16 +343,96 @@ export async function deleteAppointment(
       calendarStatus: calendar.status,
     },
   });
+  let cancellationText: CancellationTextSend = {
+    status: "skipped",
+    message: "No cancellation text was requested.",
+  };
+  if (cancellationDraft) {
+    cancellationText = await sendCancellationSms({
+      clientId,
+      groomerId: user.id,
+      to: record.client.phone,
+      body: cancellationDraft.message,
+    });
+    if (cancellationText.status === "sent") {
+      await recordAuditEvent({
+        eventType: "sms.sent",
+        clientId,
+        petId: existing.pet_id,
+        summary: `Sent cancellation text for ${summary.petName} to ${summary.ownerName}.`,
+        metadata: { channel: "sms", date: summary.date },
+      });
+    }
+  }
   return {
     status: "deleted",
     summary,
     message: "The booking was removed from Tidy Tails.",
     calendar: { status: calendar.status, message: calendar.message },
+    cancellationText,
   };
+}
+
+async function sendCancellationSms({
+  clientId,
+  groomerId,
+  to,
+  body,
+}: {
+  clientId: string;
+  groomerId: string;
+  to: string;
+  body: string;
+}): Promise<
+  CancellationTextSend
+> {
+  if (!isReminderSendEnabled()) {
+    return {
+      status: "gated",
+      message: "Cancellation text was not sent because SMS sending is switched off.",
+    };
+  }
+  const twilioConfig = getTwilioConfig();
+  if (!twilioConfig.ok) {
+    return {
+      status: "failed",
+      message: "Cancellation text was not sent because Twilio is not configured.",
+    };
+  }
+  const normalizedPhone = toTwilioPhone(to);
+  if (!normalizedPhone) {
+    return {
+      status: "failed",
+      message: "Cancellation text was not sent because the customer phone number is not textable.",
+    };
+  }
+  const result = await sendTwilioSms(twilioConfig.value, {
+    to: normalizedPhone,
+    body,
+  });
+  if (!result.ok) {
+    return {
+      status: "failed",
+      message: `${result.message} Cancellation text was not sent.`,
+    };
+  }
+  const supabase = await createServerSupabase();
+  await supabase.from("sms_messages").insert(
+    buildOutboundSmsInsert({
+      clientId,
+      groomerId,
+      from: twilioConfig.value.fromNumber,
+      to: normalizedPhone,
+      body,
+      messageSid: result.sid,
+    }),
+  );
+  return { status: "sent", message: "Cancellation text sent to the customer." };
 }
 
 function serviceCodeFromLabel(label: string | null): string | null {
   if (label === "Full groom") return "full_groom";
+  if (label === "Puppy groom") return "puppy_groom";
   if (label === "Bath only") return "bath_only";
   if (label === "Nail trim") return "nail_trim";
   if (label === "Other") return "other";

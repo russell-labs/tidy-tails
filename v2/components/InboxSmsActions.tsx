@@ -2,6 +2,7 @@
 
 import { useActionState, useState } from "react";
 import {
+  hideSmsMessage,
   markSmsHandled,
   sendInboxSmsReply,
   type InboxActionState,
@@ -18,9 +19,14 @@ export function InboxSmsActions({ smsId }: { smsId: string }) {
     markSmsHandled,
     INITIAL_STATE,
   );
+  const [hideState, hideAction, hidePending] = useActionState(
+    hideSmsMessage,
+    INITIAL_STATE,
+  );
   const [message, setMessage] = useState("");
+  const [confirmHide, setConfirmHide] = useState(false);
   const charCount = message.trim().length;
-  const busy = replyPending || handledPending;
+  const busy = replyPending || handledPending || hidePending;
 
   return (
     <div className="mt-4 space-y-3 rounded-xl border border-line bg-canvas p-3">
@@ -64,8 +70,34 @@ export function InboxSmsActions({ smsId }: { smsId: string }) {
         </button>
       </form>
 
+      <form action={hideAction} className="flex items-center justify-between gap-3 border-t border-line pt-3">
+        <input type="hidden" name="sms_id" value={smsId} />
+        <p className="text-xs text-ink-muted">
+          Hide tests, duplicates, or noise from normal views.
+        </p>
+        {confirmHide ? (
+          <button
+            type="submit"
+            disabled={busy}
+            className="shrink-0 rounded-xl bg-danger px-3 py-2 text-xs font-bold text-white disabled:cursor-not-allowed disabled:opacity-45"
+          >
+            {hidePending ? "Hiding..." : "Confirm hide"}
+          </button>
+        ) : (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => setConfirmHide(true)}
+            className="shrink-0 rounded-xl border border-line bg-surface px-3 py-2 text-xs font-bold text-ink-muted disabled:cursor-not-allowed disabled:opacity-45"
+          >
+            Hide
+          </button>
+        )}
+      </form>
+
       <ActionMessage state={replyState} />
       <ActionMessage state={handledState} />
+      <ActionMessage state={hideState} />
     </div>
   );
 }

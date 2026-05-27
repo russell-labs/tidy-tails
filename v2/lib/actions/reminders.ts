@@ -21,7 +21,7 @@ import { createServerSupabase, getCurrentUser } from "@/lib/supabase/server";
 import { isReminderSendEnabled } from "@/lib/writeGate";
 import {
   buildReminderDraft,
-  pickReminderAppointment,
+  buildReminderTarget,
   validateReminderInput,
   type ReminderErrors,
 } from "@/lib/reminders";
@@ -35,6 +35,7 @@ export type ReminderSummary = {
   phone: string;
   petName: string | null;
   appointmentDate: string | null; // ISO; null = no upcoming appointment
+  appointmentTime: string | null;
   message: string;
 };
 
@@ -61,6 +62,7 @@ export async function prepareReminder(
   }
 
   const clientId = String(formData.get("client_id") ?? "");
+  const appointmentId = String(formData.get("appointment_id") ?? "");
   const rawMessage = String(formData.get("message") ?? "");
 
   // Re-fetch the household: the recipient phone and the appointment context
@@ -75,10 +77,9 @@ export async function prepareReminder(
     };
   }
 
-  const upcoming = pickReminderAppointment(record.appointments);
-  const petName = upcoming
-    ? (record.pets.find((p) => p.id === upcoming.pet_id)?.name ?? null)
-    : null;
+  const target = buildReminderTarget(record.appointments, record.pets, {
+    appointmentId,
+  });
 
   const validation = validateReminderInput({
     phone: record.client.phone,
@@ -100,8 +101,9 @@ export async function prepareReminder(
   const summary: ReminderSummary = {
     ownerName: fullName(record.client.first_name, record.client.last_name),
     phone: draft.to,
-    petName,
-    appointmentDate: upcoming?.date ?? null,
+    petName: target?.petName ?? null,
+    appointmentDate: target?.appointmentDate ?? null,
+    appointmentTime: target?.appointmentTime ?? null,
     message: draft.message,
   };
 
@@ -174,11 +176,17 @@ export async function prepareReminder(
   );
 
   revalidatePath(`/clients/${clientId}`);
+  revalidatePath("/schedule");
   await recordAuditEvent({
     eventType: "sms.sent",
     clientId,
     summary: `Sent reminder text to ${summary.ownerName}.`,
-    metadata: { channel: "sms", date: summary.appointmentDate },
+    metadata: {
+      channel: "sms",
+      date: summary.appointmentDate,
+      time: summary.appointmentTime,
+      appointmentIds: target?.groupAppointmentIds ?? [],
+    },
   });
   return {
     status: "sent",

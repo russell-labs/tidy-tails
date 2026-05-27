@@ -28,9 +28,11 @@ type TwilioErrorPayload = {
 
 const TWILIO_ACCOUNT_SID = "TIDYTAILS_TWILIO_ACCOUNT_SID";
 const TWILIO_AUTH_TOKEN = "TIDYTAILS_TWILIO_AUTH_TOKEN";
+const TWILIO_WEBHOOK_SECRET = "TIDYTAILS_TWILIO_WEBHOOK_SECRET";
 const TWILIO_API_KEY_SID = "TIDYTAILS_TWILIO_API_KEY_SID";
 const TWILIO_API_KEY_SECRET = "TIDYTAILS_TWILIO_API_KEY_SECRET";
 const TWILIO_FROM_NUMBER = "TIDYTAILS_TWILIO_FROM_NUMBER";
+const TWILIO_STATUS_CALLBACK_URL = "TIDYTAILS_TWILIO_STATUS_CALLBACK_URL";
 
 function requiredEnv(name: string): string | null {
   const value = process.env[name]?.trim();
@@ -68,7 +70,7 @@ export function getTwilioConfig(): TwilioConfigResult {
 }
 
 export function getTwilioWebhookAuthToken(): string | null {
-  return requiredEnv(TWILIO_AUTH_TOKEN);
+  return requiredEnv(TWILIO_AUTH_TOKEN) ?? requiredEnv(TWILIO_WEBHOOK_SECRET);
 }
 
 export function buildTwilioRequestSignature(
@@ -124,6 +126,8 @@ export function buildTwilioMessageRequest(
   body.set("To", message.to);
   body.set("From", config.fromNumber);
   body.set("Body", message.body);
+  const statusCallback = twilioStatusCallbackUrl();
+  if (statusCallback) body.set("StatusCallback", statusCallback);
 
   return {
     url: `https://api.twilio.com/2010-04-01/Accounts/${config.accountSid}/Messages.json`,
@@ -135,6 +139,15 @@ export function buildTwilioMessageRequest(
     },
     body,
   };
+}
+
+function twilioStatusCallbackUrl(): string | null {
+  const explicit = requiredEnv(TWILIO_STATUS_CALLBACK_URL);
+  if (explicit) return explicit;
+  const appUrl =
+    requiredEnv("TIDYTAILS_APP_URL") ?? requiredEnv("NEXT_PUBLIC_APP_URL");
+  if (!appUrl) return null;
+  return `${appUrl.replace(/\/+$/, "")}/api/twilio/message-status`;
 }
 
 export async function sendTwilioSms(

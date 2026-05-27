@@ -10,9 +10,10 @@
 
 import type { Appointment, Pet } from "./data/types";
 
-// The four CHECK-constrained service_type enum codes in the live schema.
+// The CHECK-constrained service_type enum codes in the live schema.
 export const SERVICE_TYPES = [
   "full_groom",
+  "puppy_groom",
   "bath_only",
   "nail_trim",
   "other",
@@ -49,16 +50,11 @@ export function customerBookingLocationLabel(
   return CUSTOMER_BOOKING_LOCATION_LABELS[location as BookingLocation] ?? null;
 }
 
-// First-pass day-book slots. This is not external calendar sync; it makes the
-// booking sheet calendar-aware against appointments already stored in Tidy
-// Tails, so Sam can tap an open slot instead of typing from a blank field.
-export const BOOKING_TIME_SLOTS = [
-  "9:00am",
-  "10:30am",
-  "12:00pm",
-  "1:30pm",
-  "3:00pm",
-] as const;
+// Tappable drop-off suggestions. Calendar events only block a 15-minute
+// drop-off window, so the tiles use the same cadence. Sam can still type later
+// times manually; the tiles deliberately stop at noon to keep the day book
+// biased toward morning staggered drop-offs.
+export const BOOKING_TIME_SLOTS = buildMorningDropOffSlots();
 
 export type BookingTimeSlot = {
   time: string;
@@ -69,6 +65,9 @@ export type BookingTimeSlot = {
 export type BookingInput = {
   client_id: string;
   pet_id: string;
+  pet_ids: string;
+  pet_services: string;
+  pet_fees: string;
   date: string;
   time_slot: string;
   service_type: string;
@@ -87,6 +86,8 @@ export type BookingInput = {
 export type ValidatedBooking = {
   client_id: string;
   pet_id: string;
+  pet_ids: string[];
+  pet_bookings: PetBooking[];
   date: string;
   time_slot: string;
   service_type: ServiceType | null;
@@ -99,6 +100,12 @@ export type ValidatedBooking = {
   customer_phone: string | null;
   fee: number | null;
   notes: string | null;
+};
+
+export type PetBooking = {
+  pet_id: string;
+  service_type: ServiceType | null;
+  fee: number | null;
 };
 
 export type BookingErrors = Partial<Record<keyof BookingInput, string>>;
@@ -140,6 +147,57 @@ function isChecked(v: string | undefined): boolean {
   return ["on", "true", "1", "yes"].includes((v ?? "").trim().toLowerCase());
 }
 
+function formatSlotTime(totalMinutes: number): string {
+  const hours24 = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  const suffix = hours24 >= 12 ? "pm" : "am";
+  const hours12 = hours24 % 12 || 12;
+  return `${hours12}:${pad(minutes)}${suffix}`;
+}
+
+function buildMorningDropOffSlots(): string[] {
+  const slots: string[] = [];
+  for (let minutes = 9 * 60; minutes <= 12 * 60; minutes += 15) {
+    slots.push(formatSlotTime(minutes));
+  }
+  return slots;
+}
+
+function parsePetIds(raw: Partial<BookingInput>): string[] {
+  const multi = (raw.pet_ids ?? "")
+    .split(",")
+    .map((id) => id.trim())
+    .filter(Boolean);
+  const ids = multi.length > 0 ? multi : [(raw.pet_id ?? "").trim()].filter(Boolean);
+  return Array.from(new Set(ids));
+}
+
+function parsePetFieldMap(raw: string | undefined): Record<string, string> {
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    return Object.fromEntries(
+      Object.entries(parsed).map(([key, value]) => [key, String(value ?? "")]),
+    );
+  } catch {
+    return {};
+  }
+}
+
+function parseFee(rawFee: string): { value: number | null; error?: string } {
+  const feeRaw = rawFee.trim();
+  if (!feeRaw) return { value: null };
+  const n = Number(feeRaw);
+  if (!Number.isFinite(n) || n < 0) {
+    return {
+      value: null,
+      error: "Fee must be a number that isn't negative.",
+    };
+  }
+  return { value: n };
+}
+
 export function normalizeTimeForCompare(raw: string | null | undefined): string {
   return (raw ?? "")
     .trim()
@@ -152,12 +210,23 @@ export function hasBookedTimeConflict(
   appointments: Appointment[],
   date: string,
   timeSlot: string | null | undefined,
+  options: { clientId?: string; selectedPetIds?: string[] } = {},
 ): boolean {
   const key = normalizeTimeForCompare(timeSlot);
   if (!key) return false;
-  return bookedTimesForDate(appointments, date)
-    .map(normalizeTimeForCompare)
-    .includes(key);
+  const selected = new Set(options.selectedPetIds ?? []);
+  return appointments.some((appointment) => {
+    if (appointment.date !== date) return false;
+    if (normalizeTimeForCompare(appointment.time_slot) !== key) return false;
+    if (
+      options.clientId &&
+      appointment.client_id === options.clientId &&
+      !selected.has(appointment.pet_id)
+    ) {
+      return false;
+    }
+    return true;
+  });
 }
 
 export function bookedTimesForDate(
@@ -189,6 +258,10 @@ export function availableBookingTimeSlots(
   }));
 }
 
+export function googleAvailabilityBlocksBooking(status: string): boolean {
+  return status === "busy";
+}
+
 /**
  * Validate raw booking form input. `today` is injected so the date sanity
  * bounds are deterministic in tests. The date is required and bounded to one
@@ -203,9 +276,10 @@ export function validateBookingInput(
   const errors: BookingErrors = {};
 
   const client_id = (raw.client_id ?? "").trim();
-  const pet_id = (raw.pet_id ?? "").trim();
+  const pet_ids = parsePetIds(raw);
+  const pet_id = pet_ids[0] ?? "";
   if (!client_id) errors.client_id = "Missing client.";
-  if (!pet_id) errors.pet_id = "Choose a pet.";
+  if (pet_ids.length === 0) errors.pet_id = "Choose at least one pet.";
 
   const date = (raw.date ?? "").trim();
   if (!date) {
@@ -287,15 +361,30 @@ export function validateBookingInput(
     }
   }
 
-  const feeRaw = (raw.fee ?? "").trim();
-  let fee: number | null = null;
-  if (feeRaw) {
-    const n = Number(feeRaw);
-    if (!Number.isFinite(n) || n < 0) {
-      errors.fee = "Fee must be a number that isn't negative.";
-    } else {
-      fee = n;
+  const globalFee = parseFee(raw.fee ?? "");
+  if (globalFee.error) errors.fee = globalFee.error;
+  const fee = globalFee.value;
+  const petServices = parsePetFieldMap(raw.pet_services);
+  const petFees = parsePetFieldMap(raw.pet_fees);
+  const pet_bookings: PetBooking[] = [];
+  for (const selectedPetId of pet_ids) {
+    const perPetServiceRaw = (petServices[selectedPetId] ?? "").trim();
+    let perPetService = service_type;
+    if (perPetServiceRaw) {
+      if ((SERVICE_TYPES as readonly string[]).includes(perPetServiceRaw)) {
+        perPetService = perPetServiceRaw as ServiceType;
+      } else {
+        errors.service_type = "Pick a service from the list.";
+      }
     }
+    const perPetFeeRaw = petFees[selectedPetId] ?? "";
+    const perPetFee = perPetFeeRaw.trim() ? parseFee(perPetFeeRaw) : globalFee;
+    if (perPetFee.error) errors.fee = perPetFee.error;
+    pet_bookings.push({
+      pet_id: selectedPetId,
+      service_type: perPetService,
+      fee: perPetFee.value,
+    });
   }
 
   const notes = optionalText(raw.notes);
@@ -310,6 +399,8 @@ export function validateBookingInput(
     value: {
       client_id,
       pet_id,
+      pet_ids,
+      pet_bookings,
       date,
       time_slot,
       service_type,
@@ -342,6 +433,16 @@ export function findOwnedPet(
   return pet.client_id === clientId ? pet : null;
 }
 
+export function findOwnedPets(
+  pets: Pet[],
+  petIds: string[],
+  clientId: string,
+): Pet[] | null {
+  const owned = petIds.map((petId) => findOwnedPet(pets, petId, clientId));
+  if (owned.some((pet) => pet == null)) return null;
+  return owned as Pet[];
+}
+
 // The appointments INSERT payload — only the columns M2 owns.
 export type AppointmentInsert = {
   client_id: string;
@@ -363,17 +464,61 @@ export type AppointmentInsert = {
  * `send_invite` is an action side effect flag, not a database column.
  */
 export function buildAppointmentInsert(b: ValidatedBooking): AppointmentInsert {
-  return {
+  return buildAppointmentInserts(b)[0];
+}
+
+export function buildAppointmentInserts(b: ValidatedBooking): AppointmentInsert[] {
+  const petBookings =
+    b.pet_bookings?.length > 0
+      ? b.pet_bookings
+      : [{ pet_id: b.pet_id, service_type: b.service_type, fee: b.fee }];
+  return petBookings.map((petBooking) => ({
     client_id: b.client_id,
-    pet_id: b.pet_id,
+    pet_id: petBooking.pet_id,
     date: b.date,
     time_slot: b.time_slot,
-    service_type: b.service_type,
+    service_type: petBooking.service_type,
     location: b.location,
-    fee: b.fee,
+    fee: petBooking.fee,
     notes: b.notes,
     status: "booked",
-  };
+  }));
+}
+
+export function formatPetNames(petNames: string[]): string {
+  const names = petNames.map((name) => name.trim()).filter(Boolean);
+  if (names.length === 0) return "the dogs";
+  if (names.length === 1) return names[0];
+  if (names.length === 2) return `${names[0]} and ${names[1]}`;
+  return `${names.slice(0, -1).join(", ")}, and ${names[names.length - 1]}`;
+}
+
+export function totalBookingFee(payloads: AppointmentInsert[]): number | null {
+  const fees = payloads.map((payload) => payload.fee).filter((fee) => fee != null);
+  if (fees.length === 0) return null;
+  return fees.reduce((sum, fee) => sum + fee, 0);
+}
+
+export type BookingMessageDraftKind =
+  | "booking_confirmation"
+  | "first_platform";
+
+export function chooseBookingMessageDraft({
+  bookingConfirmationTemplate,
+}: {
+  hasPriorAppointments: boolean;
+  hasPriorOutboundSms: boolean;
+  bookingConfirmationTemplate: string;
+  firstPlatformTextTemplate: string;
+}): { kind: BookingMessageDraftKind; template: string } {
+  // Default to the plain confirmation. The first-platform intro remains
+  // selectable in the review step, but auto-selecting it based on SMS history
+  // is surprising when Sam books without sending a real owner text.
+  return { kind: "booking_confirmation", template: bookingConfirmationTemplate };
+}
+
+function pluralVerbForPetName(petName: string): "is" | "are" {
+  return /\band\b|,/.test(petName) ? "are" : "is";
 }
 
 export function buildBookingTextMessage({
@@ -395,7 +540,7 @@ export function buildBookingTextMessage({
   const when = time ? `${date} at ${time}` : date;
   const servicePart = service ? ` for ${service.toLowerCase()}` : "";
   const locationPart = location ? ` at ${location}` : "";
-  return `Hi ${who}, ${petName} is booked${servicePart} on ${when}${locationPart}. See you then! — Samantha`;
+  return `Hi ${who}, ${petName} ${pluralVerbForPetName(petName)} booked${servicePart} on ${when}${locationPart}. See you then! — Samantha`;
 }
 
 export function renderBookingMessageTemplate(

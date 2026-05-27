@@ -9,27 +9,37 @@ import { createBooking, type BookingState } from "@/lib/actions/appointments";
 import {
   availableBookingTimeSlots,
   BOOKING_LOCATIONS,
-  bookingLocationLabel,
   bookedTimesForDate,
-  customerBookingLocationLabel,
+  chooseBookingMessageDraft,
+  formatPetNames,
   renderBookingMessageTemplate,
   SERVICE_TYPES,
   validateBookingInput,
   type BookingLocation,
   type BookingErrors,
+  type BookingMessageDraftKind,
   type ServiceType,
 } from "@/lib/booking";
 import { assessDayFit, type DayFitAssessment } from "@/lib/dayCapacity";
+import {
+  customerLocationLabelFromSettings,
+  locationLabelFromSettings,
+} from "@/lib/locationFinance";
+import type {
+  LocationSettingsMap,
+  ScheduleCalibration,
+} from "@/lib/operatorSettings";
 import { lastKnownPrice, lastKnownService } from "@/lib/derive";
 import { serviceLabel } from "@/lib/data/live";
 import type { Appointment, Client, Pet } from "@/lib/data/types";
 import { formatMoney, formatReviewDate, fullName } from "@/lib/format";
+import { BookingTimeSlotPicker } from "./BookingTimeSlotPicker";
 import { Sheet } from "./Sheet";
 import { SubmitDogOverlay } from "./SubmitDog";
 
 // M2 — "Add appointment" booking flow: form → review → result. The wedge
-// becomes Call/Text → Identify → Add Booking. Nothing is persisted in this
-// ship: fixture mode is a dry-run, live mode is gated (see lib/actions).
+// becomes Call/Text → Identify → Add Booking. Fixture mode is a dry-run; live
+// mode writes only when the server gate is enabled (see lib/actions).
 
 const fieldClass =
   "w-full min-w-0 max-w-full rounded-xl border border-line bg-surface px-3.5 py-2.5 text-base text-ink placeholder:text-ink-faint";
@@ -42,6 +52,10 @@ export function AddAppointment({
   mode,
   writesEnabled,
   bookingConfirmationTemplate,
+  firstPlatformTextTemplate,
+  scheduleCalibration,
+  locationSettings,
+  hasPriorOutboundSms,
 }: {
   client: Client;
   pets: Pet[];
@@ -49,15 +63,22 @@ export function AddAppointment({
   mode: "fixtures" | "live";
   writesEnabled: boolean;
   bookingConfirmationTemplate: string;
+  firstPlatformTextTemplate: string;
+  scheduleCalibration: ScheduleCalibration;
+  locationSettings: LocationSettingsMap;
+  hasPriorOutboundSms: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  const [knownPriorOutboundSms, setKnownPriorOutboundSms] =
+    useState(hasPriorOutboundSms);
   // Remount the form on each close so a reopened sheet starts fresh.
   const [formKey, setFormKey] = useState(0);
 
   // No pet, nothing to book — the household needs a pet first.
   if (pets.length === 0) return null;
 
-  function close() {
+  function close({ markPriorOutboundSms = false } = {}) {
+    if (markPriorOutboundSms) setKnownPriorOutboundSms(true);
     setOpen(false);
     setFormKey((k) => k + 1);
   }
@@ -99,6 +120,10 @@ export function AddAppointment({
           mode={mode}
           writesEnabled={writesEnabled}
           bookingConfirmationTemplate={bookingConfirmationTemplate}
+          firstPlatformTextTemplate={firstPlatformTextTemplate}
+          scheduleCalibration={scheduleCalibration}
+          locationSettings={locationSettings}
+          hasPriorOutboundSms={knownPriorOutboundSms}
           onDone={close}
         />
       </Sheet>
@@ -113,6 +138,10 @@ function BookingForm({
   mode,
   writesEnabled,
   bookingConfirmationTemplate,
+  firstPlatformTextTemplate,
+  scheduleCalibration,
+  locationSettings,
+  hasPriorOutboundSms,
   onDone,
 }: {
   client: Client;
@@ -121,7 +150,11 @@ function BookingForm({
   mode: "fixtures" | "live";
   writesEnabled: boolean;
   bookingConfirmationTemplate: string;
-  onDone: () => void;
+  firstPlatformTextTemplate: string;
+  scheduleCalibration: ScheduleCalibration;
+  locationSettings: LocationSettingsMap;
+  hasPriorOutboundSms: boolean;
+  onDone: (options?: { markPriorOutboundSms?: boolean }) => void;
 }) {
   const [state, formAction, pending] = useActionState<BookingState, FormData>(
     createBooking,
@@ -134,21 +167,35 @@ function BookingForm({
   const [step, setStep] = useState<"form" | "review">("form");
   const [errors, setErrors] = useState<BookingErrors>({});
 
-  const [petId, setPetId] = useState(pets[0].id);
+  const [selectedPetIds, setSelectedPetIds] = useState<string[]>([pets[0].id]);
   const [date, setDate] = useState("");
   const [time, setTime] = useState("");
-  const initialDefaults = bookingDefaults(pets[0], appointments);
-  const [serviceType, setServiceType] = useState(initialDefaults.serviceType);
+  const initialPetServices = Object.fromEntries(
+    pets.map((pet) => [pet.id, bookingDefaults(pet, appointments).serviceType]),
+  );
+  const initialPetFees = Object.fromEntries(
+    pets.map((pet) => [pet.id, bookingDefaults(pet, appointments).fee]),
+  );
+  const [petServices, setPetServices] =
+    useState<Record<string, ServiceType | "">>(initialPetServices);
   const [location, setLocation] = useState<BookingLocation | "">("");
   const [sendInvite, setSendInvite] = useState(Boolean(client.email));
   const [customerEmail, setCustomerEmail] = useState(client.email ?? "");
   const [sendBookingText, setSendBookingText] = useState(false);
   const [bookingMessage, setBookingMessage] = useState("");
+  const recommendedDraft = chooseBookingMessageDraft({
+    hasPriorAppointments: appointments.length > 0,
+    hasPriorOutboundSms,
+    bookingConfirmationTemplate,
+    firstPlatformTextTemplate,
+  });
+  const [bookingMessageDraftKind, setBookingMessageDraftKind] =
+    useState<BookingMessageDraftKind>(recommendedDraft.kind);
   const [saveReminderPhone, setSaveReminderPhone] = useState(
     Boolean(client.phone),
   );
   const [customerPhone, setCustomerPhone] = useState(client.phone);
-  const [fee, setFee] = useState(initialDefaults.fee);
+  const [petFees, setPetFees] = useState<Record<string, string>>(initialPetFees);
   const [notes, setNotes] = useState("");
   const [availabilityResult, setAvailabilityResult] = useState<{
     date: string;
@@ -157,11 +204,33 @@ function BookingForm({
   } | null>(null);
   const [availabilityPending, startAvailabilityTransition] = useTransition();
 
-  const selectedPet = pets.find((p) => p.id === petId) ?? pets[0];
+  const selectedPets = pets.filter((p) => selectedPetIds.includes(p.id));
+  const primaryPet = selectedPets[0] ?? pets[0];
+  const petNameList = formatPetNames(selectedPets.map((pet) => pet.name));
+  const primaryServiceType = petServices[primaryPet.id] ?? "";
+  const primaryFee = petFees[primaryPet.id] ?? "";
+  const selectedServiceLabels = Array.from(
+    new Set(
+      selectedPets
+        .map((pet) => petServices[pet.id])
+        .filter((code): code is ServiceType => Boolean(code))
+        .map((code) => serviceLabel(code) ?? "Grooming"),
+    ),
+  );
+  const reviewService =
+    selectedServiceLabels.length === 0
+      ? "Not set"
+      : selectedServiceLabels.length === 1
+        ? selectedServiceLabels[0]
+        : "Per dog";
+  const totalFee = selectedPets.reduce((sum, pet) => {
+    const value = Number(petFees[pet.id] ?? "");
+    return Number.isFinite(value) ? sum + value : sum;
+  }, 0);
   const ownerName = fullName(client.first_name, client.last_name);
   const availability =
     availabilityResult?.date === date &&
-    availabilityResult.serviceType === serviceType
+    availabilityResult.serviceType === primaryServiceType
       ? availabilityResult.result
       : null;
   const fallbackSlots = date
@@ -186,46 +255,68 @@ function BookingForm({
         date,
         appointments,
         pets,
-        candidatePet: selectedPet,
-        serviceType,
+        candidatePets: selectedPets.map((pet) => ({
+          pet,
+          serviceType: petServices[pet.id] ?? primaryServiceType,
+        })),
+        serviceType: primaryServiceType,
+        calibration: scheduleCalibration,
+        location,
       })
     : null;
-  const customerLocation = customerBookingLocationLabel(location);
-  const defaultBookingMessage = () =>
-    renderBookingMessageTemplate(bookingConfirmationTemplate, {
+  const customerLocation = customerLocationLabelFromSettings(
+    location,
+    locationSettings,
+  );
+  const bookingMessageTemplate =
+    bookingMessageDraftKind === "first_platform"
+      ? firstPlatformTextTemplate
+      : bookingConfirmationTemplate;
+  const defaultBookingMessage = (template = bookingMessageTemplate) =>
+    renderBookingMessageTemplate(template, {
       ownerFirstName: client.first_name,
-      petName: selectedPet.name,
+      petName: petNameList,
       date: date ? formatReviewDate(date) : "the selected date",
       time: time || null,
-      service: serviceType ? serviceLabel(serviceType) : null,
+      service: selectedServiceLabels.length === 1 ? selectedServiceLabels[0] : null,
       location: customerLocation,
     });
   const currentBookingMessage = sendBookingText
     ? bookingMessage.trim() || defaultBookingMessage()
     : "";
 
+  function onDraftKindChange(kind: BookingMessageDraftKind) {
+    setBookingMessageDraftKind(kind);
+    const template =
+      kind === "first_platform"
+        ? firstPlatformTextTemplate
+        : bookingConfirmationTemplate;
+    setBookingMessage(defaultBookingMessage(template));
+  }
+
   useEffect(() => {
     if (!date) return;
     let cancelled = false;
     startAvailabilityTransition(() => {
-      void checkBookingAvailability({ date, service_type: serviceType }).then(
+      void checkBookingAvailability({ date, service_type: primaryServiceType }).then(
         (result) => {
-          if (!cancelled) setAvailabilityResult({ date, serviceType, result });
+          if (!cancelled) {
+            setAvailabilityResult({ date, serviceType: primaryServiceType, result });
+          }
         },
       );
     });
     return () => {
       cancelled = true;
     };
-  }, [date, serviceType]);
+  }, [date, primaryServiceType]);
 
-  function onPetChange(id: string) {
-    setPetId(id);
-    const p = pets.find((x) => x.id === id);
-    if (!p) return;
-    const defaults = bookingDefaults(p, appointments);
-    setServiceType(defaults.serviceType);
-    setFee(defaults.fee);
+  function togglePet(id: string, checked: boolean) {
+    setSelectedPetIds((current) => {
+      if (checked) return Array.from(new Set([...current, id]));
+      const next = current.filter((petId) => petId !== id);
+      return next.length > 0 ? next : current;
+    });
   }
 
   function toReview() {
@@ -234,10 +325,13 @@ function BookingForm({
       : "";
     const v = validateBookingInput({
       client_id: client.id,
-      pet_id: petId,
+      pet_id: primaryPet.id,
+      pet_ids: selectedPetIds.join(","),
+      pet_services: JSON.stringify(petServices),
+      pet_fees: JSON.stringify(petFees),
       date,
       time_slot: time,
-      service_type: serviceType,
+      service_type: primaryServiceType,
       location,
       send_invite: sendInvite ? "on" : "",
       customer_email: customerEmail,
@@ -245,7 +339,7 @@ function BookingForm({
       booking_message: bookingMessageForReview,
       save_reminder_phone: saveReminderPhone ? "on" : "",
       customer_phone: customerPhone,
-      fee,
+      fee: primaryFee,
       notes,
     });
     if (!v.ok) {
@@ -287,10 +381,13 @@ function BookingForm({
       {/* Hidden fields carry the current values into the server action,
           regardless of which step is visible. */}
       <input type="hidden" name="client_id" value={client.id} />
-      <input type="hidden" name="pet_id" value={petId} />
+      <input type="hidden" name="pet_id" value={primaryPet.id} />
+      <input type="hidden" name="pet_ids" value={selectedPetIds.join(",")} />
+      <input type="hidden" name="pet_services" value={JSON.stringify(petServices)} />
+      <input type="hidden" name="pet_fees" value={JSON.stringify(petFees)} />
       <input type="hidden" name="date" value={date} />
       <input type="hidden" name="time_slot" value={time} />
-      <input type="hidden" name="service_type" value={serviceType} />
+      <input type="hidden" name="service_type" value={primaryServiceType} />
       <input type="hidden" name="location" value={location} />
       <input type="hidden" name="send_invite" value={sendInvite ? "on" : ""} />
       <input type="hidden" name="customer_email" value={customerEmail} />
@@ -306,7 +403,7 @@ function BookingForm({
         value={saveReminderPhone ? "on" : ""}
       />
       <input type="hidden" name="customer_phone" value={customerPhone} />
-      <input type="hidden" name="fee" value={fee} />
+      <input type="hidden" name="fee" value={primaryFee} />
       <input type="hidden" name="notes" value={notes} />
 
       <ModeNote mode={mode} writesEnabled={writesEnabled} />
@@ -320,23 +417,39 @@ function BookingForm({
       {step === "form" ? (
         <>
           {pets.length > 1 ? (
-            <Field label="Pet" error={errors.pet_id}>
-              <select
-                value={petId}
-                onChange={(e) => onPetChange(e.target.value)}
-                className={fieldClass}
-              >
-                {pets.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
+            <Field
+              label="Pets"
+              error={errors.pet_id}
+              hint="Select every dog coming at this drop-off time."
+            >
+              <div className="grid gap-2">
+                {pets.map((p) => {
+                  const checked = selectedPetIds.includes(p.id);
+                  return (
+                    <label
+                      key={p.id}
+                      className={`flex items-center justify-between gap-3 rounded-lg border px-3.5 py-3 text-sm ${
+                        checked
+                          ? "border-brand bg-brand-soft text-brand-ink"
+                          : "border-line bg-surface text-ink"
+                      }`}
+                    >
+                      <span className="font-semibold">{p.name}</span>
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={(event) => togglePet(p.id, event.target.checked)}
+                        className="h-4 w-4 accent-brand"
+                      />
+                    </label>
+                  );
+                })}
+              </div>
             </Field>
           ) : (
             <p className="text-sm text-ink-soft">
               Pet:{" "}
-              <span className="font-semibold text-ink">{selectedPet.name}</span>
+              <span className="font-semibold text-ink">{primaryPet.name}</span>
             </p>
           )}
 
@@ -359,40 +472,17 @@ function BookingForm({
             }
           >
             {date && availability ? (
-              <div className="mb-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
-                {slots.map((slot) => (
-                  <button
-                    key={slot.time}
-                    type="button"
-                    onClick={() => {
-                      if (!slot.available) return;
-                      setTime(slot.time);
-                      setErrors((current) => ({
-                        ...current,
-                        time_slot: undefined,
-                      }));
-                    }}
-                    disabled={!slot.available}
-                    aria-pressed={time === slot.time}
-                    className={`flex min-h-11 flex-col items-center justify-center rounded-lg border px-2.5 py-2 text-sm font-semibold ${
-                      time === slot.time
-                        ? "border-brand bg-brand text-white"
-                        : slot.available
-                          ? "border-line bg-surface text-ink"
-                          : "border-line bg-canvas text-ink-faint"
-                    }`}
-                  >
-                    <span className={slot.available ? "" : "line-through"}>
-                      {slot.time}
-                    </span>
-                    {!slot.available ? (
-                      <span className="mt-0.5 text-[10px] font-medium leading-none no-underline">
-                        Busy
-                      </span>
-                    ) : null}
-                  </button>
-                ))}
-              </div>
+              <BookingTimeSlotPicker
+                slots={slots}
+                selectedTime={time}
+                onSelect={(slotTime) => {
+                  setTime(slotTime);
+                  setErrors((current) => ({
+                    ...current,
+                    time_slot: undefined,
+                  }));
+                }}
+              />
             ) : null}
             {date ? (
               <p
@@ -424,19 +514,53 @@ function BookingForm({
             />
           </Field>
 
-          <Field label="Service" error={errors.service_type}>
-            <select
-              value={serviceType}
-              onChange={(e) => setServiceType(e.target.value as ServiceType | "")}
-              className={fieldClass}
-            >
-              <option value="">Not set</option>
-              {SERVICE_TYPES.map((code) => (
-                <option key={code} value={code}>
-                  {serviceLabel(code)}
-                </option>
+          <Field
+            label="Service and fee"
+            error={errors.service_type ?? errors.fee}
+            hint="Each selected dog will get its own appointment row for reports."
+          >
+            <div className="grid gap-2">
+              {selectedPets.map((pet) => (
+                <div
+                  key={pet.id}
+                  className="grid gap-2 rounded-lg border border-line bg-surface px-3.5 py-3"
+                >
+                  <p className="text-sm font-semibold text-ink">{pet.name}</p>
+                  <div className="grid grid-cols-[minmax(0,1fr)_6.5rem] gap-2">
+                    <select
+                      value={petServices[pet.id] ?? ""}
+                      onChange={(e) =>
+                        setPetServices((current) => ({
+                          ...current,
+                          [pet.id]: e.target.value as ServiceType | "",
+                        }))
+                      }
+                      className={fieldClass}
+                    >
+                      <option value="">Not set</option>
+                      {SERVICE_TYPES.map((code) => (
+                        <option key={code} value={code}>
+                          {serviceLabel(code)}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      value={petFees[pet.id] ?? ""}
+                      onChange={(e) =>
+                        setPetFees((current) => ({
+                          ...current,
+                          [pet.id]: e.target.value,
+                        }))
+                      }
+                      placeholder="0.00"
+                      className={fieldClass}
+                    />
+                  </div>
+                </div>
               ))}
-            </select>
+            </div>
           </Field>
 
           {dayFit ? <DayFitCard assessment={dayFit} /> : null}
@@ -454,7 +578,7 @@ function BookingForm({
               <option value="">Not set yet</option>
               {BOOKING_LOCATIONS.map((code) => (
                 <option key={code} value={code}>
-                  {bookingLocationLabel(code)}
+                  {locationLabelFromSettings(code, locationSettings)}
                 </option>
               ))}
             </select>
@@ -539,17 +663,6 @@ function BookingForm({
             </Field>
           ) : null}
 
-          <Field label="Fee" error={errors.fee} hint="Prefilled from the pet's last charged fee when available.">
-            <input
-              type="text"
-              inputMode="decimal"
-              value={fee}
-              onChange={(e) => setFee(e.target.value)}
-              placeholder="0.00"
-              className={fieldClass}
-            />
-          </Field>
-
           <Field label="Notes (optional)" error={errors.notes}>
             <input
               type="text"
@@ -571,24 +684,23 @@ function BookingForm({
       ) : (
         <>
           <p className="text-sm text-ink">
-            This will create one appointment for{" "}
-            <span className="font-semibold">{selectedPet.name}</span> under{" "}
+            This will create {selectedPets.length} appointment
+            {selectedPets.length === 1 ? "" : "s"} for{" "}
+            <span className="font-semibold">{petNameList}</span> under{" "}
             <span className="font-semibold">{ownerName}</span>.
           </p>
 
           <dl className="flex flex-col gap-1.5 rounded-xl border border-line bg-canvas px-3.5 py-3 text-sm">
+            <ReviewRow label="Pets" value={petNameList} />
             <ReviewRow label="Date" value={formatReviewDate(date)} />
             <ReviewRow label="Drop-off" value={time || "No time set"} />
-            <ReviewRow
-              label="Service"
-              value={serviceType ? serviceLabel(serviceType) ?? "Not set" : "Not set"}
-            />
+            <ReviewRow label="Service" value={reviewService} />
             <ReviewRow
               label="Location"
               value={
                 location
-                  ? customerBookingLocationLabel(location) ??
-                    bookingLocationLabel(location) ??
+                  ? customerLocationLabelFromSettings(location, locationSettings) ??
+                    locationLabelFromSettings(location, locationSettings) ??
                     "Not set"
                   : "Not set"
               }
@@ -615,7 +727,7 @@ function BookingForm({
             />
             <ReviewRow
               label="Fee"
-              value={fee.trim() ? formatMoney(Number(fee)) : "No fee set"}
+              value={totalFee > 0 ? formatMoney(totalFee) : "No fee set"}
             />
             {notes.trim() ? <ReviewRow label="Notes" value={notes} /> : null}
           </dl>
@@ -626,6 +738,18 @@ function BookingForm({
               error={errors.booking_message}
               hint={`${currentBookingMessage.length}/480 characters. This is what the customer will receive if Sam confirms.`}
             >
+              <select
+                value={bookingMessageDraftKind}
+                onChange={(event) =>
+                  onDraftKindChange(event.target.value as BookingMessageDraftKind)
+                }
+                className={`${fieldClass} mb-2`}
+              >
+                <option value="booking_confirmation">
+                  Booking confirmation
+                </option>
+                <option value="first_platform">First platform text</option>
+              </select>
               <textarea
                 value={currentBookingMessage}
                 onChange={(event) => setBookingMessage(event.target.value)}
@@ -704,7 +828,7 @@ function ModeNote({
     if (writesEnabled) {
       return (
         <p className="rounded-lg bg-brand-soft px-3 py-2 text-xs font-medium text-brand-ink">
-          Production mode — confirming will save one appointment.
+          Production mode — confirming will save the selected appointment rows.
         </p>
       );
     }
@@ -728,7 +852,7 @@ function ResultScreen({
   onDone,
 }: {
   state: Extract<BookingState, { status: "demo" | "gated" | "saved" }>;
-  onDone: () => void;
+  onDone: (options?: { markPriorOutboundSms?: boolean }) => void;
 }) {
   const { summary } = state;
   const saved = state.status === "saved";
@@ -839,7 +963,13 @@ function ResultScreen({
 
       <button
         type="button"
-        onClick={onDone}
+        onClick={() =>
+          onDone({
+            markPriorOutboundSms:
+              state.status === "saved" &&
+              summary.bookingTextSend?.status === "sent",
+          })
+        }
         className="rounded-xl bg-brand px-4 py-3 text-base font-semibold text-white active:bg-brand-ink"
       >
         Done

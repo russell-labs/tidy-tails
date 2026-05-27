@@ -13,6 +13,7 @@
 // (live.test.ts). The Supabase wiring lives in repo.ts.
 
 import type { Appointment, Client, Pet } from "./types";
+import { parseStoredPetBirthDate } from "../petAge";
 
 export type Row = Record<string, unknown>;
 
@@ -36,6 +37,7 @@ const numOrNull = (v: unknown): number | null => {
 // appointments.service_type is a CHECK-constrained enum code. Sam sees a label.
 const SERVICE_LABELS: Record<string, string> = {
   full_groom: "Full groom",
+  puppy_groom: "Puppy groom",
   bath_only: "Bath only",
   nail_trim: "Nail trim",
   other: "Other",
@@ -66,16 +68,20 @@ export function mapClientRow(r: Row): Client {
 }
 
 export function mapPetRow(r: Row): Pet {
+  const rawAge = strOrNull(r.age);
+  const dateOfBirth = strOrNull(r.date_of_birth) ?? parseStoredPetBirthDate(rawAge);
   return {
     id: str(r.id),
     client_id: str(r.client_id),
     name: str(r.name),
     breed: strOrNull(r.breed),
+    size: strOrNull(r.size),
     color: strOrNull(r.color),
+    age: rawAge,
     sex: r.sex === "M" || r.sex === "F" ? r.sex : null,
-    // The live `pets` table has no date_of_birth column (it stores `age` as
-    // free text) — a v2 schema addition, null on live reads.
-    date_of_birth: strOrNull(r.date_of_birth),
+    // Live stores free-text `age`; when it contains an ISO birth date the app
+    // can display a current age that advances over time.
+    date_of_birth: dateOfBirth,
     allergies: r.allergies === true,
     allergies_detail: strOrNull(r.allergies_detail),
     grooming_notes: strOrNull(r.grooming_notes),

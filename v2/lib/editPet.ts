@@ -1,10 +1,14 @@
-import type { AllergyState } from "./intake";
+import { PET_SIZES, type AllergyState, type PetSize } from "./intake";
+import { parseStoredPetBirthDate } from "./petAge";
 
 export type EditPetInput = {
   client_id: string;
   pet_id: string;
   name: string;
   breed: string;
+  size: string;
+  color: string;
+  date_of_birth: string;
   allergy_state: string;
   allergies_detail: string;
   grooming_notes: string;
@@ -16,6 +20,9 @@ export type ValidatedEditPet = {
   pet_id: string;
   name: string;
   breed: string | null;
+  size: PetSize | null;
+  color: string | null;
+  date_of_birth: string | null;
   allergies: boolean | null;
   allergies_detail: string | null;
   grooming_notes: string | null;
@@ -31,6 +38,9 @@ export type EditPetValidationResult =
 export type EditPetUpdate = {
   name: string;
   breed: string | null;
+  size: PetSize | null;
+  color: string | null;
+  age: string | null;
   allergies: boolean | null;
   allergies_detail: string | null;
   grooming_notes: string | null;
@@ -39,6 +49,7 @@ export type EditPetUpdate = {
 
 const NAME_MAX = 80;
 const TEXT_MAX = 1000;
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 function optionalText(v: string | undefined): string | null {
   const t = (v ?? "").trim();
@@ -68,6 +79,29 @@ export function validateEditPet(
 
   const breed = optionalText(raw.breed);
   if (breed && breed.length > NAME_MAX) errors.breed = "That breed is too long.";
+
+  const sizeRaw = (raw.size ?? "").trim();
+  let size: PetSize | null = null;
+  if (sizeRaw) {
+    if ((PET_SIZES as readonly string[]).includes(sizeRaw)) {
+      size = sizeRaw as PetSize;
+    } else {
+      errors.size = "Pick a size from the list.";
+    }
+  }
+
+  const color = optionalText(raw.color);
+  if (color && color.length > NAME_MAX) errors.color = "That colour is too long.";
+
+  const birthRaw = (raw.date_of_birth ?? "").trim();
+  let date_of_birth: string | null = null;
+  if (birthRaw) {
+    if (ISO_DATE.test(birthRaw) && parseStoredPetBirthDate(birthRaw)) {
+      date_of_birth = birthRaw;
+    } else {
+      errors.date_of_birth = "Use a valid birth date.";
+    }
+  }
 
   const allergyState = parseAllergyState(raw.allergy_state);
   if (allergyState === null) {
@@ -107,6 +141,9 @@ export function validateEditPet(
       pet_id,
       name,
       breed,
+      size,
+      color,
+      date_of_birth,
       allergies,
       allergies_detail: allergyState === "yes" ? allergiesDetail : null,
       grooming_notes,
@@ -119,6 +156,9 @@ export function buildEditPetUpdate(v: ValidatedEditPet): EditPetUpdate {
   return {
     name: v.name,
     breed: v.breed,
+    size: v.size,
+    color: v.color,
+    age: v.date_of_birth,
     allergies: v.allergies,
     allergies_detail: v.allergies_detail,
     grooming_notes: v.grooming_notes,

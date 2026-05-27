@@ -17,6 +17,9 @@ export type EditPetSummary = {
   ownerName: string;
   petName: string;
   breed: string | null;
+  size: string | null;
+  color: string | null;
+  dateOfBirth: string | null;
   allergies: boolean | null;
   typicalFee: number | null;
 };
@@ -46,6 +49,9 @@ export async function editPet(
     pet_id: String(formData.get("pet_id") ?? ""),
     name: String(formData.get("name") ?? ""),
     breed: String(formData.get("breed") ?? ""),
+    size: String(formData.get("size") ?? ""),
+    color: String(formData.get("color") ?? ""),
+    date_of_birth: String(formData.get("date_of_birth") ?? ""),
     allergy_state: String(formData.get("allergy_state") ?? ""),
     allergies_detail: String(formData.get("allergies_detail") ?? ""),
     grooming_notes: String(formData.get("grooming_notes") ?? ""),
@@ -79,6 +85,9 @@ export async function editPet(
     ownerName: fullName(record.client.first_name, record.client.last_name),
     petName: payload.name,
     breed: payload.breed,
+    size: payload.size,
+    color: payload.color,
+    dateOfBirth: pet.date_of_birth,
     allergies: payload.allergies,
     typicalFee: payload.standard_fee,
   };

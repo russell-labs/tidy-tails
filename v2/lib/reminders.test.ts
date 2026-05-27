@@ -3,6 +3,7 @@ import type { Appointment } from "./data/types";
 import {
   buildReminderDraft,
   buildReminderMessage,
+  buildReminderTarget,
   pickReminderAppointment,
   renderReminderTemplate,
   validateReminderInput,
@@ -12,7 +13,10 @@ import {
 const TODAY = new Date("2026-05-17T12:00:00");
 
 // Minimal Appointment builder — pickReminderAppointment only reads `date`.
-function appt(date: string): Appointment {
+function appt(
+  date: string,
+  overrides: Partial<Appointment> = {},
+): Appointment {
   return {
     id: `a-${date}`,
     client_id: "c1",
@@ -29,6 +33,7 @@ function appt(date: string): Appointment {
     google_sync_error: null,
     google_synced_at: null,
     created_at: date,
+    ...overrides,
   };
 }
 
@@ -66,10 +71,12 @@ describe("buildReminderMessage — message generation", () => {
       ownerFirstName: "Hannah",
       petName: "Waffles",
       appointmentDate: "2026-05-23",
+      appointmentTime: "10:30am",
     });
     expect(msg).toContain("Hannah");
     expect(msg).toContain("Waffles");
     expect(msg).toContain("2026"); // the formatted appointment date
+    expect(msg).toContain("10:30am");
   });
 
   it("builds a generic check-in message when there is no upcoming appointment", () => {
@@ -117,6 +124,20 @@ describe("buildReminderMessage — message generation", () => {
     expect(msg).toBe("Hi Hannah, Waffles is booked on May 23, 2026.");
   });
 
+  it("keeps the appointment time in saved templates that do not include the time placeholder", () => {
+    const msg = buildReminderMessage({
+      ownerFirstName: "Hannah",
+      petName: "Waffles",
+      appointmentDate: "2026-05-23",
+      appointmentTime: "10:30am",
+      appointmentTemplate:
+        "Hi [first name], [pet name] is booked on [date]. See you soon! — Samantha",
+    });
+
+    expect(msg).toContain("10:30am");
+    expect(msg).toContain("— Samantha");
+  });
+
   it("uses the saved rebook template when there is no upcoming appointment", () => {
     const msg = buildReminderMessage({
       ownerFirstName: "Hannah",
@@ -125,6 +146,63 @@ describe("buildReminderMessage — message generation", () => {
       rebookTemplate: "Hi [first name], should we book [pet name]?",
     });
     expect(msg).toBe("Hi Hannah, should we book Waffles?");
+  });
+});
+
+describe("buildReminderTarget — appointment grouping", () => {
+  const pets = [
+    { id: "p1", name: "Molly" },
+    { id: "p2", name: "Loki" },
+    { id: "p3", name: "Scout" },
+  ];
+
+  it("targets the requested appointment and groups same-household dogs at the same date and time", () => {
+    const target = buildReminderTarget(
+      [
+        appt("2026-06-12", {
+          id: "a1",
+          pet_id: "p1",
+          time_slot: "10:00am",
+          location: "gina",
+        }),
+        appt("2026-06-12", {
+          id: "a2",
+          pet_id: "p2",
+          time_slot: "10:00am",
+          location: "gina",
+        }),
+        appt("2026-06-12", {
+          id: "a3",
+          pet_id: "p3",
+          time_slot: "11:00am",
+          location: "gina",
+        }),
+      ],
+      pets,
+      { appointmentId: "a2", today: TODAY },
+    );
+
+    expect(target?.appointment.id).toBe("a2");
+    expect(target?.petName).toBe("Molly and Loki");
+    expect(target?.appointmentDate).toBe("2026-06-12");
+    expect(target?.appointmentTime).toBe("10:00am");
+    expect(target?.appointmentLocation).toBe("gina");
+    expect(target?.groupAppointmentIds).toEqual(["a1", "a2"]);
+  });
+
+  it("falls back to the soonest upcoming appointment when no appointment is requested", () => {
+    const target = buildReminderTarget(
+      [
+        appt("2026-05-20", { id: "soon", pet_id: "p3", time_slot: "9:15am" }),
+        appt("2026-06-12", { id: "later", pet_id: "p1", time_slot: "10:00am" }),
+      ],
+      pets,
+      { today: TODAY },
+    );
+
+    expect(target?.appointment.id).toBe("soon");
+    expect(target?.petName).toBe("Scout");
+    expect(target?.appointmentTime).toBe("9:15am");
   });
 });
 

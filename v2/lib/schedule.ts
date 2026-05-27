@@ -12,6 +12,8 @@ export type ScheduledAppointment = {
   pet: Pet | null;
 };
 
+export type ScheduleView = "week" | "day";
+
 function pad(n: number): string {
   return String(n).padStart(2, "0");
 }
@@ -61,16 +63,30 @@ export function shiftWeek(startDate: string, weeks: number): string {
   return iso(d);
 }
 
-export function appointmentsForWeek({
+export function shiftDay(date: string, days: number): string {
+  const d = /^\d{4}-\d{2}-\d{2}$/.test(date)
+    ? new Date(`${date}T12:00:00`)
+    : new Date();
+  d.setDate(d.getDate() + days);
+  return iso(d);
+}
+
+export function scheduleView(raw: string | null | undefined): ScheduleView {
+  return raw === "day" ? "day" : "week";
+}
+
+function appointmentRows({
   appointments,
   clients,
   pets,
   range,
+  date,
 }: {
   appointments: Appointment[];
   clients: Client[];
   pets: Pet[];
-  range: WeekRange;
+  range?: WeekRange;
+  date?: string;
 }): ScheduledAppointment[] {
   const clientsById = new Map(clients.map((client) => [client.id, client]));
   const petsById = new Map(pets.map((pet) => [pet.id, pet]));
@@ -80,8 +96,9 @@ export function appointmentsForWeek({
       const status = appointment.status ?? "completed";
       return (
         status === "booked" &&
-        appointment.date >= range.start &&
-        appointment.date <= range.end
+        (range
+          ? appointment.date >= range.start && appointment.date <= range.end
+          : appointment.date === date)
       );
     })
     .sort((a, b) => {
@@ -94,4 +111,45 @@ export function appointmentsForWeek({
       client: clientsById.get(appointment.client_id) ?? null,
       pet: petsById.get(appointment.pet_id) ?? null,
     }));
+}
+
+export function appointmentsForWeek({
+  appointments,
+  clients,
+  pets,
+  range,
+}: {
+  appointments: Appointment[];
+  clients: Client[];
+  pets: Pet[];
+  range: WeekRange;
+}): ScheduledAppointment[] {
+  return appointmentRows({ appointments, clients, pets, range });
+}
+
+export function appointmentsForDay({
+  appointments,
+  clients,
+  pets,
+  date,
+}: {
+  appointments: Appointment[];
+  clients: Client[];
+  pets: Pet[];
+  date: string;
+}): ScheduledAppointment[] {
+  return appointmentRows({ appointments, clients, pets, date });
+}
+
+export function bookedFeesForDate(
+  appointments: Appointment[],
+  date: string,
+): number {
+  return appointments
+    .filter(
+      (appointment) =>
+        (appointment.status ?? "completed") === "booked" &&
+        appointment.date === date,
+    )
+    .reduce((sum, appointment) => sum + (appointment.price ?? 0), 0);
 }

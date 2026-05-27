@@ -51,10 +51,10 @@ export function validateEditClient(
 
   const first_name = (raw.first_name ?? "").trim();
   const last_name = optionalText(raw.last_name);
-  if (!first_name) errors.first_name = "Enter the owner's first name.";
-  else if (first_name.length > NAME_MAX)
+  if (first_name.length > NAME_MAX)
     errors.first_name = "That name is too long.";
-  if (last_name && last_name.length > NAME_MAX)
+  if (!last_name) errors.last_name = "Enter the owner's last name.";
+  else if (last_name.length > NAME_MAX)
     errors.last_name = "That name is too long.";
 
   const phone = (raw.phone ?? "").trim();

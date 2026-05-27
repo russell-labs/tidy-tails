@@ -76,6 +76,19 @@ describe("getTwilioWebhookAuthToken", () => {
     expect(getTwilioWebhookAuthToken()).toBe("account-auth-token");
   });
 
+  it("accepts the production webhook secret env name for signed webhook validation", () => {
+    vi.stubEnv("TIDYTAILS_TWILIO_WEBHOOK_SECRET", "webhook-auth-token");
+
+    expect(getTwilioWebhookAuthToken()).toBe("webhook-auth-token");
+  });
+
+  it("prefers the Twilio Auth Token when both webhook and account tokens are present", () => {
+    vi.stubEnv("TIDYTAILS_TWILIO_AUTH_TOKEN", "account-auth-token");
+    vi.stubEnv("TIDYTAILS_TWILIO_WEBHOOK_SECRET", "webhook-auth-token");
+
+    expect(getTwilioWebhookAuthToken()).toBe("account-auth-token");
+  });
+
   it("returns null when the webhook Auth Token is not configured", () => {
     expect(getTwilioWebhookAuthToken()).toBeNull();
   });
@@ -166,6 +179,24 @@ describe("buildTwilioMessageRequest", () => {
     expect(request.body.get("To")).toBe("+17055550106");
     expect(request.body.get("From")).toBe("+17055550123");
     expect(request.body.get("Body")).toBe("Hi there");
+  });
+
+  it("adds the production status callback URL when app URL is configured", () => {
+    vi.stubEnv("TIDYTAILS_APP_URL", "https://tidy-tails-v2.vercel.app/");
+
+    const request = buildTwilioMessageRequest(
+      {
+        accountSid: "AC123",
+        authUsername: "SK123",
+        authPassword: "secret",
+        fromNumber: "+17055550123",
+      },
+      { to: "+17055550106", body: "Hi there" },
+    );
+
+    expect(request.body.get("StatusCallback")).toBe(
+      "https://tidy-tails-v2.vercel.app/api/twilio/message-status",
+    );
   });
 });
 

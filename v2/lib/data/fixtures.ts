@@ -139,6 +139,48 @@ function buildAppointments(): Appointment[] {
       });
     }
   }
+  const pepper = FIXTURE_PETS.find((p) => p.id === "p03")!;
+  const olive = FIXTURE_PETS.find((p) => p.id === "p04")!;
+  out.push(
+    {
+      id: "qa-booked-pepper",
+      client_id: pepper.client_id,
+      pet_id: pepper.id,
+      date: isoDaysAgo(-1),
+      time_slot: "10:00am",
+      service: "Full groom",
+      price: pepper.typical_fee,
+      tip: null,
+      notes: "Local QA booking for the schedule action page.",
+      status: "booked",
+      location: "gina",
+      google_calendar_id: null,
+      google_event_id: null,
+      google_sync_status: null,
+      google_sync_error: null,
+      google_synced_at: null,
+      created_at: isoDaysAgo(0),
+    },
+    {
+      id: "qa-booked-olive",
+      client_id: olive.client_id,
+      pet_id: olive.id,
+      date: isoDaysAgo(-1),
+      time_slot: "10:00am",
+      service: "Puppy groom",
+      price: olive.typical_fee,
+      tip: null,
+      notes: "Local QA booking paired with Pepper to test grouped reminders.",
+      status: "booked",
+      location: "gina",
+      google_calendar_id: null,
+      google_event_id: null,
+      google_sync_status: null,
+      google_sync_error: null,
+      google_synced_at: null,
+      created_at: isoDaysAgo(0),
+    },
+  );
   return out;
 }
 

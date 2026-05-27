@@ -4,7 +4,7 @@ import { useActionState, useState } from "react";
 import { prepareReminder, type ReminderState } from "@/lib/actions/reminders";
 import {
   buildReminderMessage,
-  pickReminderAppointment,
+  buildReminderTarget,
   validateReminderInput,
   type ReminderErrors,
 } from "@/lib/reminders";
@@ -117,19 +117,18 @@ function ReminderForm({
 
   // The upcoming appointment this reminder is about, if any. When there is
   // none, the flow still offers a manual draft (a generic check-in message).
-  const upcoming = pickReminderAppointment(appointments);
-  const upcomingPet = upcoming
-    ? pets.find((p) => p.id === upcoming.pet_id)
-    : undefined;
-  const petName = upcomingPet?.name ?? pets[0]?.name ?? null;
+  const target = buildReminderTarget(appointments, pets);
+  const upcoming = target?.appointment ?? null;
+  const petName = target?.petName ?? pets[0]?.name ?? null;
   const ownerName = fullName(client.first_name, client.last_name);
 
   const [message, setMessage] = useState(() =>
     buildReminderMessage({
       ownerFirstName: client.first_name,
       petName,
-      appointmentDate: upcoming?.date ?? null,
-      appointmentLocation: upcoming?.location ?? null,
+      appointmentDate: target?.appointmentDate ?? null,
+      appointmentTime: target?.appointmentTime ?? null,
+      appointmentLocation: target?.appointmentLocation ?? null,
       appointmentTemplate: reminderSettings.appointmentReminderTemplate,
       rebookTemplate: reminderSettings.rebookReminderTemplate,
     }),
@@ -170,6 +169,7 @@ function ReminderForm({
       {/* Hidden fields carry the current values into the server action. The
           recipient phone is re-read server-side from the client record. */}
       <input type="hidden" name="client_id" value={client.id} />
+      <input type="hidden" name="appointment_id" value={upcoming?.id ?? ""} />
       <input type="hidden" name="message" value={message} />
 
       <ModeNote mode={mode} />
@@ -199,9 +199,10 @@ function ReminderForm({
             <p className="rounded-lg bg-brand-soft px-3 py-2 text-xs font-medium text-brand-ink">
               Reminder for{" "}
               <span className="font-semibold">
-                {upcomingPet?.name ?? "the pet"}
+                {target?.petName ?? "the pet"}
               </span>{" "}
               · appointment {formatDate(upcoming.date)}
+              {target?.appointmentTime ? ` at ${target.appointmentTime}` : ""}
             </p>
           ) : (
             <p className="rounded-lg bg-canvas px-3 py-2 text-xs text-ink-soft">
@@ -356,6 +357,15 @@ function ResultScreen({
             <span className="font-semibold text-ink">
               {formatDate(summary.appointmentDate)}
             </span>
+            {summary.appointmentTime ? (
+              <>
+                {" "}
+                at{" "}
+                <span className="font-semibold text-ink">
+                  {summary.appointmentTime}
+                </span>
+              </>
+            ) : null}
           </>
         ) : null}
         .

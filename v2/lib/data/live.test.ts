@@ -15,6 +15,7 @@ import {
 describe("serviceLabel — service_type enum → user-facing label", () => {
   it("maps each known enum code to a label", () => {
     expect(serviceLabel("full_groom")).toBe("Full groom");
+    expect(serviceLabel("puppy_groom")).toBe("Puppy groom");
     expect(serviceLabel("bath_only")).toBe("Bath only");
     expect(serviceLabel("nail_trim")).toBe("Nail trim");
     expect(serviceLabel("other")).toBe("Other");
@@ -82,6 +83,28 @@ describe("mapClientRow — live clients row → Client", () => {
 });
 
 describe("mapPetRow — live pets row → Pet", () => {
+  it("maps size, color, and an ISO birth date stored in the live age field", () => {
+    const pet = mapPetRow({
+      id: "p-1",
+      client_id: "c-1",
+      name: "Bella",
+      size: "medium",
+      color: "Brindle",
+      age: "2021-06-15",
+    });
+
+    expect(pet.size).toBe("medium");
+    expect(pet.color).toBe("Brindle");
+    expect(pet.age).toBe("2021-06-15");
+    expect(pet.date_of_birth).toBe("2021-06-15");
+  });
+
+  it("keeps old free-text ages visible without pretending they age automatically", () => {
+    const pet = mapPetRow({ age: "about 4" });
+    expect(pet.age).toBe("about 4");
+    expect(pet.date_of_birth).toBeNull();
+  });
+
   it("maps the live `standard_fee` column onto typical_fee", () => {
     const row: Row = { id: "p-1", client_id: "c-1", name: "Bella", standard_fee: 56 };
     expect(mapPetRow(row).typical_fee).toBe(56);

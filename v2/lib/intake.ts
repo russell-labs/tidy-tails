@@ -92,7 +92,7 @@ function parseAllergyState(raw: string | undefined): AllergyState | null {
 }
 
 /**
- * Validate raw intake form input into a client + pet. Owner first name, phone,
+ * Validate raw intake form input into a client + pet. Owner last name, phone,
  * and pet name are required; everything else is optional, normalized to
  * value-or-null. Phone must carry a North American digit count (10, or 11 with
  * a leading 1); the entered string is kept verbatim, matching the v1 `phone`
@@ -106,10 +106,10 @@ export function validateIntake(
   // ---- client -----------------------------------------------------------
   const first_name = (raw.first_name ?? "").trim();
   const last_name = optionalText(raw.last_name);
-  if (!first_name) errors.first_name = "Enter the owner's first name.";
-  else if (first_name.length > NAME_MAX)
+  if (first_name.length > NAME_MAX)
     errors.first_name = "That name is too long.";
-  if (last_name && last_name.length > NAME_MAX)
+  if (!last_name) errors.last_name = "Enter the owner's last name.";
+  else if (last_name.length > NAME_MAX)
     errors.last_name = "That name is too long.";
 
   const phone = (raw.phone ?? "").trim();

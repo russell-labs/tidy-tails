@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  appointmentDeleteKind,
+  buildCancellationTextDraft,
+  buildCancellationTextMessage,
   buildEditAppointmentUpdate,
+  shouldBlockAppointmentDeleteForCalendarStatus,
+  validateCancellationTextInput,
   validateEditAppointment,
 } from "./editAppointment";
 
@@ -103,6 +108,53 @@ describe("validateEditAppointment", () => {
   });
 });
 
+describe("buildCancellationTextMessage", () => {
+  it("renders a clear customer cancellation text", () => {
+    expect(
+      buildCancellationTextMessage({
+        ownerFirstName: "Mary",
+        petName: "Kiwi",
+        date: "2026-05-29",
+        time: "10:30am",
+      }),
+    ).toBe(
+      "Hi Mary, Kiwi's Tidy Tails appointment on 2026-05-29 at 10:30am has been cancelled. - Samantha",
+    );
+  });
+});
+
+describe("validateCancellationTextInput", () => {
+  it("accepts a reviewed cancellation text and trims it", () => {
+    expect(validateCancellationTextInput("  Hi Mary, Kiwi is cancelled.  ")).toEqual({
+      ok: true,
+      value: "Hi Mary, Kiwi is cancelled.",
+    });
+  });
+
+  it("rejects empty reviewed cancellation text", () => {
+    expect(validateCancellationTextInput("   ")).toEqual({
+      ok: false,
+      message: "Write a cancellation text before sending.",
+    });
+  });
+
+  it("rejects over-long cancellation text", () => {
+    expect(validateCancellationTextInput("x".repeat(481))).toEqual({
+      ok: false,
+      message: "That cancellation text is too long.",
+    });
+  });
+});
+
+describe("buildCancellationTextDraft", () => {
+  it("returns an inert draft that requires explicit operator confirmation", () => {
+    expect(buildCancellationTextDraft("Hi Mary, Kiwi is cancelled.")).toEqual({
+      message: "Hi Mary, Kiwi is cancelled.",
+      requiresExplicitConfirmation: true,
+    });
+  });
+});
+
 describe("buildEditAppointmentUpdate", () => {
   it("maps editable visit details to live appointment columns", () => {
     const result = validateEditAppointment(valid, TODAY);
@@ -128,5 +180,59 @@ describe("buildEditAppointmentUpdate", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(buildEditAppointmentUpdate(result.value).net).toBeNull();
+  });
+});
+
+describe("appointmentDeleteKind", () => {
+  it("allows future booked appointments to be deleted as bookings", () => {
+    expect(
+      appointmentDeleteKind({
+        status: "booked",
+        date: "2026-06-01",
+        today: "2026-05-21",
+      }),
+    ).toBe("future_booking");
+  });
+
+  it("allows completed and past booked rows to be deleted as past visits", () => {
+    expect(
+      appointmentDeleteKind({
+        status: "completed",
+        date: "2026-05-01",
+        today: "2026-05-21",
+      }),
+    ).toBe("past_visit");
+    expect(
+      appointmentDeleteKind({
+        status: "booked",
+        date: "2026-05-01",
+        today: "2026-05-21",
+      }),
+    ).toBe("past_visit");
+  });
+
+  it("keeps cancelled and no-show rows delete-disabled", () => {
+    expect(
+      appointmentDeleteKind({
+        status: "cancelled",
+        date: "2026-05-01",
+        today: "2026-05-21",
+      }),
+    ).toBe("disabled");
+    expect(
+      appointmentDeleteKind({
+        status: "no_show",
+        date: "2026-05-01",
+        today: "2026-05-21",
+      }),
+    ).toBe("disabled");
+  });
+});
+
+describe("shouldBlockAppointmentDeleteForCalendarStatus", () => {
+  it("does not let Google Calendar failures block Tidy Tails cleanup", () => {
+    expect(shouldBlockAppointmentDeleteForCalendarStatus("failed")).toBe(false);
+    expect(shouldBlockAppointmentDeleteForCalendarStatus("not_connected")).toBe(false);
+    expect(shouldBlockAppointmentDeleteForCalendarStatus("synced")).toBe(false);
   });
 });

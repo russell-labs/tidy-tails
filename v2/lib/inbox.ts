@@ -36,6 +36,19 @@ export type InboxItem = {
   href: string | null;
 };
 
+export type SmsThread = {
+  key: string;
+  latestMessageId: string;
+  latestBody: string;
+  latestDirection: string;
+  latestAt: string;
+  clientId: string | null;
+  phone: string;
+  messageCount: number;
+  actionCount: number;
+  href: string | null;
+};
+
 export function buildInboxItems({
   smsMessages,
   bookingRequests,
@@ -48,10 +61,43 @@ export function buildInboxItems({
   handledSmsIds?: Set<string>;
 }): InboxItem[] {
   return [
-    ...smsMessages.map((message) => smsToInboxItem(message, handledSmsIds)),
+    ...smsMessages
+      .filter((message) => message.status !== "hidden")
+      .map((message) => smsToInboxItem(message, handledSmsIds)),
     ...bookingRequests.map(bookingRequestToInboxItem),
     ...auditEvents.map(auditToInboxItem),
   ].sort(compareInboxItems);
+}
+
+export function buildSmsThreads(
+  smsMessages: SmsMessage[],
+  handledSmsIds = new Set<string>(),
+): SmsThread[] {
+  const threads = new Map<string, SmsMessage[]>();
+  for (const message of smsMessages) {
+    if (message.status === "hidden") continue;
+    const key = smsThreadKey(message);
+    threads.set(key, [...(threads.get(key) ?? []), message]);
+  }
+
+  return Array.from(threads.entries())
+    .map(([key, messages]) => {
+      const sorted = [...messages].sort((a, b) => Date.parse(smsCreatedAt(b)) - Date.parse(smsCreatedAt(a)));
+      const latest = sorted[0];
+      return {
+        key,
+        latestMessageId: latest.id,
+        latestBody: latest.body,
+        latestDirection: latest.direction,
+        latestAt: smsCreatedAt(latest),
+        clientId: latest.client_id,
+        phone: latest.direction === "inbound" ? latest.from_phone : latest.to_phone,
+        messageCount: sorted.length,
+        actionCount: sorted.filter((message) => smsNeedsAction(message, handledSmsIds)).length,
+        href: smsThreadHref(key),
+      };
+    })
+    .sort((a, b) => Date.parse(b.latestAt) - Date.parse(a.latestAt));
 }
 
 export function inboxCounts(items: InboxItem[]) {
@@ -84,13 +130,8 @@ export function smsActionLabel(message: SmsMessage): string {
 function smsToInboxItem(message: SmsMessage, handledSmsIds: Set<string>): InboxItem {
   const inbound = message.direction === "inbound";
   const handled = message.status === "handled" || handledSmsIds.has(message.id);
-  const unmatched = message.match_status === "unmatched" || message.match_status === "ambiguous";
-  const bodyClass = inbound ? classifyInboundSmsBody(message.body) : null;
-  const needsAction =
-    !handled &&
-    inbound &&
-    (unmatched || bodyClass === "needs_follow_up" || bodyClass === "needs_reply");
-  const createdAt = message.received_at ?? message.sent_at ?? message.created_at;
+  const needsAction = smsNeedsAction(message, handledSmsIds);
+  const createdAt = smsCreatedAt(message);
   const from = formatPhone(message.from_phone);
 
   return {
@@ -104,8 +145,35 @@ function smsToInboxItem(message: SmsMessage, handledSmsIds: Set<string>): InboxI
     createdAt,
     clientId: message.client_id,
     petId: null,
-    href: message.client_id ? `/clients/${message.client_id}` : null,
+    href: smsThreadHref(smsThreadKey(message)),
   };
+}
+
+function smsNeedsAction(message: SmsMessage, handledSmsIds: Set<string>): boolean {
+  if (message.status === "hidden") return false;
+  const inbound = message.direction === "inbound";
+  const handled = message.status === "handled" || handledSmsIds.has(message.id);
+  const unmatched = message.match_status === "unmatched" || message.match_status === "ambiguous";
+  const bodyClass = inbound ? classifyInboundSmsBody(message.body) : null;
+  return (
+    !handled &&
+    inbound &&
+    (unmatched || bodyClass === "needs_follow_up" || bodyClass === "needs_reply")
+  );
+}
+
+function smsCreatedAt(message: SmsMessage): string {
+  return message.received_at ?? message.sent_at ?? message.created_at;
+}
+
+function smsThreadKey(message: SmsMessage): string {
+  if (message.client_id) return `client:${message.client_id}`;
+  const phone = message.direction === "inbound" ? message.from_phone : message.to_phone;
+  return `phone:${phone}`;
+}
+
+export function smsThreadHref(threadKey: string): string {
+  return `/inbox/${encodeURIComponent(threadKey)}`;
 }
 
 function bookingRequestToInboxItem(request: BookingRequestInboxRow): InboxItem {
@@ -161,6 +229,7 @@ function priorityRank(priority: InboxPriority): number {
 
 function serviceLabel(service: string | null): string | null {
   if (service === "full_groom") return "Full groom";
+  if (service === "puppy_groom") return "Puppy groom";
   if (service === "bath_only") return "Bath only";
   if (service === "nail_trim") return "Nail trim";
   if (service === "other") return "Other";

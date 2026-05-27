@@ -55,13 +55,68 @@ body {
    keeps final buttons clear of Safari's toolbar and the in-app tab bar. */
 .pad-bottom-nav {
   padding-bottom: calc(9rem + env(safe-area-inset-bottom));
+  transition: padding-bottom 180ms ease;
 }
 .nav-safe {
   min-height: calc(4.75rem + env(safe-area-inset-bottom));
   padding-bottom: calc(0.75rem + env(safe-area-inset-bottom));
 }
+.app-bottom-nav {
+  transition:
+    opacity 180ms ease,
+    transform 180ms ease;
+}
+body[data-tidy-search-active="true"] .app-bottom-nav {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(calc(100% + env(safe-area-inset-bottom)));
+}
+body[data-tidy-sheet-open="true"] .app-bottom-nav {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(calc(100% + env(safe-area-inset-bottom)));
+}
+body[data-tidy-search-active="true"] .pad-bottom-nav {
+  padding-bottom: calc(1rem + env(safe-area-inset-bottom));
+}
 .sheet-bottom-room {
   padding-bottom: calc(2rem + env(safe-area-inset-bottom));
+}
+.tidy-sheet-root {
+  min-height: 100vh;
+  min-height: 100svh;
+}
+.tidy-sheet-panel-bottom {
+  height: min(92vh, calc(100vh - 0.75rem));
+  height: min(92svh, calc(100svh - 0.75rem));
+}
+.tidy-sheet-panel-fullscreen {
+  height: 100vh;
+  height: 100svh;
+}
+@supports (height: 100dvh) {
+  .tidy-sheet-root {
+    min-height: 100dvh;
+  }
+  .tidy-sheet-panel-bottom {
+    height: min(92dvh, calc(100dvh - 0.75rem));
+  }
+  .tidy-sheet-panel-fullscreen {
+    height: 100dvh;
+  }
+}
+@media (min-width: 640px) {
+  .tidy-sheet-panel-fullscreen {
+    height: min(92vh, calc(100vh - 0.75rem));
+    height: min(92svh, calc(100svh - 0.75rem));
+  }
+}
+@supports (height: 100dvh) {
+  @media (min-width: 640px) {
+    .tidy-sheet-panel-fullscreen {
+      height: min(92dvh, calc(100dvh - 0.75rem));
+    }
+  }
 }
 
 .submit-dog-line path,

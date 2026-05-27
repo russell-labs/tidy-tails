@@ -22,7 +22,9 @@ export type Pet = {
   client_id: string;
   name: string;
   breed: string | null;
+  size?: string | null;
   color: string | null; // v2 schema addition — null on live reads
+  age?: string | null; // live v1 free-text age; ISO birth dates age over time
   sex: Sex | null; // v2 schema addition — null on live reads
   date_of_birth: string | null; // v2 schema addition — null on live reads
   allergies: boolean;

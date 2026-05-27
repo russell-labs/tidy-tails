@@ -2,10 +2,12 @@ import { describe, expect, it } from "vitest";
 import {
   buildInboundSmsInsert,
   buildOutboundSmsInsert,
+  buildTwilioStatusUpdate,
   buildTwilioWebhookResponse,
   classifyInboundSmsBody,
   matchClientByPhone,
   parseTwilioInboundForm,
+  parseTwilioStatusCallbackForm,
 } from "./inboundSms";
 import type { Client } from "./data/types";
 
@@ -71,6 +73,36 @@ describe("parseTwilioInboundForm", () => {
     );
 
     expect(parsed.ok && parsed.value.body).toBe("Thank you!\nSee you Friday.");
+  });
+});
+
+describe("parseTwilioStatusCallbackForm", () => {
+  it("parses Twilio delivery status callback fields", () => {
+    const parsed = parseTwilioStatusCallbackForm(
+      new URLSearchParams({
+        MessageSid: "SM456",
+        MessageStatus: "delivered",
+        To: "+17053301807",
+        From: "+16414664592",
+      }),
+    );
+
+    expect(parsed).toEqual({
+      ok: true,
+      value: {
+        messageSid: "SM456",
+        status: "delivered",
+        to: "+17053301807",
+        from: "+16414664592",
+      },
+    });
+  });
+
+  it("rejects callbacks without a sid or status", () => {
+    expect(parseTwilioStatusCallbackForm(new URLSearchParams())).toEqual({
+      ok: false,
+      message: "Twilio status callback was missing MessageSid or MessageStatus.",
+    });
   });
 });
 
@@ -193,6 +225,30 @@ describe("buildOutboundSmsInsert", () => {
       match_status: "matched",
       sent_at: expect.any(String),
     });
+  });
+});
+
+describe("buildTwilioStatusUpdate", () => {
+  it("keeps customer-visible delivery states", () => {
+    expect(
+      buildTwilioStatusUpdate({
+        messageSid: "SM456",
+        status: "delivered",
+        to: "+17053301807",
+        from: "+16414664592",
+      }),
+    ).toEqual({ status: "delivered" });
+  });
+
+  it("normalizes Twilio queued/sending states to sent", () => {
+    expect(
+      buildTwilioStatusUpdate({
+        messageSid: "SM456",
+        status: "queued",
+        to: null,
+        from: null,
+      }),
+    ).toEqual({ status: "sent" });
   });
 });
 

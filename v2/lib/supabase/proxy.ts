@@ -14,7 +14,11 @@ import { isAllowedOperatorEmail } from "../operatorAccess";
 import { getSupabaseCredentials } from "./env";
 
 // Routes reachable without a session. Everything else requires sign-in.
-const PUBLIC_PATHS = ["/login", "/api/twilio/inbound-sms"];
+const PUBLIC_PATHS = [
+  "/login",
+  "/api/twilio/inbound-sms",
+  "/api/twilio/message-status",
+];
 
 export function isPublicRoute(pathname: string): boolean {
   return PUBLIC_PATHS.some(

@@ -1,5 +1,5 @@
 import crypto from "crypto";
-import { customerBookingLocationLabel } from "./booking";
+import { customerBookingLocationLabel, formatPetNames } from "./booking";
 import type { Appointment, Client, Pet } from "./data/types";
 import { formatMoney, fullName } from "./format";
 
@@ -24,6 +24,22 @@ export type GoogleCalendarSyncResult = {
   message: string;
   eventId?: string;
 };
+
+export function googleCalendarUserMessage(rawMessage: string): string {
+  if (/expired|revoked|invalid_grant/i.test(rawMessage)) {
+    return "Google Calendar needs to be reconnected. Go to Settings and tap Reconnect Google Calendar.";
+  }
+  if (/insufficient|scope|permission/i.test(rawMessage)) {
+    return "Google Calendar needs the new availability permission. Tap Reconnect Google Calendar in Settings and approve access again.";
+  }
+  return rawMessage;
+}
+
+export function googleCalendarConnectionOwnerFilter(
+  groomerId: string,
+): { groomer_id: string } {
+  return { groomer_id: groomerId };
+}
 
 export type ParsedAppointmentTime = {
   hours: number;
@@ -63,7 +79,9 @@ export type CalendarEventInput = {
   >;
   client: Pick<Client, "first_name" | "last_name" | "phone" | "email" | "address">;
   pet: Pick<Pet, "name" | "breed" | "grooming_notes">;
+  pets?: Pick<Pet, "name" | "breed" | "grooming_notes">[];
   sendCustomerInvite?: boolean;
+  customerLocation?: string | null;
 };
 
 export type GoogleCalendarEventPayload = {
@@ -74,6 +92,34 @@ export type GoogleCalendarEventPayload = {
   start: { dateTime: string; timeZone: string };
   end: { dateTime: string; timeZone: string };
 };
+
+export type GoogleCalendarEventTiming = {
+  start?: { dateTime?: string; date?: string };
+  end?: { dateTime?: string; date?: string };
+};
+
+export type GoogleCalendarEventTimePatch = Pick<
+  GoogleCalendarEventPayload,
+  "start" | "end"
+>;
+
+export function googleCalendarDeleteEventUrl({
+  calendarId,
+  eventId,
+  sendUpdates = "all",
+}: {
+  calendarId: string;
+  eventId: string;
+  sendUpdates?: "all" | "externalOnly" | "none";
+}): string {
+  const url = new URL(
+    `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(
+      calendarId,
+    )}/events/${encodeURIComponent(eventId)}`,
+  );
+  url.searchParams.set("sendUpdates", sendUpdates);
+  return url.toString();
+}
 
 export type EncryptedToken = {
   ciphertext: string;
@@ -126,10 +172,9 @@ export function parseAppointmentTime(
 }
 
 export function defaultDurationMinutes(service: string | null): number {
-  if (service === "Nail trim") return 30;
-  if (service === "Bath only") return 60;
-  if (service === "Full groom") return 90;
-  return 60;
+  // Calendar bookings are drop-off markers, not groom-duration blocks.
+  void service;
+  return 15;
 }
 
 export function buildCalendarEventWindow(
@@ -158,6 +203,42 @@ export function buildCalendarEventWindow(
     startDateTime: toLocal(start),
     endDateTime: toLocal(end),
     timeZone: GOOGLE_CALENDAR_TIME_ZONE,
+  };
+}
+
+export function buildGoogleCalendarDropOffDurationPatch({
+  date,
+  timeSlot,
+  service,
+  event,
+}: {
+  date: string;
+  timeSlot: string | null | undefined;
+  service: string | null;
+  event: GoogleCalendarEventTiming;
+}): GoogleCalendarEventTimePatch | null {
+  const window = buildCalendarEventWindow(
+    date,
+    timeSlot,
+    defaultDurationMinutes(service),
+  );
+  if (!window || !event.start?.dateTime || !event.end?.dateTime) return null;
+
+  const currentStart = toCalendarLocalDateTime(
+    event.start.dateTime,
+    window.timeZone,
+  );
+  const currentEnd = toCalendarLocalDateTime(event.end.dateTime, window.timeZone);
+  if (
+    currentStart === window.startDateTime &&
+    currentEnd === window.endDateTime
+  ) {
+    return null;
+  }
+
+  return {
+    start: { dateTime: window.startDateTime, timeZone: window.timeZone },
+    end: { dateTime: window.endDateTime, timeZone: window.timeZone },
   };
 }
 
@@ -270,7 +351,6 @@ export function markCalendarUnavailableSlots(
     }
     return {
       ...slot,
-      available: false,
       source: "google",
       reason,
     };
@@ -294,7 +374,9 @@ export function buildGoogleCalendarEvent({
   appointment,
   client,
   pet,
+  pets,
   sendCustomerInvite = false,
+  customerLocation: configuredCustomerLocation,
 }: CalendarEventInput): GoogleCalendarEventPayload | null {
   const window = buildCalendarEventWindow(
     appointment.date,
@@ -304,17 +386,27 @@ export function buildGoogleCalendarEvent({
   if (!window) return null;
 
   const owner = fullName(client.first_name, client.last_name);
-  const customerLocation = customerBookingLocationLabel(appointment.location);
+  const customerLocation =
+    configuredCustomerLocation ?? customerBookingLocationLabel(appointment.location);
+  const calendarPets = pets?.length ? pets : [pet];
+  const petSummaryName = formatPetNames(calendarPets.map((calendarPet) => calendarPet.name));
+  const petDetails = calendarPets.flatMap((calendarPet) => [
+    calendarPet.breed
+      ? `Pet: ${calendarPet.name} (${calendarPet.breed})`
+      : `Pet: ${calendarPet.name}`,
+    calendarPet.grooming_notes
+      ? `Grooming notes for ${calendarPet.name}: ${calendarPet.grooming_notes}`
+      : null,
+  ]);
   const details = [
     `Owner: ${owner}`,
     client.phone ? `Phone: ${client.phone}` : null,
     client.email ? `Email: ${client.email}` : null,
-    pet.breed ? `Pet: ${pet.name} (${pet.breed})` : `Pet: ${pet.name}`,
+    ...petDetails,
     appointment.service ? `Service: ${appointment.service}` : null,
     appointment.price != null ? `Fee: ${formatMoney(appointment.price)}` : null,
     customerLocation ? `Location: ${customerLocation}` : null,
     appointment.notes ? `Booking notes: ${appointment.notes}` : null,
-    pet.grooming_notes ? `Grooming notes: ${pet.grooming_notes}` : null,
   ].filter(Boolean);
   const attendees =
     sendCustomerInvite && client.email
@@ -322,7 +414,7 @@ export function buildGoogleCalendarEvent({
       : undefined;
 
   return {
-    summary: `Tidy Tails: ${pet.name}`,
+    summary: `Tidy Tails: ${petSummaryName}`,
     description: details.join("\n"),
     ...(customerLocation ? { location: customerLocation } : {}),
     ...(attendees ? { attendees } : {}),

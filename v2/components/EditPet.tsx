@@ -8,13 +8,21 @@ import {
   type EditPetErrors,
 } from "@/lib/editPet";
 import { formatMoney, fullName } from "@/lib/format";
-import type { AllergyState } from "@/lib/intake";
+import { PET_SIZES, type AllergyState, type PetSize } from "@/lib/intake";
+import { formatPetAge } from "@/lib/petAge";
 import { Sheet } from "./Sheet";
 import { SubmitDogOverlay } from "./SubmitDog";
 
 const fieldClass =
   "w-full rounded-xl border border-line bg-surface px-3.5 py-2.5 text-base text-ink placeholder:text-ink-faint";
 const labelClass = "text-sm font-medium text-ink-soft";
+
+const SIZE_LABELS: Record<PetSize, string> = {
+  small: "Small",
+  medium: "Medium",
+  large: "Large",
+  xl: "Extra large",
+};
 
 function allergyStateFromPet(pet: Pet): AllergyState {
   if (pet.allergies === true) return "yes";
@@ -92,6 +100,9 @@ function EditPetForm({
 
   const [name, setName] = useState(pet.name);
   const [breed, setBreed] = useState(pet.breed ?? "");
+  const [size, setSize] = useState(pet.size ?? "");
+  const [color, setColor] = useState(pet.color ?? "");
+  const [dateOfBirth, setDateOfBirth] = useState(pet.date_of_birth ?? "");
   const [allergyState, setAllergyState] = useState<AllergyState>(
     allergyStateFromPet(pet),
   );
@@ -109,6 +120,9 @@ function EditPetForm({
       pet_id: pet.id,
       name,
       breed,
+      size,
+      color,
+      date_of_birth: dateOfBirth,
       allergy_state: allergyState,
       allergies_detail: allergiesDetail,
       grooming_notes: groomingNotes,
@@ -143,6 +157,9 @@ function EditPetForm({
       <input type="hidden" name="pet_id" value={pet.id} />
       <input type="hidden" name="name" value={name} />
       <input type="hidden" name="breed" value={breed} />
+      <input type="hidden" name="size" value={size} />
+      <input type="hidden" name="color" value={color} />
+      <input type="hidden" name="date_of_birth" value={dateOfBirth} />
       <input type="hidden" name="allergy_state" value={allergyState} />
       <input type="hidden" name="allergies_detail" value={allergiesDetail} />
       <input type="hidden" name="grooming_notes" value={groomingNotes} />
@@ -180,6 +197,46 @@ function EditPetForm({
               placeholder="Breed not recorded"
               className={fieldClass}
             />
+          </Field>
+
+          <Field label="Size" error={errors.size}>
+            <select
+              value={size}
+              onChange={(e) => setSize(e.target.value)}
+              className={fieldClass}
+            >
+              <option value="">Size not recorded</option>
+              {PET_SIZES.filter((code) => code !== "xl").map((code) => (
+                <option key={code} value={code}>
+                  {SIZE_LABELS[code]}
+                </option>
+              ))}
+            </select>
+          </Field>
+
+          <Field label="Colour" error={errors.color}>
+            <input
+              type="text"
+              value={color}
+              onChange={(e) => setColor(e.target.value)}
+              placeholder="Colour not recorded"
+              className={fieldClass}
+            />
+          </Field>
+
+          <Field
+            label="Birth date"
+            error={errors.date_of_birth}
+          >
+            <input
+              type="date"
+              value={dateOfBirth}
+              onChange={(e) => setDateOfBirth(e.target.value)}
+              className={fieldClass}
+            />
+            <span className="text-xs text-ink-faint">
+              Used to keep age current over time.
+            </span>
           </Field>
 
           <AllergyPicker
@@ -228,6 +285,19 @@ function EditPetForm({
           <dl className="flex flex-col gap-1.5 rounded-xl border border-line bg-canvas px-3.5 py-3 text-sm">
             <ReviewRow label="Name" value={name} />
             <ReviewRow label="Breed" value={breed.trim() || "Not set"} />
+            <ReviewRow
+              label="Size"
+              value={size ? (SIZE_LABELS[size as PetSize] ?? "Not set") : "Not set"}
+            />
+            <ReviewRow label="Colour" value={color.trim() || "Not set"} />
+            <ReviewRow
+              label="Age"
+              value={
+                dateOfBirth
+                  ? (formatPetAge(dateOfBirth) ?? "Birth date not valid")
+                  : "Not set"
+              }
+            />
             <ReviewRow
               label="Allergies"
               value={
@@ -408,6 +478,21 @@ function ResultScreen({
         <ReviewRow label="Owner" value={summary.ownerName} />
         <ReviewRow label="Pet" value={summary.petName} />
         <ReviewRow label="Breed" value={summary.breed ?? "Not set"} />
+        <ReviewRow
+          label="Size"
+          value={
+            summary.size ? SIZE_LABELS[summary.size as PetSize] : "Not set"
+          }
+        />
+        <ReviewRow label="Colour" value={summary.color ?? "Not set"} />
+        <ReviewRow
+          label="Age"
+          value={
+            summary.dateOfBirth
+              ? (formatPetAge(summary.dateOfBirth) ?? "Not set")
+              : "Not set"
+          }
+        />
         <ReviewRow label="Allergies" value={allergyLabel(summary.allergies)} />
         <ReviewRow
           label="Typical fee"

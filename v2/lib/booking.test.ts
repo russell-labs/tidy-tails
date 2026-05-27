@@ -2,11 +2,16 @@ import { describe, it, expect } from "vitest";
 import type { Appointment, Pet } from "./data/types";
 import {
   availableBookingTimeSlots,
+  BOOKING_TIME_SLOTS,
   buildBookingTextMessage,
   bookedTimesForDate,
   buildAppointmentInsert,
+  buildAppointmentInserts,
   customerBookingLocationLabel,
+  chooseBookingMessageDraft,
   findOwnedPet,
+  findOwnedPets,
+  googleAvailabilityBlocksBooking,
   hasBookedTimeConflict,
   renderBookingMessageTemplate,
   validateBookingInput,
@@ -55,6 +60,37 @@ function appointment(overrides: Partial<Appointment>): Appointment {
 }
 
 describe("validateBookingInput — required fields", () => {
+  it("accepts multiple selected household pets", () => {
+    const r = validateBookingInput(
+      {
+        client_id: "c1",
+        pet_ids: "p1,p2",
+        date: "2026-06-01",
+        time_slot: "10:30am",
+        service_type: "full_groom",
+        fee: "70",
+      },
+      TODAY,
+    );
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.value.pet_ids).toEqual(["p1", "p2"]);
+      expect(r.value.pet_bookings).toEqual([
+        { pet_id: "p1", service_type: "full_groom", fee: 70 },
+        { pet_id: "p2", service_type: "full_groom", fee: 70 },
+      ]);
+    }
+  });
+
+  it("rejects an empty multi-pet selection", () => {
+    const r = validateBookingInput(
+      { client_id: "c1", pet_ids: " , ", date: "2026-06-01", time_slot: "10:30am" },
+      TODAY,
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.errors.pet_id).toBe("Choose at least one pet.");
+  });
+
   it("accepts a minimal booking (client, pet, date, time) with optionals empty", () => {
     const r = validateBookingInput(
       {
@@ -67,9 +103,12 @@ describe("validateBookingInput — required fields", () => {
     );
     expect(r.ok).toBe(true);
     if (r.ok) {
+      expect(r.value.pet_ids).toEqual(["p1"]);
       expect(r.value).toEqual({
         client_id: "c1",
         pet_id: "p1",
+        pet_ids: ["p1"],
+        pet_bookings: [{ pet_id: "p1", service_type: null, fee: null }],
         date: "2026-06-01",
         time_slot: "10:30am",
         service_type: null,
@@ -323,6 +362,22 @@ describe("validateBookingInput — optional fields", () => {
     if (!r.ok) expect(r.errors.service_type).toBeTruthy();
   });
 
+  it("accepts puppy groom as a service_type enum", () => {
+    const r = validateBookingInput(
+      {
+        client_id: "c1",
+        pet_id: "p1",
+        date: "2026-06-01",
+        time_slot: "10:30am",
+        service_type: "puppy_groom",
+      },
+      TODAY,
+    );
+
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.value.service_type).toBe("puppy_groom");
+  });
+
   it("rejects a location outside the live schema enum", () => {
     const r = validateBookingInput(
       {
@@ -353,6 +408,17 @@ describe("findOwnedPet — pet/client ownership check", () => {
   it("returns null when the pet is not in the list at all", () => {
     expect(findOwnedPet(pets, "p404", "c1")).toBeNull();
   });
+
+  it("returns all requested pets when each belongs to the client", () => {
+    const owned = findOwnedPets(pets, ["p1", "p2"], "c1");
+    expect(owned).not.toBeNull();
+    expect(owned?.map((p) => p.id)).toEqual(["p1", "p2"]);
+  });
+
+  it("returns null if any requested pet is missing or belongs elsewhere", () => {
+    expect(findOwnedPets([...pets, pet("p9", "c2")], ["p1", "p9"], "c1")).toBeNull();
+    expect(findOwnedPets(pets, ["p1", "p404"], "c1")).toBeNull();
+  });
 });
 
 describe("buildAppointmentInsert — payload + null policy", () => {
@@ -360,6 +426,8 @@ describe("buildAppointmentInsert — payload + null policy", () => {
     const payload = buildAppointmentInsert({
       client_id: "c1",
       pet_id: "p1",
+      pet_ids: ["p1"],
+      pet_bookings: [{ pet_id: "p1", service_type: null, fee: null }],
       date: "2026-06-01",
       time_slot: "10:30am",
       service_type: null,
@@ -390,6 +458,8 @@ describe("buildAppointmentInsert — payload + null policy", () => {
     const payload = buildAppointmentInsert({
       client_id: "c1",
       pet_id: "p1",
+      pet_ids: ["p1"],
+      pet_bookings: [{ pet_id: "p1", service_type: "nail_trim", fee: 25 }],
       date: "2026-06-01",
       time_slot: "10:00",
       service_type: "nail_trim",
@@ -416,6 +486,8 @@ describe("buildAppointmentInsert — payload + null policy", () => {
     const payload = buildAppointmentInsert({
       client_id: "c1",
       pet_id: "p1",
+      pet_ids: ["p1"],
+      pet_bookings: [{ pet_id: "p1", service_type: null, fee: null }],
       date: "2026-06-01",
       time_slot: "10:30am",
       service_type: null,
@@ -433,6 +505,55 @@ describe("buildAppointmentInsert — payload + null policy", () => {
       expect(payload).not.toHaveProperty(k);
     }
   });
+
+  it("builds one appointment row per selected household pet", () => {
+    const payloads = buildAppointmentInserts({
+      client_id: "c1",
+      pet_id: "p1",
+      pet_ids: ["p1", "p2"],
+      pet_bookings: [
+        { pet_id: "p1", service_type: "full_groom", fee: 80 },
+        { pet_id: "p2", service_type: "bath_only", fee: 45 },
+      ],
+      date: "2026-06-01",
+      time_slot: "10:30am",
+      service_type: "full_groom",
+      location: "gina",
+      send_invite: false,
+      customer_email: null,
+      send_booking_text: false,
+      booking_message: null,
+      save_reminder_phone: false,
+      customer_phone: null,
+      fee: 80,
+      notes: "Together",
+    });
+
+    expect(payloads).toEqual([
+      {
+        client_id: "c1",
+        pet_id: "p1",
+        date: "2026-06-01",
+        time_slot: "10:30am",
+        service_type: "full_groom",
+        location: "gina",
+        fee: 80,
+        notes: "Together",
+        status: "booked",
+      },
+      {
+        client_id: "c1",
+        pet_id: "p2",
+        date: "2026-06-01",
+        time_slot: "10:30am",
+        service_type: "bath_only",
+        location: "gina",
+        fee: 45,
+        notes: "Together",
+        status: "booked",
+      },
+    ]);
+  });
 });
 
 describe("buildBookingTextMessage", () => {
@@ -448,6 +569,21 @@ describe("buildBookingTextMessage", () => {
       }),
     ).toBe(
       "Hi Mary, Whiskey is booked for full groom on 2026-06-01 at 10:30am at 290 Millard Street, Orillia. See you then! — Samantha",
+    );
+  });
+
+  it("summarizes multiple pets in one customer SMS", () => {
+    expect(
+      buildBookingTextMessage({
+        ownerFirstName: "Mary",
+        petName: "Whiskey and Kiwi",
+        date: "2026-06-01",
+        time: "10:30am",
+        service: "Full groom",
+        location: "290 Millard Street, Orillia",
+      }),
+    ).toBe(
+      "Hi Mary, Whiskey and Kiwi are booked for full groom on 2026-06-01 at 10:30am at 290 Millard Street, Orillia. See you then! — Samantha",
     );
   });
 
@@ -494,7 +630,52 @@ describe("customer-facing booking labels", () => {
   });
 });
 
+describe("chooseBookingMessageDraft", () => {
+  it("defaults to the normal booking confirmation even without prior outbound platform SMS", () => {
+    expect(
+      chooseBookingMessageDraft({
+        hasPriorAppointments: true,
+        hasPriorOutboundSms: false,
+        bookingConfirmationTemplate: "normal",
+        firstPlatformTextTemplate: "intro",
+      }),
+    ).toEqual({ kind: "booking_confirmation", template: "normal" });
+  });
+
+  it("uses normal booking confirmation for new customers or customers already texted through the platform", () => {
+    expect(
+      chooseBookingMessageDraft({
+        hasPriorAppointments: false,
+        hasPriorOutboundSms: false,
+        bookingConfirmationTemplate: "normal",
+        firstPlatformTextTemplate: "intro",
+      }),
+    ).toEqual({ kind: "booking_confirmation", template: "normal" });
+    expect(
+      chooseBookingMessageDraft({
+        hasPriorAppointments: true,
+        hasPriorOutboundSms: true,
+        bookingConfirmationTemplate: "normal",
+        firstPlatformTextTemplate: "intro",
+      }),
+    ).toEqual({ kind: "booking_confirmation", template: "normal" });
+  });
+});
+
 describe("booking time slots", () => {
+  it("offers 15-minute morning drop-off tiles from 9 through noon", () => {
+    expect(BOOKING_TIME_SLOTS.slice(0, 4)).toEqual([
+      "9:00am",
+      "9:15am",
+      "9:30am",
+      "9:45am",
+    ]);
+    expect(BOOKING_TIME_SLOTS.at(-1)).toBe("12:00pm");
+    expect(BOOKING_TIME_SLOTS).toHaveLength(13);
+    expect(BOOKING_TIME_SLOTS).not.toContain("12:15pm");
+    expect(BOOKING_TIME_SLOTS).not.toContain("1:30pm");
+  });
+
   it("lists booked free-text times for the selected date only", () => {
     expect(
       bookedTimesForDate(
@@ -537,5 +718,44 @@ describe("booking time slots", () => {
         "12:00pm",
       ),
     ).toBe(false);
+  });
+
+  it("allows another pet from the same household at the same drop-off time", () => {
+    expect(
+      hasBookedTimeConflict(
+        [appointment({ client_id: "c1", pet_id: "p1", date: "2026-06-01", time_slot: "10:30 AM" })],
+        "2026-06-01",
+        "10:30am",
+        { clientId: "c1", selectedPetIds: ["p2"] },
+      ),
+    ).toBe(false);
+  });
+
+  it("still blocks the same pet or another household at the same drop-off time", () => {
+    expect(
+      hasBookedTimeConflict(
+        [appointment({ client_id: "c1", pet_id: "p1", date: "2026-06-01", time_slot: "10:30 AM" })],
+        "2026-06-01",
+        "10:30am",
+        { clientId: "c1", selectedPetIds: ["p1"] },
+      ),
+    ).toBe(true);
+    expect(
+      hasBookedTimeConflict(
+        [appointment({ client_id: "c2", pet_id: "p9", date: "2026-06-01", time_slot: "10:30 AM" })],
+        "2026-06-01",
+        "10:30am",
+        { clientId: "c1", selectedPetIds: ["p1"] },
+      ),
+    ).toBe(true);
+  });
+});
+
+describe("googleAvailabilityBlocksBooking", () => {
+  it("only blocks booking when Google reports the selected window is busy", () => {
+    expect(googleAvailabilityBlocksBooking("busy")).toBe(true);
+    expect(googleAvailabilityBlocksBooking("failed")).toBe(false);
+    expect(googleAvailabilityBlocksBooking("not_connected")).toBe(false);
+    expect(googleAvailabilityBlocksBooking("disabled")).toBe(false);
   });
 });

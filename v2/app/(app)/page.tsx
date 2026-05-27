@@ -1,5 +1,4 @@
-import { AddHousehold } from "@/components/AddHousehold";
-import { ClientSearch } from "@/components/ClientSearch";
+import { HomeSearch } from "@/components/HomeSearch";
 import type { HouseholdCardData } from "@/components/HouseholdCard";
 import { dataMode, loadDataset } from "@/lib/data/repo";
 import { lastAppointment, usualPrice, usualService } from "@/lib/derive";
@@ -44,18 +43,5 @@ export default async function HomePage() {
     };
   });
 
-  return (
-    <main className="px-4 py-5">
-      <header className="mb-4">
-        <h1 className="text-xl font-bold text-ink">Find a household</h1>
-        <p className="text-sm text-ink-soft">
-          Search a name, phone, or pet to pull up the right household.
-        </p>
-      </header>
-      <div className="mb-4">
-        <AddHousehold mode={dataMode()} />
-      </div>
-      <ClientSearch households={households} />
-    </main>
-  );
+  return <HomeSearch households={households} mode={dataMode()} />;
 }

@@ -8,12 +8,13 @@
 //     isAddAppointmentWriteEnabled() (env flag
 //     TIDYTAILS_ENABLE_ADD_APPOINTMENT_WRITE, default OFF). Flag OFF → the
 //     action returns `gated` and runs NO insert; the OFF path is byte-identical
-//     to the pre-flip behaviour. Flag ON → it persists one `appointments` row.
+//     to the pre-flip behaviour. Flag ON → it persists one appointment row per
+//     selected pet so reports stay row-based.
 //     The flag is set only after the Ship 2.2b RLS cutover and an explicit
 //     per-surface flip approval — see _reports/2026-05-18-ship-2.2b-write-flip-plan.md.
 //
-// The persist path is a single-row INSERT — on failure nothing is partially
-// written. `groomer_id` is stamped by the column DEFAULT auth.uid() on the
+// The persist path is one batched INSERT — on failure nothing is partially
+// written. `groomer_id` is stamped by the column DEFAULT auth.uid() on each
 // authenticated insert; it is never set explicitly here.
 
 import { revalidatePath } from "next/cache";
@@ -30,15 +31,19 @@ import {
 import {
   buildBookingTextMessage,
   bookingLocationLabel,
-  buildAppointmentInsert,
-  customerBookingLocationLabel,
-  findOwnedPet,
+  buildAppointmentInserts,
+  findOwnedPets,
+  formatPetNames,
+  googleAvailabilityBlocksBooking,
   hasBookedTimeConflict,
+  totalBookingFee,
   validateBookingInput,
   type BookingErrors,
 } from "@/lib/booking";
 import { fullName } from "@/lib/format";
 import { buildOutboundSmsInsert } from "@/lib/inboundSms";
+import { customerLocationLabelFromSettings } from "@/lib/locationFinance";
+import { readOperatorSettings } from "@/lib/operatorSettings.server";
 import { getTwilioConfig, sendTwilioSms, toTwilioPhone } from "@/lib/twilio";
 
 // A human-readable echo of the booking — for the review and result screens.
@@ -88,6 +93,9 @@ export async function createBooking(
   const raw = {
     client_id: String(formData.get("client_id") ?? ""),
     pet_id: String(formData.get("pet_id") ?? ""),
+    pet_ids: String(formData.get("pet_ids") ?? ""),
+    pet_services: String(formData.get("pet_services") ?? ""),
+    pet_fees: String(formData.get("pet_fees") ?? ""),
     date: String(formData.get("date") ?? ""),
     time_slot: String(formData.get("time_slot") ?? ""),
     service_type: String(formData.get("service_type") ?? ""),
@@ -107,9 +115,10 @@ export async function createBooking(
     return { status: "error", errors: validation.errors };
   }
   const booking = validation.value;
+  const operatorSettings = await readOperatorSettings();
 
-  // Ownership: re-fetch the household and confirm the pet belongs to it.
-  // The client_id/pet_id pair from the form is never trusted — the
+  // Ownership: re-fetch the household and confirm every selected pet belongs
+  // to it. The client_id/pet_ids pair from the form is never trusted — the
   // appointments table has no constraint tying a pet to its client.
   const record = await getClientRecord(booking.client_id);
   if (!record) {
@@ -119,17 +128,33 @@ export async function createBooking(
       formError: "That client could not be found. Nothing was saved.",
     };
   }
-  const pet = findOwnedPet(record.pets, booking.pet_id, booking.client_id);
-  if (!pet) {
+  const selectedPets = findOwnedPets(record.pets, booking.pet_ids, booking.client_id);
+  if (!selectedPets) {
     return {
       status: "error",
       errors: {},
-      formError: "That pet is not on this client's file. Nothing was saved.",
+      formError: "One of those pets is not on this client's file. Nothing was saved.",
     };
   }
 
-  // The validated INSERT payload — proven shape, not yet persisted.
-  const payload = buildAppointmentInsert(booking);
+  // The validated INSERT payloads — proven shape, not yet persisted.
+  const payloads = buildAppointmentInserts(booking);
+  const primaryPayload = payloads[0];
+  const primaryPet = selectedPets[0];
+  const petNames = formatPetNames(selectedPets.map((pet) => pet.name));
+  const serviceLabels = Array.from(
+    new Set(
+      payloads
+        .map((payload) => serviceLabel(payload.service_type))
+        .filter((label): label is string => Boolean(label)),
+    ),
+  );
+  const summaryService =
+    serviceLabels.length === 0
+      ? null
+      : serviceLabels.length === 1
+        ? serviceLabels[0]
+        : "Grooming";
 
   const effectiveClient = {
     ...record.client,
@@ -145,14 +170,17 @@ export async function createBooking(
   };
 
   const summary: BookingSummary = {
-    petName: pet.name,
+    petName: petNames,
     ownerName: fullName(effectiveClient.first_name, effectiveClient.last_name),
-    date: payload.date,
-    time: payload.time_slot,
-    service: serviceLabel(payload.service_type),
+    date: primaryPayload.date,
+    time: primaryPayload.time_slot,
+    service: summaryService,
     location:
-      customerBookingLocationLabel(payload.location) ??
-      bookingLocationLabel(payload.location),
+      customerLocationLabelFromSettings(
+        primaryPayload.location,
+        operatorSettings.locationSettings,
+      ) ??
+      bookingLocationLabel(primaryPayload.location),
     customerInvite:
       booking.send_invite && effectiveClient.email ? effectiveClient.email : null,
     bookingText:
@@ -163,7 +191,7 @@ export async function createBooking(
       booking.save_reminder_phone && effectiveClient.phone
         ? effectiveClient.phone
         : null,
-    fee: payload.fee,
+    fee: totalBookingFee(payloads),
   };
 
   if (dataMode() === "fixtures") {
@@ -182,7 +210,12 @@ export async function createBooking(
   }
 
   const allAppointments = await loadAppointments();
-  if (hasBookedTimeConflict(allAppointments, payload.date, payload.time_slot)) {
+  if (
+    hasBookedTimeConflict(allAppointments, primaryPayload.date, primaryPayload.time_slot, {
+      clientId: booking.client_id,
+      selectedPetIds: booking.pet_ids,
+    })
+  ) {
     return {
       status: "error",
       errors: {},
@@ -192,29 +225,19 @@ export async function createBooking(
   }
 
   const googleAvailability = await checkGoogleCalendarAppointmentAvailability({
-    date: payload.date,
-    timeSlot: payload.time_slot,
+    date: primaryPayload.date,
+    timeSlot: primaryPayload.time_slot,
     service: summary.service,
   });
-  if (googleAvailability.status === "busy") {
+  if (googleAvailabilityBlocksBooking(googleAvailability.status)) {
     return {
       status: "error",
       errors: {},
       formError: googleAvailability.message,
     };
   }
-  if (
-    googleAvailability.status === "failed" ||
-    googleAvailability.status === "not_connected"
-  ) {
-    return {
-      status: "error",
-      errors: {},
-      formError: `Couldn't check Google Calendar availability: ${googleAvailability.message}`,
-    };
-  }
 
-  // Flag ON: persist exactly one appointments row. The auth-aware server client
+  // Flag ON: persist the appointment rows. The auth-aware server client
   // carries Samantha's JWT, so the column DEFAULT auth.uid() stamps groomer_id.
   const supabase = await createServerSupabase();
   const clientPatch: { email?: string | null; phone?: string } = {};
@@ -244,9 +267,8 @@ export async function createBooking(
 
   const { data, error } = await supabase
     .from("appointments")
-    .insert(payload)
-    .select("*")
-    .single();
+    .insert(payloads)
+    .select("*");
   if (error) {
     return {
       status: "error",
@@ -254,11 +276,30 @@ export async function createBooking(
       formError: "That appointment could not be saved. Nothing was written.",
     };
   }
-  const savedAppointment = mapAppointmentRow(data ?? {});
+  const savedAppointments = Array.isArray(data)
+    ? data.map((row) => mapAppointmentRow(row ?? {}))
+    : [];
+  const savedAppointment = savedAppointments[0];
+  if (!savedAppointment) {
+    return {
+      status: "error",
+      errors: {},
+      formError: "That appointment could not be saved. Nothing was written.",
+    };
+  }
+  const calendarAppointment =
+    savedAppointments.length > 1
+      ? {
+          ...savedAppointment,
+          service: summary.service,
+          price: summary.fee,
+        }
+      : savedAppointment;
   const calendar = await syncAppointmentToGoogleCalendar({
-    appointment: savedAppointment,
+    appointment: calendarAppointment,
     client: effectiveClient,
-    pet,
+    pet: primaryPet,
+    pets: selectedPets,
     sendCustomerInvite: booking.send_invite && Boolean(effectiveClient.email),
   });
   summary.calendar = { status: calendar.status, message: calendar.message };
@@ -268,7 +309,7 @@ export async function createBooking(
       groomerId: user.id,
       to: effectiveClient.phone,
       ownerFirstName: effectiveClient.first_name,
-      petName: pet.name,
+      petName: petNames,
       date: summary.date,
       time: summary.time,
       service: summary.service,
@@ -283,16 +324,21 @@ export async function createBooking(
   }
   revalidatePath(`/clients/${booking.client_id}`);
   await recordAuditEvent({
-    eventType: "appointment.created",
+    eventType:
+      savedAppointments.length > 1
+        ? "appointment.group_created"
+        : "appointment.created",
     clientId: booking.client_id,
     petId: booking.pet_id,
     appointmentId: savedAppointment.id,
-    summary: `Booked ${pet.name} for ${summary.ownerName}.`,
+    summary: `Booked ${petNames} for ${summary.ownerName}.`,
     metadata: {
       date: summary.date,
       service: summary.service,
       location: summary.location,
       fee: summary.fee,
+      petIds: booking.pet_ids,
+      appointmentIds: savedAppointments.map((appointment) => appointment.id),
       calendarStatus: summary.calendar?.status,
       status: "booked",
     },
@@ -303,7 +349,7 @@ export async function createBooking(
       clientId: booking.client_id,
       petId: booking.pet_id,
       appointmentId: savedAppointment.id,
-      summary: `Sent booking text for ${pet.name} to ${summary.ownerName}.`,
+      summary: `Sent booking text for ${petNames} to ${summary.ownerName}.`,
       metadata: { channel: "sms", date: summary.date },
     });
   }

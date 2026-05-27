@@ -59,9 +59,12 @@ export type EditAppointmentUpdate = {
   notes: string | null;
 };
 
+export type AppointmentDeleteKind = "future_booking" | "past_visit" | "disabled";
+
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const TIME_SLOT_MAX = 40;
 const NOTES_MAX = 1000;
+const CANCELLATION_MESSAGE_MAX = 480;
 
 function pad(n: number): string {
   return String(n).padStart(2, "0");
@@ -208,5 +211,67 @@ export function buildEditAppointmentUpdate(
       method: v.payment_method,
       status: v.payment_status,
     }),
+  };
+}
+
+export function appointmentDeleteKind({
+  status,
+  date,
+  today,
+}: {
+  status: string | null | undefined;
+  date: string;
+  today: string;
+}): AppointmentDeleteKind {
+  if (status === "booked") return date >= today ? "future_booking" : "past_visit";
+  if (status === "completed") return "past_visit";
+  return "disabled";
+}
+
+export function shouldBlockAppointmentDeleteForCalendarStatus(
+  status: string,
+): boolean {
+  const blockingStatuses = new Set<string>();
+  return blockingStatuses.has(status);
+}
+
+export function buildCancellationTextMessage({
+  ownerFirstName,
+  petName,
+  date,
+  time,
+}: {
+  ownerFirstName: string | null;
+  petName: string;
+  date: string;
+  time: string | null;
+}): string {
+  const who = ownerFirstName?.trim() || "there";
+  const when = time ? `${date} at ${time}` : date;
+  return `Hi ${who}, ${petName}'s Tidy Tails appointment on ${when} has been cancelled. - Samantha`;
+}
+
+export function validateCancellationTextInput(
+  raw: string,
+): { ok: true; value: string } | { ok: false; message: string } {
+  const message = raw.trim();
+  if (!message) {
+    return { ok: false, message: "Write a cancellation text before sending." };
+  }
+  if (message.length > CANCELLATION_MESSAGE_MAX) {
+    return { ok: false, message: "That cancellation text is too long." };
+  }
+  return { ok: true, value: message };
+}
+
+export type CancellationTextDraft = {
+  message: string;
+  requiresExplicitConfirmation: true;
+};
+
+export function buildCancellationTextDraft(message: string): CancellationTextDraft {
+  return {
+    message,
+    requiresExplicitConfirmation: true,
   };
 }

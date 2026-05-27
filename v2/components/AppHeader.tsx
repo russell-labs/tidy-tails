@@ -1,9 +1,17 @@
 import Link from "next/link";
+import { loadNotificationCount } from "@/lib/notifications.server";
+import { RefreshButton } from "./RefreshButton";
 
 // Compact brand mark for the authenticated shell — a small, work-focused strip
 // so every screen reads as Tidy Tails without crowding the task. The full logo
 // lives on the login screen; in-app this is just the mark plus wordmark.
-export function AppHeader() {
+export async function AppHeader() {
+  const notificationCount = await loadNotificationCount();
+  const notificationLabel =
+    notificationCount > 0
+      ? `${notificationCount} notifications`
+      : "Notifications";
+
   return (
     <header className="flex items-center justify-between gap-3 border-b border-line bg-surface px-4 py-2.5">
       <Link href="/" className="flex items-center gap-2">
@@ -16,8 +24,8 @@ export function AppHeader() {
       <div className="flex items-center gap-2">
         <Link
           href="/inbox"
-          aria-label="Inbox"
-          className="rounded-full p-2 text-ink-soft active:bg-brand-soft active:text-brand"
+          aria-label={notificationLabel}
+          className="relative rounded-full p-2 text-ink-soft active:bg-brand-soft active:text-brand"
         >
           <svg
             width="20"
@@ -30,11 +38,16 @@ export function AppHeader() {
             strokeLinejoin="round"
             aria-hidden="true"
           >
-            <path d="M4 5h16v11H7l-3 3V5Z" />
-            <path d="M8 9h8" />
-            <path d="M8 13h5" />
+            <path d="M10.27 21a2 2 0 0 0 3.46 0" />
+            <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" />
           </svg>
+          {notificationCount > 0 ? (
+            <span className="absolute -right-1 -top-1 min-w-5 rounded-full bg-warn px-1.5 py-0.5 text-center text-[10px] font-black leading-none text-white">
+              {notificationCount > 9 ? "9+" : notificationCount}
+            </span>
+          ) : null}
         </Link>
+        <RefreshButton />
         <Link
           href="/settings"
           aria-label="Settings"

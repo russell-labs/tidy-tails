@@ -7,11 +7,15 @@ import { isGoogleCalendarSyncEnabled } from "@/lib/writeGate";
 import {
   GOOGLE_CALENDAR_SCOPES,
   buildGoogleCalendarEvent,
+  buildGoogleCalendarDropOffDurationPatch,
   buildCalendarEventWindow,
   defaultDurationMinutes,
   decryptRefreshToken,
   encryptRefreshToken,
+  googleCalendarConnectionOwnerFilter,
   googleCalendarEventsToBusyBlocks,
+  googleCalendarDeleteEventUrl,
+  googleCalendarUserMessage,
   googleFreeBusyRangeForDate,
   isGoogleCalendarWindowBusy,
   type GoogleCalendarEventBlock,
@@ -19,7 +23,10 @@ import {
   type EncryptedToken,
   type GoogleCalendarSyncResult,
 } from "./googleCalendar";
+import { mapAppointmentRow } from "./data/live";
 import type { Appointment, Client, Pet } from "./data/types";
+import { customerLocationLabelFromSettings } from "./locationFinance";
+import { readOperatorSettings } from "./operatorSettings.server";
 
 export type GoogleCalendarConnection = {
   google_email: string;
@@ -62,6 +69,10 @@ type EventsResponse = {
   error?: { message?: string };
 };
 
+type GoogleCalendarEventResponse = GoogleCalendarEventBlock & {
+  error?: { message?: string };
+};
+
 export type GoogleCalendarBusyReadResult =
   | { status: "disabled"; message: string; busy: [] }
   | { status: "not_connected"; message: string; busy: [] }
@@ -73,6 +84,27 @@ export type GoogleCalendarAvailabilityResult =
   | { status: "busy"; message: string }
   | { status: "disabled" | "not_connected" | "skipped"; message: string }
   | { status: "failed"; message: string };
+
+export type GoogleCalendarDurationRepairDetail = {
+  appointmentId: string;
+  date: string;
+  time: string | null;
+  status: "updated" | "already_15_minutes" | "skipped" | "failed";
+  message: string;
+};
+
+export type GoogleCalendarDurationRepairResult =
+  | { status: "disabled" | "not_connected" | "failed"; message: string }
+  | {
+      status: "repaired";
+      message: string;
+      scanned: number;
+      updated: number;
+      alreadyCorrect: number;
+      skipped: number;
+      failed: number;
+      details: GoogleCalendarDurationRepairDetail[];
+    };
 
 const STATE_COOKIE = "tt_google_calendar_oauth_state";
 const VERIFIER_COOKIE = "tt_google_calendar_oauth_verifier";
@@ -281,8 +313,15 @@ export async function readGoogleCalendarConnection(): Promise<{
 }
 
 export async function disconnectGoogleCalendar(): Promise<void> {
+  const user = await getCurrentUser();
+  if (!user) throw new Error("Sign in before disconnecting Google Calendar.");
   const supabase = await createServerSupabase();
-  await supabase.from("google_calendar_connections").delete().neq("id", "");
+  const filter = googleCalendarConnectionOwnerFilter(user.id);
+  const { error } = await supabase
+    .from("google_calendar_connections")
+    .delete()
+    .eq("groomer_id", filter.groomer_id);
+  if (error) throw new Error(error.message);
 }
 
 async function readConnectionRow(): Promise<ConnectionRow | null> {
@@ -422,9 +461,7 @@ export async function readGoogleCalendarBusyBlocksForDate(
       error instanceof Error
         ? error.message
         : "Google Calendar availability failed.";
-    const message = /insufficient|scope|permission/i.test(rawMessage)
-      ? "Google Calendar needs the new availability permission. Tap Connect Google Calendar in Settings and approve access again."
-      : rawMessage;
+    const message = googleCalendarUserMessage(rawMessage);
     return {
       status: "failed",
       message,
@@ -479,11 +516,13 @@ export async function syncAppointmentToGoogleCalendar({
   appointment,
   client,
   pet,
+  pets,
   sendCustomerInvite = false,
 }: {
   appointment: Appointment;
   client: Client;
   pet: Pet;
+  pets?: Pick<Pet, "name" | "breed" | "grooming_notes">[];
   sendCustomerInvite?: boolean;
 }): Promise<GoogleCalendarSyncResult> {
   if (!isGoogleCalendarSyncEnabled()) {
@@ -493,11 +532,17 @@ export async function syncAppointmentToGoogleCalendar({
     return { status: "disabled", message: "Google Calendar is not configured." };
   }
 
+  const settings = await readOperatorSettings();
   const event = buildGoogleCalendarEvent({
     appointment,
     client,
     pet,
+    pets,
     sendCustomerInvite,
+    customerLocation: customerLocationLabelFromSettings(
+      appointment.location,
+      settings.locationSettings,
+    ),
   });
   if (!event) {
     await markAppointmentSync(appointment.id, {
@@ -554,8 +599,9 @@ export async function syncAppointmentToGoogleCalendar({
     });
     return { status: "synced", message: "Google Calendar synced.", eventId: json.id };
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Google Calendar sync failed.";
+    const message = googleCalendarUserMessage(
+      error instanceof Error ? error.message : "Google Calendar sync failed.",
+    );
     await markAppointmentSync(appointment.id, {
       google_sync_status: "failed",
       google_sync_error: message.slice(0, 500),
@@ -591,7 +637,10 @@ export async function deleteAppointmentFromGoogleCalendar(
     const calendarId =
       appointment.google_calendar_id || connection.calendar_id || CALENDAR_ID;
     const response = await fetch(
-      `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(appointment.google_event_id)}`,
+      googleCalendarDeleteEventUrl({
+        calendarId,
+        eventId: appointment.google_event_id,
+      }),
       {
         method: "DELETE",
         headers: { authorization: `Bearer ${accessToken}` },
@@ -614,10 +663,186 @@ export async function deleteAppointmentFromGoogleCalendar(
   } catch (error) {
     return {
       status: "failed",
-      message:
+      message: googleCalendarUserMessage(
         error instanceof Error
           ? error.message
           : "Google Calendar event delete failed.",
+      ),
     };
   }
+}
+
+export async function repairGoogleCalendarDropOffDurations({
+  today = new Date().toISOString().slice(0, 10),
+}: {
+  today?: string;
+} = {}): Promise<GoogleCalendarDurationRepairResult> {
+  if (!isGoogleCalendarSyncEnabled()) {
+    return {
+      status: "disabled",
+      message: "Google Calendar sync is switched off.",
+    };
+  }
+  if (!isGoogleCalendarConfigured()) {
+    return {
+      status: "disabled",
+      message: "Google Calendar is not configured.",
+    };
+  }
+
+  const connection = await readConnectionRow();
+  if (!connection) {
+    return {
+      status: "not_connected",
+      message: "No connected Google Calendar was found.",
+    };
+  }
+
+  const supabase = await createServerSupabase();
+  const { data, error } = await supabase
+    .from("appointments")
+    .select("*")
+    .gte("date", today)
+    .not("google_event_id", "is", null)
+    .order("date", { ascending: true })
+    .order("time_slot", { ascending: true });
+
+  if (error) {
+    return {
+      status: "failed",
+      message: `Could not read future synced appointments: ${error.message}`,
+    };
+  }
+
+  const appointments = ((data ?? []) as Record<string, unknown>[]).map(
+    mapAppointmentRow,
+  );
+  const details: GoogleCalendarDurationRepairDetail[] = [];
+  let accessToken: string;
+  try {
+    accessToken = await refreshAccessToken(connection);
+  } catch (error) {
+    return {
+      status: "failed",
+      message: googleCalendarUserMessage(
+        error instanceof Error
+          ? error.message
+          : "Google Calendar token refresh failed.",
+      ),
+    };
+  }
+  const calendarId = connection.calendar_id || CALENDAR_ID;
+
+  for (const appointment of appointments) {
+    if (!appointment.google_event_id) continue;
+    if (!appointment.time_slot) {
+      details.push({
+        appointmentId: appointment.id,
+        date: appointment.date,
+        time: appointment.time_slot,
+        status: "skipped",
+        message: "Skipped because the booking has no specific drop-off time.",
+      });
+      continue;
+    }
+
+    try {
+      const eventUrl = new URL(
+        `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(
+          appointment.google_calendar_id || calendarId,
+        )}/events/${encodeURIComponent(appointment.google_event_id)}`,
+      );
+      const readResponse = await fetch(eventUrl, {
+        headers: { authorization: `Bearer ${accessToken}` },
+        cache: "no-store",
+      });
+      const event = (await readResponse.json().catch(() => ({}))) as
+        GoogleCalendarEventResponse;
+      if (!readResponse.ok) {
+        throw new Error(
+          event.error?.message ?? "Google Calendar event lookup failed.",
+        );
+      }
+
+      const patch = buildGoogleCalendarDropOffDurationPatch({
+        date: appointment.date,
+        timeSlot: appointment.time_slot,
+        service: appointment.service,
+        event,
+      });
+      if (!patch) {
+        details.push({
+          appointmentId: appointment.id,
+          date: appointment.date,
+          time: appointment.time_slot,
+          status: "already_15_minutes",
+          message: "Already set to the 15-minute drop-off window.",
+        });
+        continue;
+      }
+
+      eventUrl.searchParams.set("sendUpdates", "none");
+      const patchResponse = await fetch(eventUrl, {
+        method: "PATCH",
+        headers: {
+          authorization: `Bearer ${accessToken}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(patch),
+        cache: "no-store",
+      });
+      const patchJson = (await patchResponse.json().catch(() => ({}))) as
+        | { error?: { message?: string } }
+        | Record<string, never>;
+      if (!patchResponse.ok) {
+        throw new Error(
+          patchJson.error?.message ?? "Google Calendar event repair failed.",
+        );
+      }
+
+      await markAppointmentSync(appointment.id, {
+        google_sync_status: "synced",
+        google_sync_error: null,
+        google_synced_at: new Date().toISOString(),
+      });
+      details.push({
+        appointmentId: appointment.id,
+        date: appointment.date,
+        time: appointment.time_slot,
+        status: "updated",
+        message: "Updated Google Calendar event to 15 minutes.",
+      });
+    } catch (error) {
+      details.push({
+        appointmentId: appointment.id,
+        date: appointment.date,
+        time: appointment.time_slot,
+        status: "failed",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Google Calendar event repair failed.",
+      });
+    }
+  }
+
+  const updated = details.filter((detail) => detail.status === "updated").length;
+  const alreadyCorrect = details.filter(
+    (detail) => detail.status === "already_15_minutes",
+  ).length;
+  const skipped = details.filter((detail) => detail.status === "skipped").length;
+  const failed = details.filter((detail) => detail.status === "failed").length;
+  return {
+    status: "repaired",
+    message:
+      failed > 0
+        ? `Updated ${updated} calendar event${updated === 1 ? "" : "s"}; ${failed} need follow-up.`
+        : `Updated ${updated} calendar event${updated === 1 ? "" : "s"} to 15-minute drop-off windows.`,
+    scanned: details.length,
+    updated,
+    alreadyCorrect,
+    skipped,
+    failed,
+    details,
+  };
 }

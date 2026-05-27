@@ -29,14 +29,15 @@ describe("validateEditClient", () => {
     });
   });
 
-  it("accepts a household with only a first name", () => {
-    const result = validateEditClient({ ...valid, last_name: "" });
+  it("accepts a household with only a last name", () => {
+    const result = validateEditClient({ ...valid, first_name: "" });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.value.last_name).toBeNull();
+    expect(result.value.first_name).toBe("");
+    expect(result.value.last_name).toBe("Anca");
   });
 
-  it("requires client id, owner first name, and a usable phone", () => {
+  it("requires client id, owner last name, and a usable phone", () => {
     const result = validateEditClient({
       ...valid,
       client_id: "",
@@ -47,7 +48,7 @@ describe("validateEditClient", () => {
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.errors.client_id).toBeTruthy();
-    expect(result.errors.first_name).toBeTruthy();
+    expect(result.errors.last_name).toBeTruthy();
     expect(result.errors.phone).toBeTruthy();
   });
 

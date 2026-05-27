@@ -3,6 +3,7 @@ import type { AuditEvent } from "./audit";
 import type { SmsMessage } from "./inboundSms";
 import {
   buildInboxItems,
+  buildSmsThreads,
   inboxCounts,
   type BookingRequestInboxRow,
 } from "./inbox";
@@ -60,6 +61,16 @@ function audit(overrides: Partial<AuditEvent>): AuditEvent {
 }
 
 describe("buildInboxItems", () => {
+  it("omits hidden SMS from the normal Inbox feed", () => {
+    const items = buildInboxItems({
+      smsMessages: [sms({ status: "hidden" })],
+      bookingRequests: [],
+      auditEvents: [],
+    });
+
+    expect(items).toEqual([]);
+  });
+
   it("puts inbound questions and change requests in needs action", () => {
     const items = buildInboxItems({
       smsMessages: [sms({ body: "Can I reschedule?" })],
@@ -177,6 +188,83 @@ describe("buildInboxItems", () => {
       "sms:inbound:old-action",
       "sms:inbound:new-info",
       "activity:new-log",
+    ]);
+  });
+});
+
+describe("buildSmsThreads", () => {
+  it("groups owner messages into phone-style threads with newest preview first", () => {
+    const threads = buildSmsThreads([
+      sms({
+        id: "old",
+        body: "Can we come earlier?",
+        created_at: "2026-05-20T10:00:00Z",
+        received_at: "2026-05-20T10:00:00Z",
+      }),
+      sms({
+        id: "new",
+        direction: "outbound",
+        body: "Yes, 10 works.",
+        created_at: "2026-05-20T11:00:00Z",
+        received_at: null,
+        sent_at: "2026-05-20T11:00:00Z",
+      }),
+      sms({
+        id: "other",
+        client_id: "client-2",
+        from_phone: "+17055550000",
+        body: "Thanks",
+        created_at: "2026-05-20T12:00:00Z",
+        received_at: "2026-05-20T12:00:00Z",
+      }),
+    ]);
+
+    expect(threads).toMatchObject([
+      {
+        key: "client:client-2",
+        latestMessageId: "other",
+        latestBody: "Thanks",
+        messageCount: 1,
+        actionCount: 0,
+        href: "/inbox/client%3Aclient-2",
+      },
+      {
+        key: "client:client-1",
+        latestMessageId: "new",
+        latestBody: "Yes, 10 works.",
+        messageCount: 2,
+        actionCount: 1,
+        href: "/inbox/client%3Aclient-1",
+      },
+    ]);
+  });
+
+  it("groups unmatched messages by phone and ignores hidden rows", () => {
+    const threads = buildSmsThreads([
+      sms({
+        id: "visible",
+        client_id: null,
+        from_phone: "+17055550123",
+        body: "Who is this?",
+        match_status: "unmatched",
+      }),
+      sms({
+        id: "hidden",
+        client_id: null,
+        from_phone: "+17055550123",
+        body: "Noise",
+        status: "hidden",
+      }),
+    ]);
+
+    expect(threads).toMatchObject([
+      {
+        key: "phone:+17055550123",
+        latestMessageId: "visible",
+        messageCount: 1,
+        actionCount: 1,
+        href: "/inbox/phone%3A%2B17055550123",
+      },
     ]);
   });
 });

@@ -9,16 +9,23 @@ export type AuditEventType =
   | "client.updated"
   | "pet.created"
   | "pet.updated"
+  | "pet.merged"
+  | "pet.passed_away"
+  | "pet.deleted"
+  | "pet.moved"
   | "appointment.created"
+  | "appointment.group_created"
   | "appointment.updated"
   | "appointment.deleted"
   | "groom.logged"
   | "sms.sent"
   | "sms.handled"
+  | "sms.hidden"
   | "sms.failed"
   | "bookkeeper.exported"
   | "google_calendar.connected"
   | "google_calendar.disconnected"
+  | "google_calendar.duration_repaired"
   | "google_calendar.sync_failed";
 
 export type AuditEvent = {
@@ -48,14 +55,25 @@ const SAFE_METADATA_KEYS = new Set([
   "channel",
   "date",
   "fee",
+  "appointmentIds",
   "location",
   "paymentMethod",
   "paymentStatus",
   "period",
+  "petIds",
+  "fromClientId",
+  "toClientId",
   "service",
+  "alreadyCorrect",
+  "failed",
+  "scanned",
+  "skipped",
   "smsMessageId",
+  "source",
   "status",
+  "templateKey",
   "tip",
+  "updated",
 ]);
 
 const LABELS: Record<AuditEventType, string> = {
@@ -67,16 +85,23 @@ const LABELS: Record<AuditEventType, string> = {
   "client.updated": "Edited household",
   "pet.created": "Added pet",
   "pet.updated": "Edited pet",
+  "pet.merged": "Merged pet profiles",
+  "pet.passed_away": "Marked pet passed away",
+  "pet.deleted": "Deleted pet profile",
+  "pet.moved": "Moved pet",
   "appointment.created": "Booked appointment",
+  "appointment.group_created": "Booked household group",
   "appointment.updated": "Edited visit",
   "appointment.deleted": "Deleted booking",
   "groom.logged": "Logged groom",
   "sms.sent": "Sent SMS",
   "sms.handled": "Handled SMS",
+  "sms.hidden": "Hid SMS",
   "sms.failed": "SMS failed",
   "bookkeeper.exported": "Exported report",
   "google_calendar.connected": "Connected calendar",
   "google_calendar.disconnected": "Disconnected calendar",
+  "google_calendar.duration_repaired": "Repaired calendar",
   "google_calendar.sync_failed": "Calendar sync failed",
 };
 

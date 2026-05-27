@@ -128,6 +128,42 @@ describe("bookkeeper export rows", () => {
       buildBookkeeperRows({ clients, pets, appointments, from: "2026-05-01", to: "2026-05-31" }),
     ).toEqual([]);
   });
+
+  it("keeps one row per pet in a grouped household booking", () => {
+    const groupedPets: Pet[] = [
+      ...pets,
+      {
+        ...pets[0],
+        id: "p2",
+        name: "Kiwi",
+        breed: "Havanese",
+        typical_fee: 45,
+      },
+    ];
+    const groupedAppointments: Appointment[] = [
+      appointments[0],
+      {
+        ...appointments[0],
+        id: "a2",
+        pet_id: "p2",
+        price: 45,
+        tip: null,
+        service: "Bath only",
+      },
+    ];
+
+    const rows = buildBookkeeperRows({
+      clients,
+      pets: groupedPets,
+      appointments: groupedAppointments,
+      from: "2026-01-01",
+      to: "2026-12-31",
+    });
+
+    expect(rows).toHaveLength(2);
+    expect(rows.map((row) => row[3])).toEqual(["Whiskey", "Kiwi"]);
+    expect(rows.reduce((sum, row) => sum + Number(row[8] ?? 0), 0)).toBe(105);
+  });
 });
 
 describe("createBookkeeperWorkbookBuffer", () => {

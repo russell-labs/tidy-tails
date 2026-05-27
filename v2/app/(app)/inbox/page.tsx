@@ -1,23 +1,39 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { InboxMessageCenter } from "@/components/InboxMessageCenter";
 import { InboxSmsActions } from "@/components/InboxSmsActions";
 import type { AuditEvent } from "@/lib/audit";
 import { loadRecentAuditEvents } from "@/lib/audit.server";
 import { loadRecentBookingRequests } from "@/lib/bookingRequests.server";
-import { loadClients } from "@/lib/data/repo";
+import { loadDataset } from "@/lib/data/repo";
 import { fullName } from "@/lib/format";
-import { buildInboxItems, inboxCounts, type InboxItem } from "@/lib/inbox";
+import {
+  buildInboxItems,
+  buildSmsThreads,
+  inboxCounts,
+  type InboxItem,
+} from "@/lib/inbox";
+import {
+  buildFirstPlatformSentClientIds,
+  isExistingHouseholdForPlatformIntro,
+} from "@/lib/messageCenterTemplates";
+import { readOperatorSettings } from "@/lib/operatorSettings.server";
 import { loadRecentSmsMessages } from "@/lib/smsMessages.server";
 
-export const metadata: Metadata = { title: "Inbox" };
+export const metadata: Metadata = { title: "Messages" };
 
 export default async function InboxPage() {
-  const [smsMessages, bookingRequests, auditEvents, clients] = await Promise.all([
-    loadRecentSmsMessages(30),
+  const [smsMessages, bookingRequests, auditEvents, dataset, operatorSettings] = await Promise.all([
+    loadRecentSmsMessages(100),
     loadRecentBookingRequests(25),
-    loadRecentAuditEvents(100),
-    loadClients(),
+    loadRecentAuditEvents(1000),
+    loadDataset(),
+    readOperatorSettings(),
   ]);
+  const { clients, pets, appointments } = dataset;
+  const petsByClientId = groupByClientId(pets);
+  const appointmentsByClientId = groupByClientId(appointments);
+  const firstPlatformSentClientIds = buildFirstPlatformSentClientIds(auditEvents);
 
   const clientsById = new Map(
     clients.map((client) => [client.id, fullName(client.first_name, client.last_name)]),
@@ -28,15 +44,18 @@ export default async function InboxPage() {
     auditEvents,
     handledSmsIds: handledSmsIdsFromAudit(auditEvents),
   });
+  const smsThreads = buildSmsThreads(
+    smsMessages,
+    handledSmsIdsFromAudit(auditEvents),
+  );
   const counts = inboxCounts(items);
   const needsAction = items.filter((item) => item.priority === "action");
-  const recentMessages = items.filter((item) => item.kind === "sms").slice(0, 12);
 
   return (
     <main className="min-h-full px-5 py-8">
       <div className="mb-8">
         <div>
-          <h1 className="text-xl font-bold text-ink">Inbox</h1>
+          <h1 className="text-xl font-bold text-ink">Messages</h1>
           <p className="mt-2 text-sm text-ink-muted">
             Customer replies and booking requests that may need Sam&apos;s attention.
           </p>
@@ -48,6 +67,26 @@ export default async function InboxPage() {
         <MetricCard label="SMS replies" value={counts.smsReplies} />
         <MetricCard label="Requests" value={counts.bookingRequests} />
       </section>
+
+      <InboxMessageCenter
+        threads={smsThreads}
+        messages={smsMessages}
+        settings={operatorSettings}
+        clients={clients.map((client) => ({
+          id: client.id,
+          first_name: client.first_name,
+          last_name: client.last_name,
+          phone: client.phone,
+          created_at: client.created_at,
+          pets: petsByClientId.get(client.id) ?? [],
+          appointments: appointmentsByClientId.get(client.id) ?? [],
+          isExistingHousehold: isExistingHouseholdForPlatformIntro(
+            client,
+            appointmentsByClientId.get(client.id) ?? [],
+          ),
+          firstPlatformAlreadySent: firstPlatformSentClientIds.has(client.id),
+        }))}
+      />
 
       <section className="mb-8">
         <SectionHeader title="Needs action" detail={needsAction.length ? "Oldest items stay visible until handled." : "Nothing waiting right now."} />
@@ -62,24 +101,19 @@ export default async function InboxPage() {
         </div>
       </section>
 
-      <section className="mb-8">
-        <SectionHeader title="Text message replies" detail="Latest inbound and sent messages." />
-        <div className="mt-3 space-y-3">
-          {recentMessages.length ? (
-            recentMessages.map((item) => (
-              <InboxCard key={item.id} item={item} clientName={clientName(item, clientsById)} />
-            ))
-          ) : (
-            <EmptyState text="No text message replies have been captured yet." />
-          )}
-        </div>
-      </section>
-
       <p className="text-xs leading-relaxed text-ink-faint">
         The full operational audit log lives in Settings.
       </p>
     </main>
   );
+}
+
+function groupByClientId<T extends { client_id: string }>(items: T[]): Map<string, T[]> {
+  const grouped = new Map<string, T[]>();
+  for (const item of items) {
+    grouped.set(item.client_id, [...(grouped.get(item.client_id) ?? []), item]);
+  }
+  return grouped;
 }
 
 function MetricCard({
@@ -133,7 +167,7 @@ function InboxCard({ item, clientName }: { item: InboxItem; clientName: string }
           href={item.href}
           className="mt-3 inline-flex text-sm font-bold text-brand"
         >
-          Open household
+          Open thread
         </Link>
       ) : null}
     </article>

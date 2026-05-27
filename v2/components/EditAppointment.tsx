@@ -14,7 +14,6 @@ import {
 import {
   availableBookingTimeSlots,
   BOOKING_LOCATIONS,
-  bookingLocationLabel,
   bookedTimesForDate,
   SERVICE_TYPES,
   type BookingLocation,
@@ -22,10 +21,14 @@ import {
 } from "@/lib/booking";
 import type { Appointment } from "@/lib/data/types";
 import {
+  appointmentDeleteKind,
+  buildCancellationTextMessage,
   validateEditAppointment,
   type EditAppointmentErrors,
 } from "@/lib/editAppointment";
 import { formatMoney } from "@/lib/format";
+import { locationLabelFromSettings } from "@/lib/locationFinance";
+import type { LocationSettingsMap } from "@/lib/operatorSettings";
 import {
   PAYMENT_METHODS,
   PAYMENT_METHOD_LABELS,
@@ -35,6 +38,7 @@ import {
   type PaymentMethod,
   type PaymentStatus,
 } from "@/lib/payments";
+import { BookingTimeSlotPicker } from "./BookingTimeSlotPicker";
 import { Sheet } from "./Sheet";
 import { SubmitDogOverlay } from "./SubmitDog";
 
@@ -44,6 +48,7 @@ const labelClass = "text-sm font-medium text-ink-soft";
 
 const SERVICE_LABELS: Record<ServiceType, string> = {
   full_groom: "Full groom",
+  puppy_groom: "Puppy groom",
   bath_only: "Bath only",
   nail_trim: "Nail trim",
   other: "Other",
@@ -59,15 +64,21 @@ export function EditAppointment({
   appointment,
   appointments = [appointment],
   petName,
+  customerPhone,
   mode,
   writesEnabled,
+  locationSettings,
+  trigger,
 }: {
   clientId: string;
   appointment: Appointment;
   appointments?: Appointment[];
   petName?: string;
+  customerPhone?: string;
   mode: "fixtures" | "live";
   writesEnabled: boolean;
+  locationSettings: LocationSettingsMap;
+  trigger?: React.ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const [formKey, setFormKey] = useState(0);
@@ -79,13 +90,27 @@ export function EditAppointment({
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="mt-2 rounded-lg border border-line px-2.5 py-1 text-xs font-semibold text-brand active:bg-brand-soft"
-      >
-        Edit visit
-      </button>
+      {trigger ? (
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => setOpen(true)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" || event.key === " ") setOpen(true);
+          }}
+          className="block w-full cursor-pointer text-left active:bg-brand-soft"
+        >
+          {trigger}
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="mt-2 rounded-lg border border-line px-2.5 py-1 text-xs font-semibold text-brand active:bg-brand-soft"
+        >
+          Edit visit
+        </button>
+      )}
       <Sheet open={open} onClose={close} title="Edit visit">
         <EditAppointmentForm
           key={formKey}
@@ -93,8 +118,10 @@ export function EditAppointment({
           appointment={appointment}
           appointments={appointments}
           petName={petName}
+          customerPhone={customerPhone}
           mode={mode}
           writesEnabled={writesEnabled}
+          locationSettings={locationSettings}
           onDone={close}
         />
       </Sheet>
@@ -107,16 +134,20 @@ function EditAppointmentForm({
   appointment,
   appointments,
   petName,
+  customerPhone,
   mode,
   writesEnabled,
+  locationSettings,
   onDone,
 }: {
   clientId: string;
   appointment: Appointment;
   appointments: Appointment[];
   petName?: string;
+  customerPhone?: string;
   mode: "fixtures" | "live";
   writesEnabled: boolean;
+  locationSettings: LocationSettingsMap;
   onDone: () => void;
 }) {
   const [state, formAction, pending] = useActionState<
@@ -154,7 +185,23 @@ function EditAppointmentForm({
     initialPayment.status ?? "paid",
   );
   const [notes, setNotes] = useState(stripPaymentInfo(appointment.notes) ?? "");
-  const canDeleteBooking = appointment.status === "booked";
+  const deleteKind = appointmentDeleteKind({
+    status: appointment.status,
+    date: appointment.date,
+    today: todayISO(),
+  });
+  const canDeleteAppointment = deleteKind !== "disabled";
+  const [sendCancellationText, setSendCancellationText] = useState(
+    deleteKind === "future_booking" && Boolean(customerPhone),
+  );
+  const [cancellationMessage, setCancellationMessage] = useState(
+    buildCancellationTextMessage({
+      ownerFirstName: null,
+      petName: petName ?? "the pet",
+      date: appointment.date,
+      time: appointment.time_slot,
+    }),
+  );
   const [availabilityResult, setAvailabilityResult] = useState<{
     date: string;
     serviceType: ServiceType | "";
@@ -271,6 +318,12 @@ function EditAppointmentForm({
       <input type="hidden" name="payment_method" value={paymentMethod} />
       <input type="hidden" name="payment_status" value={paymentStatus} />
       <input type="hidden" name="notes" value={notes} />
+      <input
+        type="hidden"
+        name="send_cancellation_text"
+        value={sendCancellationText ? "on" : ""}
+      />
+      <input type="hidden" name="cancellation_message" value={cancellationMessage} />
 
       <ModeNote mode={mode} writesEnabled={writesEnabled} />
 
@@ -301,40 +354,17 @@ function EditAppointmentForm({
           </Field>
           <Field label="Drop-off time" error={errors.time_slot}>
             {date && availability ? (
-              <div className="mb-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
-                {slots.map((slot) => (
-                  <button
-                    key={slot.time}
-                    type="button"
-                    onClick={() => {
-                      if (!slot.available) return;
-                      setTime(slot.time);
-                      setErrors((current) => ({
-                        ...current,
-                        time_slot: undefined,
-                      }));
-                    }}
-                    disabled={!slot.available}
-                    aria-pressed={time === slot.time}
-                    className={`flex min-h-11 flex-col items-center justify-center rounded-lg border px-2.5 py-2 text-sm font-semibold ${
-                      time === slot.time
-                        ? "border-brand bg-brand text-white"
-                        : slot.available
-                          ? "border-line bg-surface text-ink"
-                          : "border-line bg-canvas text-ink-faint"
-                    }`}
-                  >
-                    <span className={slot.available ? "" : "line-through"}>
-                      {slot.time}
-                    </span>
-                    {!slot.available ? (
-                      <span className="mt-0.5 text-[10px] font-medium leading-none no-underline">
-                        Busy
-                      </span>
-                    ) : null}
-                  </button>
-                ))}
-              </div>
+              <BookingTimeSlotPicker
+                slots={slots}
+                selectedTime={time}
+                onSelect={(slotTime) => {
+                  setTime(slotTime);
+                  setErrors((current) => ({
+                    ...current,
+                    time_slot: undefined,
+                  }));
+                }}
+              />
             ) : null}
             {date ? (
               <p
@@ -388,7 +418,7 @@ function EditAppointmentForm({
               <option value="">Not set</option>
               {BOOKING_LOCATIONS.map((code) => (
                 <option key={code} value={code}>
-                  {bookingLocationLabel(code)}
+                  {locationLabelFromSettings(code, locationSettings)}
                 </option>
               ))}
             </select>
@@ -457,17 +487,61 @@ function EditAppointmentForm({
           >
             Review changes
           </button>
-          {canDeleteBooking ? (
+          {canDeleteAppointment ? (
             <div className="rounded-xl border border-line bg-surface p-3">
               {confirmDelete ? (
                 <div className="flex flex-col gap-2.5">
                   <p className="text-sm font-semibold text-danger-ink">
-                    Delete this booking?
+                    {deleteKind === "future_booking"
+                      ? "Delete this booking?"
+                      : "Delete this past visit?"}
                   </p>
                   <p className="text-xs leading-relaxed text-ink-soft">
-                    This removes it from Tidy Tails and removes the linked Google
-                    Calendar event when one exists.
+                    {deleteKind === "future_booking"
+                      ? "This removes it from Tidy Tails, removes the linked Google Calendar event when one exists, and can text the owner a cancellation note."
+                      : "This permanently removes the groom from Tidy Tails history and reports. Use this only for a mistaken duplicate or wrong entry."}
                   </p>
+                  {deleteKind === "future_booking" ? (
+                    <div className="rounded-lg border border-line bg-canvas px-3 py-2">
+                      {customerPhone ? (
+                        <>
+                          <label className="flex items-start gap-2 text-sm text-ink-soft">
+                            <input
+                              type="checkbox"
+                              checked={sendCancellationText}
+                              onChange={(event) =>
+                                setSendCancellationText(event.target.checked)
+                              }
+                              className="mt-1 h-4 w-4 accent-brand"
+                            />
+                            <span>
+                              <span className="font-semibold text-ink">
+                                Text cancellation to owner
+                              </span>
+                              <span className="block text-xs">
+                                Sam can edit this before deleting.
+                              </span>
+                            </span>
+                          </label>
+                          {sendCancellationText ? (
+                            <textarea
+                              value={cancellationMessage}
+                              onChange={(event) =>
+                                setCancellationMessage(event.target.value)
+                              }
+                              rows={4}
+                              className={`${fieldClass} mt-2 resize-none text-sm leading-relaxed`}
+                            />
+                          ) : null}
+                        </>
+                      ) : (
+                        <p className="text-xs leading-relaxed text-warn">
+                          No household phone is on file, so no cancellation text
+                          can be sent.
+                        </p>
+                      )}
+                    </div>
+                  ) : null}
                   <div className="flex gap-2">
                     <button
                       type="button"
@@ -483,7 +557,9 @@ function EditAppointmentForm({
                       disabled={deletePending}
                       className="flex-1 rounded-lg bg-danger-ink px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
                     >
-                      Delete booking
+                      {deleteKind === "future_booking"
+                        ? "Delete booking"
+                        : "Delete visit"}
                     </button>
                   </div>
                 </div>
@@ -493,7 +569,9 @@ function EditAppointmentForm({
                   onClick={() => setConfirmDelete(true)}
                   className="w-full rounded-lg border border-danger-ink px-3 py-2 text-sm font-semibold text-danger-ink active:bg-danger-soft"
                 >
-                  Delete booking
+                  {deleteKind === "future_booking"
+                    ? "Delete booking"
+                    : "Delete past visit"}
                 </button>
               )}
             </div>
@@ -515,7 +593,12 @@ function EditAppointmentForm({
             />
             <ReviewRow
               label="Location"
-              value={location ? bookingLocationLabel(location) ?? "Not set" : "Not set"}
+              value={
+                location
+                  ? locationLabelFromSettings(location, locationSettings) ??
+                    "Not set"
+                  : "Not set"
+              }
             />
             <ReviewRow label="Fee" value={fee ? formatMoney(Number(fee)) : "Not set"} />
             <ReviewRow label="Tip" value={tip ? formatMoney(Number(tip)) : "Not set"} />
@@ -691,6 +774,18 @@ function DeleteResultScreen({
           {state.calendar.message}
         </p>
       ) : null}
+      {state.cancellationText ? (
+        <p
+          className={`rounded-lg px-3 py-2 text-xs font-medium ${
+            state.cancellationText.status === "sent" ||
+            state.cancellationText.status === "skipped"
+              ? "bg-brand-soft text-brand-ink"
+              : "bg-warn-soft text-warn"
+          }`}
+        >
+          {state.cancellationText.message}
+        </p>
+      ) : null}
       <button
         type="button"
         onClick={onDone}
@@ -754,4 +849,11 @@ function ReviewRow({ label, value }: { label: string; value: string }) {
       <dd className="text-right font-medium text-ink">{value}</dd>
     </div>
   );
+}
+
+function todayISO(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
+    d.getDate(),
+  ).padStart(2, "0")}`;
 }

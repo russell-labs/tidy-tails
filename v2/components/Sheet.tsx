@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { createPortal } from "react-dom";
 
 // Bottom-sheet modal primitive. Mobile-first: slides from the bottom, keeps the
 // content above the keyboard, constrained to the app's phone-width column.
@@ -8,17 +9,21 @@ export function Sheet({
   open,
   onClose,
   title,
+  variant = "bottom",
   children,
 }: {
   open: boolean;
   onClose: () => void;
   title: string;
+  variant?: "bottom" | "fullscreen";
   children: React.ReactNode;
 }) {
   useEffect(() => {
     if (!open) return;
     const scrollY = window.scrollY;
     const previous = {
+      htmlOverflow: document.documentElement.style.overflow,
+      sheetOpen: document.body.dataset.tidySheetOpen,
       overflow: document.body.style.overflow,
       position: document.body.style.position,
       top: document.body.style.top,
@@ -28,12 +33,20 @@ export function Sheet({
       if (e.key === "Escape") onClose();
     };
     window.addEventListener("keydown", onKey);
+    document.documentElement.style.overflow = "hidden";
+    document.body.dataset.tidySheetOpen = "true";
     document.body.style.overflow = "hidden";
     document.body.style.position = "fixed";
     document.body.style.top = `-${scrollY}px`;
     document.body.style.width = "100%";
     return () => {
       window.removeEventListener("keydown", onKey);
+      document.documentElement.style.overflow = previous.htmlOverflow;
+      if (previous.sheetOpen === undefined) {
+        delete document.body.dataset.tidySheetOpen;
+      } else {
+        document.body.dataset.tidySheetOpen = previous.sheetOpen;
+      }
       document.body.style.overflow = previous.overflow;
       document.body.style.position = previous.position;
       document.body.style.top = previous.top;
@@ -44,9 +57,14 @@ export function Sheet({
 
   if (!open) return null;
 
-  return (
+  const panelClass =
+    variant === "fullscreen"
+      ? "tidy-sheet-panel tidy-sheet-panel-fullscreen relative mx-auto flex w-full max-w-md flex-col overflow-hidden overscroll-contain rounded-none bg-surface shadow-2xl sm:mb-3 sm:w-[calc(100%-1.5rem)] sm:rounded-2xl"
+      : "tidy-sheet-panel tidy-sheet-panel-bottom relative mx-auto flex w-full max-w-md flex-col overflow-hidden overscroll-contain rounded-t-2xl bg-surface shadow-2xl sm:mb-3 sm:w-[calc(100%-1.5rem)] sm:rounded-2xl";
+
+  const sheet = (
     <div
-      className="fixed inset-0 z-50 flex flex-col justify-end"
+      className="tidy-sheet-root fixed inset-0 z-50 flex flex-col justify-end bg-ink/40"
       role="dialog"
       aria-modal="true"
       aria-label={title}
@@ -55,10 +73,10 @@ export function Sheet({
         type="button"
         aria-label="Close"
         onClick={onClose}
-        className="absolute inset-0 bg-ink/40"
+        className="absolute inset-0"
       />
-      <div className="relative mx-auto mb-3 flex max-h-[calc(88dvh-0.75rem)] w-[calc(100%-1.5rem)] max-w-md flex-col overscroll-contain rounded-2xl bg-surface shadow-2xl">
-        <header className="flex items-center justify-between border-b border-line px-5 py-3.5">
+      <div className={panelClass}>
+        <header className="flex shrink-0 items-center justify-between border-b border-line px-5 py-3.5">
           <h2 className="text-base font-bold text-ink">{title}</h2>
           <button
             type="button"
@@ -81,10 +99,12 @@ export function Sheet({
             </svg>
           </button>
         </header>
-        <div className="overscroll-contain overflow-y-auto px-5 py-4 sheet-bottom-room">
+        <div className="min-h-0 flex-1 overscroll-contain overflow-y-auto px-5 py-4 sheet-bottom-room">
           {children}
         </div>
       </div>
     </div>
   );
+
+  return createPortal(sheet, document.body);
 }

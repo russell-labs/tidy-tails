@@ -1,6 +1,8 @@
 import type { SmsMessage } from "@/lib/inboundSms";
 import { classifyInboundSmsBody } from "@/lib/inboundSms";
 import { formatPhone } from "@/lib/format";
+import { smsDeliveryLabel, smsDeliveryTone } from "@/lib/smsStatus";
+import { SmsMessageHideButton } from "./SmsMessageHideButton";
 
 function messageTime(message: SmsMessage): string {
   const value = message.received_at ?? message.sent_at ?? message.created_at;
@@ -21,7 +23,7 @@ function phoneForMessage(message: SmsMessage): string {
 }
 
 function directionLabel(message: SmsMessage): string {
-  return message.direction === "inbound" ? "Reply" : "Sent";
+  return message.direction === "inbound" ? "Customer reply" : "Sam message";
 }
 
 function directionClass(message: SmsMessage): string {
@@ -50,10 +52,12 @@ export function SmsMessages({
   messages,
   emptyText = "No text message history yet.",
   framed = true,
+  canHide = false,
 }: {
   messages: SmsMessage[];
   emptyText?: string;
   framed?: boolean;
+  canHide?: boolean;
 }) {
   if (messages.length === 0) {
     return (
@@ -76,10 +80,11 @@ export function SmsMessages({
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
-                <span
-                  className={`rounded-full px-2 py-1 text-[11px] font-semibold ${directionClass(message)}`}
-                >
+                <span className={`rounded-full px-2 py-1 text-[11px] font-semibold ${directionClass(message)}`}>
                   {directionLabel(message)}
+                </span>
+                <span className={`rounded-full px-2 py-1 text-[11px] font-semibold ${smsDeliveryTone(message)}`}>
+                  {smsDeliveryLabel(message)}
                 </span>
                 {message.direction === "inbound" ? (
                   <span
@@ -105,9 +110,12 @@ export function SmsMessages({
                 </p>
               ) : null}
             </div>
-            <span className="shrink-0 text-xs font-medium text-ink-faint">
-              {messageTime(message)}
-            </span>
+            <div className="flex shrink-0 flex-col items-end gap-2">
+              <span className="text-xs font-medium text-ink-faint">
+                {messageTime(message)}
+              </span>
+              {canHide ? <SmsMessageHideButton smsId={message.id} /> : null}
+            </div>
           </div>
         </li>
       ))}

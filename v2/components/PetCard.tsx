@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { Appointment, Pet, Vaccination } from "@/lib/data/types";
 import { petVaccinationState } from "@/lib/derive";
 import { formatMoney, relativeDate } from "@/lib/format";
+import { isPetPassedAway } from "@/lib/petLifecycle";
 import { AllergyAlert } from "./AllergyAlert";
 import { StatusPill } from "./StatusPill";
 
@@ -25,6 +26,7 @@ export function PetCard({
 }) {
   const vaxState = petVaccinationState(vaccinations);
   const displayFee = pet.typical_fee ?? lastVisit?.price ?? null;
+  const passedAway = isPetPassedAway(pet);
 
   return (
     <Link
@@ -61,7 +63,9 @@ export function PetCard({
       ) : null}
 
       <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-line pt-3">
-        {vaxState === "expired" ? (
+        {passedAway ? (
+          <StatusPill tone="neutral">Passed away</StatusPill>
+        ) : vaxState === "expired" ? (
           <StatusPill tone="danger">Vaccine expired</StatusPill>
         ) : vaxState === "expiring" ? (
           <StatusPill tone="warn">Vaccine expiring</StatusPill>

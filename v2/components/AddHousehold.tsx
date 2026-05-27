@@ -18,7 +18,7 @@ import { SubmitDogOverlay } from "./SubmitDog";
 // TIDYTAILS_ENABLE_ADD_HOUSEHOLD_WRITE gate is on.
 
 const fieldClass =
-  "w-full rounded-xl border border-line bg-surface px-3.5 py-2.5 text-base text-ink placeholder:text-ink-faint";
+  "w-full min-h-12 rounded-xl border border-line bg-surface px-4 py-3 text-base text-ink placeholder:text-ink-faint";
 const labelClass = "text-sm font-medium text-ink-soft";
 
 const SIZE_LABELS: Record<PetSize, string> = {
@@ -70,7 +70,12 @@ export function AddHousehold({ mode }: { mode: "fixtures" | "live" }) {
         Add household
       </button>
 
-      <Sheet open={open} onClose={close} title="Add a household">
+      <Sheet
+        open={open}
+        onClose={close}
+        title="Add a household"
+        variant="fullscreen"
+      >
         <IntakeForm key={formKey} mode={mode} onDone={close} />
       </Sheet>
     </>
@@ -155,7 +160,7 @@ function IntakeForm({
   const ownerName = `${firstName} ${lastName}`.trim();
 
   return (
-    <form action={formAction} className="flex flex-col gap-3.5">
+    <form action={formAction} className="flex flex-col gap-4 pb-2">
       <SubmitDogOverlay label="Saving household" show={pending} />
       {/* Hidden fields carry the current values into the server action,
           regardless of which step is visible. */}
@@ -185,7 +190,7 @@ function IntakeForm({
         <>
           <SectionLabel>Owner</SectionLabel>
 
-          <Field label="First name" error={errors.first_name}>
+          <Field label="First name (optional)" error={errors.first_name}>
             <input
               type="text"
               value={firstName}
@@ -195,7 +200,7 @@ function IntakeForm({
             />
           </Field>
 
-          <Field label="Last name (optional)" error={errors.last_name}>
+          <Field label="Last name" error={errors.last_name}>
             <input
               type="text"
               value={lastName}
@@ -316,7 +321,7 @@ function IntakeForm({
           <button
             type="button"
             onClick={toReview}
-            className="rounded-xl bg-brand px-4 py-3 text-base font-semibold text-white active:bg-brand-ink"
+            className="rounded-xl bg-brand px-4 py-3.5 text-base font-semibold text-white active:bg-brand-ink"
           >
             Review household
           </button>
@@ -378,14 +383,14 @@ function IntakeForm({
               type="button"
               onClick={() => setStep("form")}
               disabled={pending}
-              className="flex-1 rounded-xl border border-line bg-surface px-4 py-3 text-base font-semibold text-ink-soft active:bg-canvas disabled:opacity-50"
+              className="flex-1 rounded-xl border border-line bg-surface px-4 py-3.5 text-base font-semibold text-ink-soft active:bg-canvas disabled:opacity-50"
             >
               Back to edit
             </button>
             <button
               type="submit"
               disabled={pending}
-              className="flex-1 rounded-xl bg-brand px-4 py-3 text-base font-semibold text-white active:bg-brand-ink disabled:opacity-50"
+              className="flex-1 rounded-xl bg-brand px-4 py-3.5 text-base font-semibold text-white active:bg-brand-ink disabled:opacity-50"
             >
               Confirm & save
             </button>
@@ -431,7 +436,7 @@ function AllergyPicker({
               role="radio"
               aria-checked={selected}
               onClick={() => onChange(o.code)}
-              className={`flex-1 rounded-xl border px-3 py-2.5 text-sm font-semibold ${
+              className={`flex-1 rounded-xl border px-3 py-3 text-sm font-semibold ${
                 selected
                   ? "border-brand bg-brand-soft text-brand-ink"
                   : "border-line bg-surface text-ink-soft active:bg-canvas"
@@ -573,7 +578,7 @@ function ResultScreen({
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <h3 className="mt-1 text-xs font-semibold uppercase tracking-wide text-ink-faint">
+    <h3 className="mt-2 text-xs font-semibold uppercase tracking-wide text-ink-faint">
       {children}
     </h3>
   );
@@ -589,7 +594,7 @@ function Field({
   children: React.ReactNode;
 }) {
   return (
-    <label className="flex flex-col gap-1.5">
+    <label className="flex flex-col gap-2">
       <span className={labelClass}>{label}</span>
       {children}
       {error ? <span className="text-xs text-danger-ink">{error}</span> : null}

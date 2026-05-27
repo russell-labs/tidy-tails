@@ -5,21 +5,25 @@ import { AddPet } from "@/components/AddPet";
 import { AppointmentHistory } from "@/components/AppointmentHistory";
 import { BackLink } from "@/components/BackLink";
 import { ClientActions } from "@/components/ClientActions";
+import { ClientSmsConversation } from "@/components/ClientSmsConversation";
 import { EditClient } from "@/components/EditClient";
 import { LogGroom } from "@/components/LogGroom";
 import { PetCard } from "@/components/PetCard";
-import { SmsMessages } from "@/components/SmsMessages";
 import { dataMode, getClientRecord, loadVaccinations } from "@/lib/data/repo";
 import { groupPetsForDisplay, lastAppointment } from "@/lib/derive";
 import { digitsOnly, formatPhone, fullName } from "@/lib/format";
 import { readOperatorSettings } from "@/lib/operatorSettings.server";
+import { activePets } from "@/lib/petLifecycle";
 import {
   isAddAppointmentWriteEnabled,
   isEditAppointmentWriteEnabled,
   isEditClientWriteEnabled,
   isLogGroomWriteEnabled,
 } from "@/lib/writeGate";
-import { loadClientSmsMessages } from "@/lib/smsMessages.server";
+import {
+  hasClientOutboundSms,
+  loadClientSmsMessages,
+} from "@/lib/smsMessages.server";
 
 export async function generateMetadata({
   params,
@@ -49,11 +53,14 @@ export default async function ClientDetailPage({
 
   const { client, pets, appointments } = record;
   const operatorSettings = await readOperatorSettings();
-  const recentSmsMessages = await loadClientSmsMessages(client.id, 6);
+  const recentSmsMessages = await loadClientSmsMessages(client.id, 12);
+  const hasPriorOutboundSms = await hasClientOutboundSms(client.id);
   const allVaccinations = await loadVaccinations();
   const petsById = Object.fromEntries(pets.map((p) => [p.id, p.name]));
   const petGroups = groupPetsForDisplay(pets, appointments);
   const displayedPets = petGroups.map((group) => group.pet);
+  const bookablePets = activePets(displayedPets);
+  const activeHouseholdPets = activePets(pets);
   const combinedGroups = petGroups.filter((group) => group.pets.length > 1);
 
   return (
@@ -95,24 +102,28 @@ export default async function ClientDetailPage({
       <div className="mt-4 flex flex-col gap-2.5">
         <AddAppointment
           client={client}
-          pets={displayedPets}
+          pets={bookablePets}
           appointments={appointments}
           mode={dataMode()}
           writesEnabled={isAddAppointmentWriteEnabled()}
           bookingConfirmationTemplate={
             operatorSettings.bookingConfirmationTemplate
           }
+          firstPlatformTextTemplate={operatorSettings.firstPlatformTextTemplate}
+          scheduleCalibration={operatorSettings.scheduleCalibration}
+          locationSettings={operatorSettings.locationSettings}
+          hasPriorOutboundSms={hasPriorOutboundSms}
         />
         <LogGroom
           client={client}
-          pets={displayedPets}
+          pets={bookablePets}
           appointments={appointments}
           mode={dataMode()}
           writesEnabled={isLogGroomWriteEnabled()}
         />
         <ClientActions
           client={client}
-          pets={pets}
+          pets={activeHouseholdPets}
           appointments={appointments}
           mode={dataMode()}
           reminderSettings={operatorSettings}
@@ -125,15 +136,7 @@ export default async function ClientDetailPage({
         </p>
       ) : null}
 
-      <section className="mt-6">
-        <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-ink-faint">
-          Recent texts
-        </h2>
-        <SmsMessages
-          messages={recentSmsMessages}
-          emptyText="No text messages recorded for this household yet."
-        />
-      </section>
+      <ClientSmsConversation client={client} messages={recentSmsMessages} />
 
       {combinedGroups.length > 0 ? (
         <div className="mt-4 rounded-xl bg-warn-soft px-3.5 py-3 text-sm text-warn">
@@ -183,8 +186,10 @@ export default async function ClientDetailPage({
           appointments={appointments}
           clientId={client.id}
           petsById={petsById}
+          customerPhone={client.phone}
           mode={dataMode()}
           writesEnabled={isEditAppointmentWriteEnabled()}
+          locationSettings={operatorSettings.locationSettings}
         />
       </section>
     </main>

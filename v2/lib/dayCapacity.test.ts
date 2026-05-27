@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Appointment, Pet } from "./data/types";
+import { DEFAULT_SCHEDULE_CALIBRATION } from "./operatorSettings";
 import {
   assessDayFit,
   dogWorkProfile,
@@ -24,6 +25,21 @@ function pet(overrides: Partial<Pet> & { id: string; name?: string }): Pet {
   };
 }
 
+function capacityPet(
+  overrides: Partial<Pet> & {
+    id: string;
+    name?: string;
+    size?: string;
+    temperament_notes?: string;
+  },
+) {
+  return {
+    ...pet(overrides),
+    size: overrides.size,
+    temperament_notes: overrides.temperament_notes,
+  };
+}
+
 function appointment(overrides: Partial<Appointment>): Appointment {
   return {
     id: overrides.id ?? crypto.randomUUID(),
@@ -36,7 +52,7 @@ function appointment(overrides: Partial<Appointment>): Appointment {
     tip: null,
     notes: null,
     status: overrides.status ?? "booked",
-    location: null,
+    location: overrides.location ?? null,
     google_calendar_id: null,
     google_event_id: null,
     google_sync_status: null,
@@ -101,6 +117,19 @@ describe("day capacity rubric", () => {
     expect(wary!.tags).toContain("extra handling");
   });
 
+  it("uses Sam's calibration that small full grooms are not automatically easy", () => {
+    const small = dogWorkProfile(
+      pet({ id: "small", breed: "Chihuahua" }),
+      "full_groom",
+    );
+    const medium = dogWorkProfile(
+      pet({ id: "medium", breed: "Mixed breed" }),
+      "full_groom",
+    );
+
+    expect(small!.points).toBe(medium!.points);
+  });
+
   it("summarizes booked day load using booked appointments only", () => {
     const pets = [
       pet({ id: "p1", breed: "German Shepherd" }),
@@ -162,6 +191,141 @@ describe("day capacity rubric", () => {
     });
     expect(assessment.projectedDogs).toBe(5);
     expect(["possible", "heavy"]).toContain(assessment.status);
+    expect(assessment.messages.join(" ")).toMatch(/Check details/i);
+  });
+
+  it("does not apply an automatic same-household discount", () => {
+    const pets = [
+      pet({ id: "p1", breed: "Bichon" }),
+      pet({ id: "p2", breed: "Bichon" }),
+    ];
+    const one = dogWorkProfile(pets[0], "full_groom");
+    const assessment = assessDayFit({
+      date: "2026-05-29",
+      pets,
+      appointments: [],
+      candidatePets: [
+        { pet: pets[0], serviceType: "full_groom" },
+        { pet: pets[1], serviceType: "full_groom" },
+      ],
+    });
+
+    expect(assessment.projectedLoadPoints).toBe(one!.points * 2);
+  });
+
+  it("honors a groomer-specific calibration profile", () => {
+    const custom = {
+      ...DEFAULT_SCHEDULE_CALIBRATION,
+      heavyDogCount: 6,
+      largeDogMax: 4,
+      warningLanguage: "Review this custom day.",
+    };
+    const pets = [
+      pet({ id: "p1", breed: "German Shepherd" }),
+      pet({ id: "p2", breed: "Labrador Retriever" }),
+      pet({ id: "p3", breed: "Bernese Mountain Dog" }),
+      pet({ id: "p4", breed: "Newfoundland" }),
+    ];
+    const assessment = assessDayFit({
+      date: "2026-05-29",
+      pets,
+      appointments: [
+        appointment({ pet_id: "p1" }),
+        appointment({ pet_id: "p2", time_slot: "10:30am" }),
+        appointment({ pet_id: "p3", time_slot: "12:00pm" }),
+      ],
+      candidatePet: pets[3],
+      serviceType: "full_groom",
+      calibration: custom,
+    });
+
+    expect(assessment.status).not.toBe("not_recommended");
+    expect(assessment.messages.join(" ")).toMatch(/Review this custom day/);
+  });
+
+  it("warns about Annette's two-large-crate limit separately from labor fit", () => {
+    const pets = [
+      capacityPet({ id: "p1", size: "large" }),
+      capacityPet({ id: "p2", size: "large" }),
+      capacityPet({ id: "p3", size: "large" }),
+    ];
+    const assessment = assessDayFit({
+      date: "2026-05-29",
+      pets,
+      appointments: [
+        appointment({ pet_id: "p1", location: "annette" }),
+        appointment({ pet_id: "p2", location: "annette", time_slot: "10:30am" }),
+      ],
+      candidatePet: pets[2],
+      serviceType: "full_groom",
+      location: "annette",
+    });
+
+    expect(assessment.status).toBe("not_recommended");
+    expect(assessment.messages.join(" ")).toMatch(/Annette.*2 large crates/i);
+  });
+
+  it("keeps four large dogs at Gina as a strong labor warning even though they fit space", () => {
+    const pets = [
+      capacityPet({ id: "p1", size: "large" }),
+      capacityPet({ id: "p2", size: "large" }),
+      capacityPet({ id: "p3", size: "large" }),
+      capacityPet({ id: "p4", size: "large" }),
+    ];
+    const assessment = assessDayFit({
+      date: "2026-05-29",
+      pets,
+      appointments: [
+        appointment({ pet_id: "p1", location: "gina" }),
+        appointment({ pet_id: "p2", location: "gina", time_slot: "10:30am" }),
+        appointment({ pet_id: "p3", location: "gina", time_slot: "12:00pm" }),
+      ],
+      candidatePet: pets[3],
+      serviceType: "full_groom",
+      location: "gina",
+    });
+
+    expect(assessment.status).toBe("heavy");
+    expect(assessment.messages.join(" ")).toMatch(/4 large dogs/i);
+    expect(assessment.messages.join(" ")).toMatch(/bathing and drying solo/i);
+  });
+
+  it("flags Jackson Wicks as end-of-day special handling", () => {
+    const assessment = assessDayFit({
+      date: "2026-05-29",
+      pets: [],
+      appointments: [],
+      candidatePet: capacityPet({
+        id: "jackson",
+        name: "Jackson Wicks",
+        size: "large",
+      }),
+      serviceType: "full_groom",
+    });
+
+    expect(assessment.dogProfile?.tags).toContain("special handling");
+    expect(assessment.messages.join(" ")).toMatch(/Jackson Wicks/i);
+    expect(assessment.messages.join(" ")).toMatch(/end of day/i);
+  });
+
+  it("projects every dog in a multi-pet household booking", () => {
+    const pets = [
+      pet({ id: "p1", breed: "Bichon" }),
+      pet({ id: "p2", breed: "Golden Retriever" }),
+    ];
+    const assessment = assessDayFit({
+      date: "2026-05-29",
+      pets,
+      appointments: [],
+      candidatePets: [
+        { pet: pets[0], serviceType: "full_groom" },
+        { pet: pets[1], serviceType: "full_groom" },
+      ],
+    });
+
+    expect(assessment.projectedDogs).toBe(2);
+    expect(assessment.projectedLargeDogs).toBe(1);
+    expect(assessment.messages[0]).toMatch(/These dogs read as/i);
   });
 
   it("asks for service context when the service is not chosen", () => {

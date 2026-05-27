@@ -44,16 +44,19 @@ describe("validateIntake — required fields", () => {
     }
   });
 
-  it("rejects a missing first name", () => {
+  it("accepts a new household with only a last name", () => {
     const r = validateIntake({ ...VALID, first_name: "  " });
-    expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.errors.first_name).toBeTruthy();
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.value.client.first_name).toBe("");
+      expect(r.value.client.last_name).toBe("Okafor");
+    }
   });
 
-  it("accepts a new household with only a first name", () => {
+  it("rejects a missing last name", () => {
     const r = validateIntake({ ...VALID, last_name: "" });
-    expect(r.ok).toBe(true);
-    if (r.ok) expect(r.value.client.last_name).toBeNull();
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.errors.last_name).toBeTruthy();
   });
 
   it("rejects a missing phone", () => {

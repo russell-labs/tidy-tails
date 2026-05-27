@@ -15,9 +15,11 @@
 // that sends. Every draft carries `requiresExplicitConfirmation: true`.
 // Unit-tested in reminders.test.ts.
 
-import type { Appointment } from "./data/types";
-import { customerBookingLocationLabel } from "./booking";
+import type { Appointment, Pet } from "./data/types";
+import { customerBookingLocationLabel, formatPetNames } from "./booking";
 import { digitsOnly, formatDate } from "./format";
+import { customerLocationLabelFromSettings } from "./locationFinance";
+import type { LocationSettingsMap } from "./operatorSettings";
 
 function pad(n: number): string {
   return String(n).padStart(2, "0");
@@ -49,9 +51,11 @@ export type ReminderContext = {
   ownerFirstName: string;
   petName: string | null; // null → "your dog"
   appointmentDate: string | null; // ISO; null → a generic check-in message
+  appointmentTime?: string | null;
   appointmentLocation?: string | null;
   appointmentTemplate?: string;
   rebookTemplate?: string;
+  locationSettings?: LocationSettingsMap;
 };
 
 export type ReminderTemplateVars = {
@@ -60,6 +64,7 @@ export type ReminderTemplateVars = {
   appointmentDate: string | null;
   appointmentTime?: string | null;
   appointmentLocation?: string | null;
+  locationSettings?: LocationSettingsMap;
 };
 
 export function renderReminderTemplate(
@@ -72,6 +77,12 @@ export function renderReminderTemplate(
   const time = (vars.appointmentTime ?? "").trim() || "the scheduled time";
   const rawLocation = (vars.appointmentLocation ?? "").trim();
   const location =
+    (vars.locationSettings
+      ? customerLocationLabelFromSettings(
+          vars.appointmentLocation,
+          vars.locationSettings,
+        )
+      : null) ??
     customerBookingLocationLabel(vars.appointmentLocation) ??
     (rawLocation === "gina" || rawLocation === "annette"
       ? "the grooming location"
@@ -86,6 +97,17 @@ export function renderReminderTemplate(
     .trim();
 }
 
+function ensureAppointmentTime(message: string, template: string, time: string | null | undefined): string {
+  const appointmentTime = (time ?? "").trim();
+  if (!appointmentTime || template.includes("[time]")) return message;
+  if (message.toLowerCase().includes(appointmentTime.toLowerCase())) return message;
+  const signature = " — Samantha";
+  if (message.endsWith(signature)) {
+    return `${message.slice(0, -signature.length)} Appointment time: ${appointmentTime}.${signature}`;
+  }
+  return `${message} Appointment time: ${appointmentTime}.`;
+}
+
 /**
  * Build a default reminder message. With an appointment date it is a dated
  * reminder; without one it is a generic check-in invite. The result is only a
@@ -95,10 +117,13 @@ export function buildReminderMessage(ctx: ReminderContext): string {
   const owner = ctx.ownerFirstName.trim() || "there";
   const pet = (ctx.petName ?? "").trim() || "your dog";
   if (ctx.appointmentDate) {
-    return renderReminderTemplate(
+    const template =
       ctx.appointmentTemplate ??
-        "Hi [first name], a friendly reminder that [pet name] has a grooming appointment at [location] on [date]. See you then! — Samantha",
-      ctx,
+      "Hi [first name], a friendly reminder that [pet name] has a grooming appointment at [location] on [date] at [time]. See you then! — Samantha";
+    return ensureAppointmentTime(
+      renderReminderTemplate(template, ctx),
+      template,
+      ctx.appointmentTime,
     );
   }
   return renderReminderTemplate(
@@ -106,6 +131,63 @@ export function buildReminderMessage(ctx: ReminderContext): string {
       `Hi ${owner}, it's been a little while since ${pet}'s last visit to Tidy Tails. Would you like to book in for a groom? — Samantha`,
     ctx,
   );
+}
+
+export type ReminderTarget = {
+  appointment: Appointment;
+  petName: string | null;
+  appointmentDate: string;
+  appointmentTime: string | null;
+  appointmentLocation: string | null;
+  groupAppointmentIds: string[];
+};
+
+function sameReminderSlot(a: Appointment, b: Appointment): boolean {
+  return (
+    a.client_id === b.client_id &&
+    a.date === b.date &&
+    (a.time_slot ?? "").trim().toLowerCase() ===
+      (b.time_slot ?? "").trim().toLowerCase()
+  );
+}
+
+function isBookableReminderStatus(appointment: Appointment): boolean {
+  return (appointment.status ?? "booked") === "booked";
+}
+
+export function buildReminderTarget(
+  appointments: Appointment[],
+  pets: Pick<Pet, "id" | "name">[],
+  {
+    appointmentId,
+    today = new Date(),
+  }: { appointmentId?: string | null; today?: Date } = {},
+): ReminderTarget | null {
+  const appointment =
+    appointmentId != null && appointmentId !== ""
+      ? appointments.find((candidate) => candidate.id === appointmentId)
+      : pickReminderAppointment(appointments, today);
+
+  if (!appointment) return null;
+
+  const petNameById = new Map(pets.map((pet) => [pet.id, pet.name]));
+  const group = appointments.filter(
+    (candidate) =>
+      isBookableReminderStatus(candidate) &&
+      sameReminderSlot(candidate, appointment),
+  );
+  const petNames = group
+    .map((candidate) => petNameById.get(candidate.pet_id) ?? "")
+    .filter(Boolean);
+
+  return {
+    appointment,
+    petName: petNames.length > 0 ? formatPetNames(petNames) : null,
+    appointmentDate: appointment.date,
+    appointmentTime: appointment.time_slot,
+    appointmentLocation: appointment.location ?? null,
+    groupAppointmentIds: group.map((candidate) => candidate.id),
+  };
 }
 
 // Raw reminder input — the recipient phone and the (editable) message body.

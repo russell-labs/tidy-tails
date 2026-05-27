@@ -2,11 +2,15 @@ import { describe, expect, it } from "vitest";
 import {
   buildCalendarEventWindow,
   buildGoogleCalendarEvent,
+  buildGoogleCalendarDropOffDurationPatch,
   decryptRefreshToken,
   defaultDurationMinutes,
   encryptRefreshToken,
   googleFreeBusyRangeForDate,
   googleCalendarEventsToBusyBlocks,
+  googleCalendarDeleteEventUrl,
+  googleCalendarConnectionOwnerFilter,
+  googleCalendarUserMessage,
   isGoogleCalendarWindowBusy,
   markCalendarUnavailableSlots,
   markGoogleCalendarBusySlots,
@@ -38,11 +42,11 @@ describe("Google Calendar appointment time parsing", () => {
 });
 
 describe("Google Calendar event building", () => {
-  it("uses service-based default durations", () => {
-    expect(defaultDurationMinutes("Full groom")).toBe(90);
-    expect(defaultDurationMinutes("Bath only")).toBe(60);
-    expect(defaultDurationMinutes("Nail trim")).toBe(30);
-    expect(defaultDurationMinutes(null)).toBe(60);
+  it("uses 15-minute drop-off windows for every booking type", () => {
+    expect(defaultDurationMinutes("Full groom")).toBe(15);
+    expect(defaultDurationMinutes("Bath only")).toBe(15);
+    expect(defaultDurationMinutes("Nail trim")).toBe(15);
+    expect(defaultDurationMinutes(null)).toBe(15);
   });
 
   it("builds local Toronto dateTime values for a specific appointment slot", () => {
@@ -87,6 +91,10 @@ describe("Google Calendar event building", () => {
       dateTime: "2026-06-29T10:00:00",
       timeZone: "America/Toronto",
     });
+    expect(event?.end).toEqual({
+      dateTime: "2026-06-29T10:15:00",
+      timeZone: "America/Toronto",
+    });
     expect(event?.description).toContain("Owner: Mary Anca");
     expect(event?.description).toContain("Fee: $80.00");
     expect(event?.description).toContain("Location: 60 Olive Crescent, Orillia");
@@ -125,6 +133,102 @@ describe("Google Calendar event building", () => {
     expect(event?.description).toContain(
       "Location: 290 Millard Street, Orillia",
     );
+  });
+
+  it("builds one calendar event that names all pets in a household booking", () => {
+    const event = buildGoogleCalendarEvent({
+      appointment: {
+        date: "2026-06-29",
+        time_slot: "10am",
+        service: "Grooming",
+        price: 125,
+        location: "gina",
+        notes: "Booked together",
+      },
+      client: {
+        first_name: "Mary",
+        last_name: "Anca",
+        phone: "705-330-1807",
+        email: "mary@example.com",
+        address: null,
+      },
+      pet: {
+        name: "Whiskey",
+        breed: "Silver Terrier Yorkie",
+        grooming_notes: null,
+      },
+      pets: [
+        {
+          name: "Whiskey",
+          breed: "Silver Terrier Yorkie",
+          grooming_notes: "Long hair.",
+        },
+        {
+          name: "Kiwi",
+          breed: "Havanese",
+          grooming_notes: "Short clip.",
+        },
+      ],
+      sendCustomerInvite: true,
+    });
+
+    expect(event?.summary).toBe("Tidy Tails: Whiskey and Kiwi");
+    expect(event?.description).toContain("Pet: Whiskey (Silver Terrier Yorkie)");
+    expect(event?.description).toContain("Pet: Kiwi (Havanese)");
+    expect(event?.description).toContain("Fee: $125.00");
+  });
+});
+
+describe("Google Calendar drop-off duration repair", () => {
+  it("builds a start/end patch for old long-duration booking events", () => {
+    const patch = buildGoogleCalendarDropOffDurationPatch({
+      date: "2026-05-28",
+      timeSlot: "10:00am",
+      service: "Full groom",
+      event: {
+        start: { dateTime: "2026-05-28T10:00:00-04:00" },
+        end: { dateTime: "2026-05-28T11:30:00-04:00" },
+      },
+    });
+
+    expect(patch).toEqual({
+      start: {
+        dateTime: "2026-05-28T10:00:00",
+        timeZone: "America/Toronto",
+      },
+      end: {
+        dateTime: "2026-05-28T10:15:00",
+        timeZone: "America/Toronto",
+      },
+    });
+  });
+
+  it("does not patch events that already occupy the 15-minute drop-off window", () => {
+    const patch = buildGoogleCalendarDropOffDurationPatch({
+      date: "2026-05-28",
+      timeSlot: "10:00am",
+      service: "Full groom",
+      event: {
+        start: { dateTime: "2026-05-28T10:00:00-04:00" },
+        end: { dateTime: "2026-05-28T10:15:00-04:00" },
+      },
+    });
+
+    expect(patch).toBeNull();
+  });
+});
+
+describe("Google Calendar event deletion", () => {
+  it("asks Google to send cancellation updates so attendee calendars remove the event", () => {
+    const url = new URL(
+      googleCalendarDeleteEventUrl({
+        calendarId: "primary",
+        eventId: "event-123",
+      }),
+    );
+
+    expect(url.pathname).toBe("/calendar/v3/calendars/primary/events/event-123");
+    expect(url.searchParams.get("sendUpdates")).toBe("all");
   });
 });
 
@@ -183,6 +287,7 @@ describe("Google Calendar availability", () => {
       [
         { time: "9:00am", available: false },
         { time: "10:30am", available: true },
+        { time: "10:45am", available: true },
         { time: "12:00pm", available: true },
       ],
       "2026-06-29",
@@ -204,6 +309,11 @@ describe("Google Calendar availability", () => {
       },
       {
         time: "10:30am",
+        available: true,
+        source: "open",
+      },
+      {
+        time: "10:45am",
         available: false,
         source: "google",
         reason: "Busy in Google Calendar",
@@ -212,7 +322,7 @@ describe("Google Calendar availability", () => {
     ]);
   });
 
-  it("fails closed when Google Calendar availability cannot be trusted", () => {
+  it("keeps open slots selectable when Google Calendar availability cannot be trusted", () => {
     const slots = markCalendarUnavailableSlots(
       [
         { time: "9:00am", available: true },
@@ -224,7 +334,7 @@ describe("Google Calendar availability", () => {
     expect(slots).toEqual([
       {
         time: "9:00am",
-        available: false,
+        available: true,
         source: "google",
         reason: "Google Calendar availability failed",
       },
@@ -330,5 +440,21 @@ describe("Google Calendar refresh-token encryption", () => {
     expect(() => encryptRefreshToken("token", "too-short")).toThrow(
       /32 base64 bytes/,
     );
+  });
+});
+
+describe("Google Calendar user-facing errors", () => {
+  it("turns revoked refresh-token errors into a reconnect instruction", () => {
+    expect(googleCalendarUserMessage("Token has been expired or revoked.")).toBe(
+      "Google Calendar needs to be reconnected. Go to Settings and tap Reconnect Google Calendar.",
+    );
+  });
+});
+
+describe("Google Calendar connection ownership", () => {
+  it("scopes disconnects to the signed-in groomer id", () => {
+    expect(googleCalendarConnectionOwnerFilter("user-123")).toEqual({
+      groomer_id: "user-123",
+    });
   });
 });

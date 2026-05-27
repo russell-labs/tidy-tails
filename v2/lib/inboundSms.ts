@@ -9,6 +9,13 @@ export type InboundSmsMessage = {
   messageSid: string | null;
 };
 
+export type TwilioStatusCallback = {
+  messageSid: string;
+  status: string;
+  to: string | null;
+  from: string | null;
+};
+
 export type InboundSmsMatch =
   | { status: "matched"; client: Client }
   | { status: "unmatched"; client: null }
@@ -59,6 +66,32 @@ export function parseTwilioInboundForm(
       to,
       body,
       messageSid: form.get("MessageSid")?.trim() || null,
+    },
+  };
+}
+
+export function parseTwilioStatusCallbackForm(
+  form: URLSearchParams,
+):
+  | { ok: true; value: TwilioStatusCallback }
+  | { ok: false; message: string } {
+  const messageSid = form.get("MessageSid")?.trim();
+  const status =
+    form.get("MessageStatus")?.trim() ?? form.get("SmsStatus")?.trim();
+  if (!messageSid || !status) {
+    return {
+      ok: false,
+      message: "Twilio status callback was missing MessageSid or MessageStatus.",
+    };
+  }
+
+  return {
+    ok: true,
+    value: {
+      messageSid,
+      status,
+      to: form.get("To")?.trim() || null,
+      from: form.get("From")?.trim() || null,
     },
   };
 }
@@ -139,6 +172,22 @@ export function buildOutboundSmsInsert({
     match_status: "matched",
     sent_at: new Date().toISOString(),
   };
+}
+
+export function buildTwilioStatusUpdate(callback: TwilioStatusCallback) {
+  return {
+    status: normalizeTwilioDeliveryStatus(callback.status),
+  };
+}
+
+function normalizeTwilioDeliveryStatus(status: string): string {
+  const normalized = status.trim().toLowerCase();
+  if (normalized === "delivered") return "delivered";
+  if (normalized === "undelivered" || normalized === "failed") return "failed";
+  if (normalized === "sent" || normalized === "sending" || normalized === "queued") {
+    return "sent";
+  }
+  return normalized || "sent";
 }
 
 export function buildTwilioWebhookResponse(replyBody?: string | null): string {
