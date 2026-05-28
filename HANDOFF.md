@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-05-28 13:40 EDT
+last-updated: 2026-05-28 14:18 EDT
 current-owner: Russell
 lane: FOUNDER
 ---
@@ -8,8 +8,8 @@ lane: FOUNDER
 
 ## RIGHT NOW
 
-READY TO SHIP NEXT as of 2026-05-28 13:40 EDT.
-Mission Control R6 is deployed: the Tidy Tails Investor Snapshot now uses the subtype-aware solopreneur B2B SaaS tile set (Active operators, MRR, ARPU, Monthly churn, LTV, CAC, Operational health, etc.) instead of the generic R4 cover.
+READY TO SHIP NEXT as of 2026-05-28 14:18 EDT.
+Mission Control R6 plus the rendering-order hotfix is deployed: the Tidy Tails Investor Snapshot now renders the solopreneur B2B SaaS tile set in exact helper/spec order (One-line, Stage / funding, TAM, Active operators, MRR, ARPU, Monthly churn, LTV, CAC, Gross margin, Operational health, Next milestone).
 No Generate BP run has been authorized or executed.
 
 ## NEXT ACTION
@@ -23,12 +23,12 @@ none
 ## Current Production State
 
 - Mission Control live URL: `http://100.76.140.23:3000`.
-- Mission Control deployed HEAD: `b8c0cb6e0d52f0d26610fbd4d6a717ab9f62bde5`.
+- Mission Control deployed HEAD: `f7c70f5428b496ed03b4e1d46a3c8ea1d11cfd7a`.
 - `/api/health`: ok after deploy; daemon running.
 - Pulse count: 3.
 - Deploy smoke: 7/7.
 - Whole-OS smoke: 5/5.
-- Tidy Tails dashboard: renders the solopreneur B2B SaaS Investor Snapshot tile set.
+- Tidy Tails dashboard: renders the solopreneur B2B SaaS Investor Snapshot tile set in helper/spec order.
 - Tidy Tails app state: not otherwise changed by R6.
 
 ## Active Blockers
@@ -45,9 +45,13 @@ none
 
 ## Most Recent User Intent
 
-> Continue.
+> Hotfix R6 rendering order. The visual gate caught a real defect.
 >
-> Retry mc-pre-deploy.sh with --skip-build flag... otherwise after deploy completes, verify HEAD parity, then complete the closeout HARD gates that were never written.
+> Acceptance:
+> - Tidy Tails cover renders in spec order...
+> - New ordered-rendering test passes GREEN
+> - pnpm verify passes
+> - Closeout artifacts updated
 
 ## Last 3-5 High-Signal Exchanges
 
@@ -55,11 +59,13 @@ none
 - Codex committed the R6 spec update at `c6e1688` and implementation at `b8c0cb6`.
 - The first VPS deploy hit the known live-writer md5 fence race; the final full deploy passed after the quiet window held.
 - Tidy Tails Project metadata was seeded on the VPS with `subType=B2B SaaS`, `scale=solopreneur`, `monetization=subscription`.
+- Operator visual gate found the rendered order bug; Codex hotfixed the dashboard to render directly from helper order and live DOM test passed 5/5.
 
 ## Recently Shipped
 
 | Date | Ship | Commit | Evidence |
 |---|---|---|---|
+| 2026-05-28 | R6 Investor Snapshot Rendering Order Hotfix | `f7c70f5` | `mission-control/mission-control/_reports/2026-05-28-ship-r6-subtype-aware-investor-snapshot-tile-rendering-cc-result.md` |
 | 2026-05-28 | R6 Subtype-Aware Investor Snapshot Tile Rendering | `b8c0cb6` | `mission-control/mission-control/_reports/2026-05-28-ship-r6-subtype-aware-investor-snapshot-tile-rendering-cc-result.md` |
 | 2026-05-28 | BP Author Runtime Generalization + Operator-Only Section Fix | `4d75861` | `mission-control/mission-control/_reports/2026-05-27-ship-bp-author-runtime-generalization-and-operator-only-fix-cc-result.md` |
 
@@ -81,4 +87,5 @@ none
 
 - R6 spec commit: `c6e168854893d28e5061a2cdac87e9931f706e51`.
 - R6 implementation commit: `b8c0cb6e0d52f0d26610fbd4d6a717ab9f62bde5`.
+- R6 rendering-order hotfix commit: `f7c70f5428b496ed03b4e1d46a3c8ea1d11cfd7a`.
 - Rollback record: `mission-control/mission-control/_reports/2026-05-27-rollback-of-8c0763d-cc-result.md`.
