@@ -19,6 +19,15 @@ export function shouldShowTomorrowReviewNotification({
   );
 }
 
+export function notificationBellCount({
+  inboxNeedsAction,
+}: {
+  inboxNeedsAction: number;
+  tomorrowReviewDue?: boolean;
+}): number {
+  return Math.max(0, inboxNeedsAction);
+}
+
 function dateTimeParts(date: Date, timeZone: string): { date: string; hour: number } {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone,

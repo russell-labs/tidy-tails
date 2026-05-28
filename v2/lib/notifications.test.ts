@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { Appointment } from "./data/types";
-import { shouldShowTomorrowReviewNotification } from "./notifications";
+import {
+  notificationBellCount,
+  shouldShowTomorrowReviewNotification,
+} from "./notifications";
 
 function appointment(overrides: Partial<Appointment>): Appointment {
   return {
@@ -54,5 +57,25 @@ describe("shouldShowTomorrowReviewNotification", () => {
         timeZone: "America/Toronto",
       }),
     ).toBe(false);
+  });
+});
+
+describe("notificationBellCount", () => {
+  it("does not count tomorrow review prompts until they have a reviewed state", () => {
+    expect(
+      notificationBellCount({
+        inboxNeedsAction: 0,
+        tomorrowReviewDue: true,
+      }),
+    ).toBe(0);
+  });
+
+  it("counts real inbox action items", () => {
+    expect(
+      notificationBellCount({
+        inboxNeedsAction: 2,
+        tomorrowReviewDue: true,
+      }),
+    ).toBe(2);
   });
 });

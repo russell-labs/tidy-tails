@@ -21,6 +21,10 @@ export type TwilioSendResult =
   | { ok: true; sid: string | null }
   | { ok: false; message: string };
 
+export type TwilioStatusReadResult =
+  | { ok: true; status: string }
+  | { ok: false; message: string };
+
 type TwilioErrorPayload = {
   code?: number;
   message?: string;
@@ -182,4 +186,26 @@ export async function sendTwilioSms(
 
   const payload = (await response.json().catch(() => ({}))) as { sid?: string };
   return { ok: true, sid: payload.sid ?? null };
+}
+
+export async function fetchTwilioSmsStatus(
+  config: TwilioConfig,
+  messageSid: string,
+): Promise<TwilioStatusReadResult> {
+  const response = await fetch(
+    `https://api.twilio.com/2010-04-01/Accounts/${config.accountSid}/Messages/${encodeURIComponent(messageSid)}.json`,
+    {
+      method: "GET",
+      headers: {
+        Authorization: `Basic ${Buffer.from(
+          `${config.authUsername}:${config.authPassword}`,
+        ).toString("base64")}`,
+      },
+    },
+  );
+  if (!response.ok) {
+    return { ok: false, message: "Twilio message status could not be read." };
+  }
+  const payload = (await response.json().catch(() => ({}))) as { status?: string };
+  return { ok: true, status: payload.status ?? "sent" };
 }

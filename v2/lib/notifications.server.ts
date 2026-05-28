@@ -2,7 +2,10 @@ import { loadRecentAuditEvents } from "@/lib/audit.server";
 import { loadRecentBookingRequests } from "@/lib/bookingRequests.server";
 import { loadAppointments } from "@/lib/data/repo";
 import { buildInboxItems, inboxCounts } from "@/lib/inbox";
-import { shouldShowTomorrowReviewNotification } from "@/lib/notifications";
+import {
+  notificationBellCount,
+  shouldShowTomorrowReviewNotification,
+} from "@/lib/notifications";
 import { loadRecentSmsMessages } from "@/lib/smsMessages.server";
 
 export async function loadNotificationCount(): Promise<number> {
@@ -20,7 +23,10 @@ export async function loadNotificationCount(): Promise<number> {
     handledSmsIds: handledSmsIdsFromAudit(auditEvents),
   });
   const dailyReview = shouldShowTomorrowReviewNotification({ appointments }) ? 1 : 0;
-  return inboxCounts(inboxItems).needsAction + dailyReview;
+  return notificationBellCount({
+    inboxNeedsAction: inboxCounts(inboxItems).needsAction,
+    tomorrowReviewDue: dailyReview > 0,
+  });
 }
 
 function handledSmsIdsFromAudit(events: Awaited<ReturnType<typeof loadRecentAuditEvents>>) {

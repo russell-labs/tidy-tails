@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildTwilioMessageRequest,
   buildTwilioRequestSignature,
+  fetchTwilioSmsStatus,
   getTwilioWebhookAuthToken,
   getTwilioConfig,
   sendTwilioSms,
@@ -269,5 +270,36 @@ describe("sendTwilioSms", () => {
       ok: false,
       message: "Twilio could not send the SMS: The 'To' number is invalid.",
     });
+  });
+});
+
+describe("fetchTwilioSmsStatus", () => {
+  it("reads an existing Twilio message status without sending a text", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ status: "delivered" }),
+    })) as unknown as typeof fetch;
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await fetchTwilioSmsStatus(
+      {
+        accountSid: "AC123",
+        authUsername: "SK123",
+        authPassword: "secret",
+        fromNumber: "+17055550123",
+      },
+      "SM123",
+    );
+
+    expect(result).toEqual({ ok: true, status: "delivered" });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://api.twilio.com/2010-04-01/Accounts/AC123/Messages/SM123.json",
+      {
+        method: "GET",
+        headers: {
+          Authorization: `Basic ${Buffer.from("SK123:secret").toString("base64")}`,
+        },
+      },
+    );
   });
 });
