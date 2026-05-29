@@ -1,4 +1,5 @@
 import type { Appointment, Client, Pet } from "./data/types";
+import { collapseLoggedGroomDuplicates } from "./appointmentLedger";
 
 export type WeekRange = {
   start: string;
@@ -91,7 +92,7 @@ function appointmentRows({
   const clientsById = new Map(clients.map((client) => [client.id, client]));
   const petsById = new Map(pets.map((pet) => [pet.id, pet]));
 
-  return appointments
+  return collapseLoggedGroomDuplicates(appointments)
     .filter((appointment) => {
       const status = appointment.status ?? "completed";
       return (
@@ -145,7 +146,7 @@ export function bookedFeesForDate(
   appointments: Appointment[],
   date: string,
 ): number {
-  return appointments
+  return collapseLoggedGroomDuplicates(appointments)
     .filter(
       (appointment) =>
         (appointment.status ?? "completed") === "booked" &&

@@ -122,16 +122,42 @@ describe("week schedule helpers", () => {
     expect(rows.map((row) => row.appointment.id)).toEqual(["earlier", "later"]);
   });
 
+  it("does not show the booked row after the same dog has a logged groom that day", () => {
+    const rows = appointmentsForDay({
+      appointments: [
+        appt({ id: "booked", date: "2026-05-21", status: "booked" }),
+        appt({
+          id: "logged",
+          date: "2026-05-21",
+          status: "completed",
+          time_slot: null,
+        }),
+      ],
+      clients,
+      pets,
+      date: "2026-05-21",
+    });
+
+    expect(rows).toEqual([]);
+  });
+
   it("totals booked fees for a selected day", () => {
     expect(
       bookedFeesForDate([
         appt({ id: "one", date: "2026-05-21", price: 80 }),
-        appt({ id: "two", date: "2026-05-21", price: 45 }),
-        appt({ id: "no-fee", date: "2026-05-21", price: null }),
-        appt({ id: "completed", date: "2026-05-21", status: "completed", price: 90 }),
+        appt({ id: "two", pet_id: "p2", date: "2026-05-21", price: 45 }),
+        appt({ id: "no-fee", pet_id: "p3", date: "2026-05-21", price: null }),
+        appt({
+          id: "completed",
+          pet_id: "p9",
+          date: "2026-05-21",
+          status: "completed",
+          price: 90,
+        }),
+        appt({ id: "logged", date: "2026-05-21", status: "completed", price: 80 }),
         appt({ id: "other-day", date: "2026-05-22", price: 100 }),
       ], "2026-05-21"),
-    ).toBe(125);
+    ).toBe(45);
   });
 });
 

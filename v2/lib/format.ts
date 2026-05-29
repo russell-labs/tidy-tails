@@ -26,6 +26,47 @@ export function formatReviewDate(iso: string): string {
   return formatDate(iso);
 }
 
+export function formatDateTime(
+  iso: string,
+  timeZone = "America/Toronto",
+): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    month: "numeric",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(date);
+  const value = (type: string) =>
+    parts.find((part) => part.type === type)?.value ?? "";
+  const monthIndex = Number(value("month")) - 1;
+  const day = Number(value("day"));
+  const hour24 = Number(value("hour"));
+  const minute = value("minute").padStart(2, "0");
+  const hour12 = hour24 % 12 || 12;
+  const period = hour24 >= 12 ? "PM" : "AM";
+  const month =
+    [
+      "Jan",
+      "Feb",
+      "Mar",
+      "Apr",
+      "May",
+      "Jun",
+      "Jul",
+      "Aug",
+      "Sep",
+      "Oct",
+      "Nov",
+      "Dec",
+    ][monthIndex] ?? "";
+  if (!month || !day || !minute) return "";
+  return `${month} ${day}, ${hour12}:${minute} ${period}`;
+}
+
 /** "May 8" — year dropped when it matches the current year. */
 export function formatDateShort(iso: string): string {
   const d = new Date(iso + "T00:00:00");

@@ -11,6 +11,10 @@ import {
   type PaymentMethod,
   type PaymentStatus,
 } from "./payments";
+import {
+  validateSalonPayoutOverrideInput,
+  withSalonPayoutOverride,
+} from "./payoutOverride";
 
 export type EditAppointmentInput = {
   client_id: string;
@@ -24,6 +28,9 @@ export type EditAppointmentInput = {
   payment_method: string;
   payment_status: string;
   notes: string;
+  salon_payout_override?: string;
+  send_booking_update_text: string;
+  booking_update_message: string;
 };
 
 export type ValidatedEditAppointment = {
@@ -38,6 +45,7 @@ export type ValidatedEditAppointment = {
   payment_method: PaymentMethod;
   payment_status: PaymentStatus;
   notes: string | null;
+  salon_payout_override?: number | null;
 };
 
 export type EditAppointmentErrors = Partial<
@@ -65,6 +73,7 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const TIME_SLOT_MAX = 40;
 const NOTES_MAX = 1000;
 const CANCELLATION_MESSAGE_MAX = 480;
+const BOOKING_UPDATE_MESSAGE_MAX = 480;
 
 function pad(n: number): string {
   return String(n).padStart(2, "0");
@@ -174,6 +183,15 @@ export function validateEditAppointment(
   if (notes && notes.length > NOTES_MAX) {
     errors.notes = "Those notes are too long.";
   }
+  const payoutOverride = validateSalonPayoutOverrideInput(
+    raw.salon_payout_override,
+  );
+  if (!payoutOverride.ok) {
+    errors.salon_payout_override = payoutOverride.message;
+  } else if (payoutOverride.value != null && !location) {
+    errors.salon_payout_override =
+      "Choose Gina's or Annette's before overriding salon payout.";
+  }
 
   if (Object.keys(errors).length > 0) return { ok: false, errors };
 
@@ -191,6 +209,7 @@ export function validateEditAppointment(
       payment_method,
       payment_status,
       notes,
+      salon_payout_override: payoutOverride.ok ? payoutOverride.value : null,
     },
   };
 }
@@ -207,10 +226,13 @@ export function buildEditAppointmentUpdate(
     fee: v.fee,
     tip: v.tip,
     net: v.payment_status === "paid" ? total : null,
-    notes: withPaymentInfo(v.notes, {
-      method: v.payment_method,
-      status: v.payment_status,
-    }),
+    notes: withPaymentInfo(
+      withSalonPayoutOverride(v.notes, v.salon_payout_override ?? null),
+      {
+        method: v.payment_method,
+        status: v.payment_status,
+      },
+    ),
   };
 }
 
@@ -249,6 +271,41 @@ export function buildCancellationTextMessage({
   const who = ownerFirstName?.trim() || "there";
   const when = time ? `${date} at ${time}` : date;
   return `Hi ${who}, ${petName}'s Tidy Tails appointment on ${when} has been cancelled. - Samantha`;
+}
+
+export function buildBookingUpdateTextMessage({
+  ownerFirstName,
+  petName,
+  date,
+  time,
+  service,
+  location,
+}: {
+  ownerFirstName: string | null;
+  petName: string;
+  date: string;
+  time: string | null;
+  service: string | null;
+  location: string | null;
+}): string {
+  const who = ownerFirstName?.trim() || "there";
+  const serviceText = service?.trim() || "Grooming";
+  const when = time ? `${date} at ${time}` : date;
+  const where = location?.trim() ? ` at ${location.trim()}` : "";
+  return `Hi ${who}, updated booking for ${petName}: ${serviceText} on ${when}${where}. See you then! - Samantha`;
+}
+
+export function validateBookingUpdateTextInput(
+  raw: string,
+): { ok: true; value: string } | { ok: false; message: string } {
+  const message = raw.trim();
+  if (!message) {
+    return { ok: false, message: "Write a booking update text before sending." };
+  }
+  if (message.length > BOOKING_UPDATE_MESSAGE_MAX) {
+    return { ok: false, message: "That booking update text is too long." };
+  }
+  return { ok: true, value: message };
 }
 
 export function validateCancellationTextInput(

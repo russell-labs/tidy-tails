@@ -8,6 +8,7 @@
 // demonstrations stay accurate whenever the app is run.
 
 import type { Appointment, Client, Pet, Vaccination } from "./types";
+import type { SmsMessage } from "../inboundSms";
 
 function isoDaysAgo(n: number): string {
   const d = new Date();
@@ -203,4 +204,52 @@ export const FIXTURE_VACCINATIONS: Vaccination[] = [
   { id: "v10", pet_id: "p16", vaccine_type: "Rabies", expires_at: isoDaysFromNow(500), notes: null },
   { id: "v11", pet_id: "p16", vaccine_type: "DHPP", expires_at: isoDaysFromNow(24), notes: null },
   { id: "v12", pet_id: "p23", vaccine_type: "Rabies", expires_at: isoDaysFromNow(60), notes: null },
+];
+
+export const FIXTURE_SMS_MESSAGES: SmsMessage[] = [
+  {
+    id: "fixture-sms-inbound-question",
+    groomer_id: "fixture-groomer",
+    client_id: "c03",
+    direction: "inbound",
+    from_phone: "705-555-0147",
+    to_phone: "705-555-0000",
+    body: "What time should I bring Pepper and Olive tomorrow?",
+    twilio_message_sid: "SMFIXTUREINBOUND1",
+    status: "received",
+    match_status: "matched",
+    received_at: new Date(Date.now() - 1000 * 60 * 6).toISOString(),
+    sent_at: null,
+    created_at: new Date(Date.now() - 1000 * 60 * 6).toISOString(),
+  },
+  {
+    id: "fixture-sms-outbound-delivered",
+    groomer_id: "fixture-groomer",
+    client_id: "c03",
+    direction: "outbound",
+    from_phone: "705-555-0000",
+    to_phone: "705-555-0147",
+    body: "They are booked for 10:00am at 60 Olive Crescent.",
+    twilio_message_sid: "SMFIXTUREDELIVERED1",
+    status: "delivered",
+    match_status: "matched",
+    received_at: null,
+    sent_at: new Date(Date.now() - 1000 * 60 * 16).toISOString(),
+    created_at: new Date(Date.now() - 1000 * 60 * 16).toISOString(),
+  },
+  {
+    id: "fixture-sms-outbound-failed",
+    groomer_id: "fixture-groomer",
+    client_id: "c03",
+    direction: "outbound",
+    from_phone: "705-555-0000",
+    to_phone: "705-555-0147",
+    body: "This fixture proves failed delivery is visible before production checks.",
+    twilio_message_sid: "SMFIXTUREFAILED1",
+    status: "failed",
+    match_status: "matched",
+    received_at: null,
+    sent_at: new Date(Date.now() - 1000 * 60 * 26).toISOString(),
+    created_at: new Date(Date.now() - 1000 * 60 * 26).toISOString(),
+  },
 ];

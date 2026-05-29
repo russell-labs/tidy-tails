@@ -9,6 +9,10 @@
 // review step — one validator, both paths. Unit-tested in booking.test.ts.
 
 import type { Appointment, Pet } from "./data/types";
+import {
+  validateSalonPayoutOverrideInput,
+  withSalonPayoutOverride,
+} from "./payoutOverride";
 
 // The CHECK-constrained service_type enum codes in the live schema.
 export const SERVICE_TYPES = [
@@ -80,6 +84,7 @@ export type BookingInput = {
   customer_phone: string;
   fee: string;
   notes: string;
+  salon_payout_override?: string;
 };
 
 // A validated booking — optionals normalized to value-or-null.
@@ -100,6 +105,7 @@ export type ValidatedBooking = {
   customer_phone: string | null;
   fee: number | null;
   notes: string | null;
+  salon_payout_override?: number | null;
 };
 
 export type PetBooking = {
@@ -267,7 +273,8 @@ export function googleAvailabilityBlocksBooking(status: string): boolean {
  * bounds are deterministic in tests. The date is required and bounded to one
  * year back / two years forward of today — a typo guard against a wrong year,
  * not a business rule. A time is required so new bookings are actionable in the
- * day book; service/fee/notes remain optional, normalized to value-or-null.
+ * day book. A service is required so the schedule, reminders, and groom log
+ * never carry ambiguous "Service not set" work into Sam's day.
  */
 export function validateBookingInput(
   raw: Partial<BookingInput>,
@@ -311,6 +318,8 @@ export function validateBookingInput(
     } else {
       errors.service_type = "Pick a service from the list.";
     }
+  } else {
+    errors.service_type = "Pick a service.";
   }
 
   const locationRaw = (raw.location ?? "").trim();
@@ -377,6 +386,7 @@ export function validateBookingInput(
         errors.service_type = "Pick a service from the list.";
       }
     }
+    if (!perPetService) errors.service_type = "Pick a service.";
     const perPetFeeRaw = petFees[selectedPetId] ?? "";
     const perPetFee = perPetFeeRaw.trim() ? parseFee(perPetFeeRaw) : globalFee;
     if (perPetFee.error) errors.fee = perPetFee.error;
@@ -390,6 +400,15 @@ export function validateBookingInput(
   const notes = optionalText(raw.notes);
   if (notes && notes.length > NOTES_MAX) {
     errors.notes = "Those notes are too long.";
+  }
+  const payoutOverride = validateSalonPayoutOverrideInput(
+    raw.salon_payout_override,
+  );
+  if (!payoutOverride.ok) {
+    errors.salon_payout_override = payoutOverride.message;
+  } else if (payoutOverride.value != null && !location) {
+    errors.salon_payout_override =
+      "Choose Gina's or Annette's before overriding salon payout.";
   }
 
   if (Object.keys(errors).length > 0) return { ok: false, errors };
@@ -413,6 +432,7 @@ export function validateBookingInput(
       customer_phone,
       fee,
       notes,
+      salon_payout_override: payoutOverride.ok ? payoutOverride.value : null,
     },
   };
 }
@@ -480,7 +500,10 @@ export function buildAppointmentInserts(b: ValidatedBooking): AppointmentInsert[
     service_type: petBooking.service_type,
     location: b.location,
     fee: petBooking.fee,
-    notes: b.notes,
+    notes: withSalonPayoutOverride(
+      b.notes,
+      b.salon_payout_override ?? null,
+    ),
     status: "booked",
   }));
 }

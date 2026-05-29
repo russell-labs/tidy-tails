@@ -108,6 +108,7 @@ export async function createBooking(
     customer_phone: String(formData.get("customer_phone") ?? ""),
     fee: String(formData.get("fee") ?? ""),
     notes: String(formData.get("notes") ?? ""),
+    salon_payout_override: String(formData.get("salon_payout_override") ?? ""),
   };
 
   const validation = validateBookingInput(raw);

@@ -7,7 +7,7 @@ import {
   sendMessageCenterSmsMessage,
   type InboxActionState,
 } from "@/lib/actions/inbox";
-import { formatPhone, fullName } from "@/lib/format";
+import { formatDateTime, formatPhone, fullName } from "@/lib/format";
 import type { SmsMessage } from "@/lib/inboundSms";
 import { type SmsThread } from "@/lib/inbox";
 import type { Appointment, Client, Pet } from "@/lib/data/types";
@@ -579,14 +579,4 @@ function threadName(thread: SmsThread, clientsById: Map<string, ClientSummary>):
 function threadInitial(name: string): string {
   const trimmed = name.trim();
   return trimmed ? trimmed[0].toUpperCase() : "?";
-}
-
-function formatDateTime(iso: string): string {
-  if (!iso) return "";
-  return new Date(iso).toLocaleString("en-CA", {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
 }

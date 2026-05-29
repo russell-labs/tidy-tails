@@ -13,6 +13,7 @@ export type PetCardData = {
   lastVisit: string | null; // ISO date
   usualService: string | null;
   usualPrice: number | null;
+  passedAway?: boolean;
 };
 
 export type HouseholdCardData = {

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { collapseLoggedGroomDuplicates } from "@/lib/appointmentLedger";
 import { loadDataset } from "@/lib/data/repo";
 import { lapsedClients, revenueInRange, vaccinationState } from "@/lib/derive";
 import {
@@ -50,7 +51,8 @@ export default async function ReportsPage({
   } = await searchParams;
   const { year, month } = parseMonth(monthParam);
   const operatorSettings = await readOperatorSettings();
-  const { clients, pets, appointments, vaccinations } = await loadDataset();
+  const { clients, pets, appointments: rawAppointments, vaccinations } = await loadDataset();
+  const appointments = collapseLoggedGroomDuplicates(rawAppointments);
   const threshold = parseThreshold(
     thresholdParam,
     operatorSettings.lapsedThresholdDays,

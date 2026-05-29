@@ -50,8 +50,15 @@ const darlow: SearchHousehold = {
   phone: "705-555-0233",
   pets: [{ id: "pt-bela", name: "Bela" }],
 };
+const zane: SearchHousehold = {
+  id: "h-zane",
+  firstName: "Mira",
+  lastName: "Zane",
+  phone: "705-555-0244",
+  pets: [{ id: "pt-bella-zane", name: "Bella", passedAway: true }],
+};
 
-const ALL = [albright, brandt, reyes, coleman, campbell, darlow];
+const ALL = [albright, brandt, reyes, coleman, campbell, darlow, zane];
 const ids = (rs: SearchResult[]) => rs.map((r) => r.household.id);
 
 describe("searchHouseholds — empty and short queries", () => {
@@ -63,6 +70,7 @@ describe("searchHouseholds — empty and short queries", () => {
       "h-coleman",
       "h-darlow",
       "h-reyes",
+      "h-zane",
     ]);
   });
 
@@ -177,6 +185,12 @@ describe("searchHouseholds — common pet-name disambiguation", () => {
     const reyesResult = out.find((r) => r.household.id === "h-reyes")!;
     expect(brandtResult.matchedPetIds).toEqual(["pt-bella-brandt"]);
     expect(reyesResult.matchedPetIds).toEqual(["pt-bella-reyes"]);
+  });
+
+  it("ranks living pets ahead of passed-away pets when names are identical", () => {
+    const out = ids(searchHouseholds("Bella", ALL));
+    expect(out.indexOf("h-brandt")).toBeLessThan(out.indexOf("h-zane"));
+    expect(out.indexOf("h-reyes")).toBeLessThan(out.indexOf("h-zane"));
   });
 });
 

@@ -145,6 +145,7 @@ export default async function AppointmentActionPage({
             appointment={appointment}
             appointments={householdAppointments}
             petName={pet.name}
+            ownerFirstName={client.first_name}
             customerPhone={client.phone}
             mode={dataMode()}
             writesEnabled={isEditAppointmentWriteEnabled()}

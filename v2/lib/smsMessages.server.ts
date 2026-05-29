@@ -1,4 +1,6 @@
 import { unstable_noStore as noStore } from "next/cache";
+import { dataMode } from "@/lib/data/repo";
+import { FIXTURE_SMS_MESSAGES } from "@/lib/data/fixtures";
 import {
   buildTwilioStatusUpdate,
   mapSmsMessageRow,
@@ -10,6 +12,10 @@ import { fetchTwilioSmsStatus, getTwilioConfig } from "@/lib/twilio";
 
 export async function loadRecentSmsMessages(limit = 12): Promise<SmsMessage[]> {
   noStore();
+  if (dataMode() !== "live") {
+    return recentFixtureSmsMessages(limit);
+  }
+
   try {
     const supabase = await createServerSupabase();
     const { data, error } = await supabase
@@ -30,6 +36,12 @@ export async function loadClientSmsMessages(
   limit = 10,
 ): Promise<SmsMessage[]> {
   noStore();
+  if (dataMode() !== "live") {
+    return recentFixtureSmsMessages(limit).filter(
+      (message) => message.client_id === clientId,
+    );
+  }
+
   try {
     const supabase = await createServerSupabase();
     const { data, error } = await supabase
@@ -48,6 +60,15 @@ export async function loadClientSmsMessages(
 
 export async function hasClientOutboundSms(clientId: string): Promise<boolean> {
   noStore();
+  if (dataMode() !== "live") {
+    return FIXTURE_SMS_MESSAGES.some(
+      (message) =>
+        message.client_id === clientId &&
+        message.direction === "outbound" &&
+        message.status === "sent",
+    );
+  }
+
   try {
     const supabase = await createServerSupabase();
     const { data, error } = await supabase
@@ -62,6 +83,16 @@ export async function hasClientOutboundSms(clientId: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+function recentFixtureSmsMessages(limit: number): SmsMessage[] {
+  return [...FIXTURE_SMS_MESSAGES]
+    .sort(
+      (a, b) =>
+        Date.parse(b.received_at ?? b.sent_at ?? b.created_at) -
+        Date.parse(a.received_at ?? a.sent_at ?? a.created_at),
+    )
+    .slice(0, limit);
 }
 
 async function refreshOutboundDeliveryStatuses(

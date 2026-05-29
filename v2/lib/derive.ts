@@ -4,6 +4,7 @@
 import type { Appointment, Client, Pet, Vaccination } from "./data/types";
 import { daysFromToday } from "./format";
 import { parsePaymentInfo } from "./payments";
+import { collapseLoggedGroomDuplicates } from "./appointmentLedger";
 
 /**
  * Most recent *past* appointment in a list — the client's last actual visit —
@@ -16,7 +17,9 @@ export function lastAppointment(
   appointments: Appointment[],
   today: string = iso(new Date()),
 ): Appointment | null {
-  const pastVisits = appointments.filter((a) => a.date <= today);
+  const pastVisits = collapseLoggedGroomDuplicates(appointments).filter(
+    (a) => a.date <= today,
+  );
   if (pastVisits.length === 0) return null;
   return [...pastVisits].sort((a, b) => b.date.localeCompare(a.date))[0];
 }
@@ -40,7 +43,9 @@ export function daysSinceLastVisit(appointments: Appointment[]): number | null {
  * skipped; null when none of the history records a service.
  */
 export function usualService(appointments: Appointment[]): string | null {
-  const known = appointments.filter((a) => a.service != null);
+  const known = collapseLoggedGroomDuplicates(appointments).filter(
+    (a) => a.service != null,
+  );
   if (known.length === 0) return null;
 
   const counts = new Map<string, number>();
@@ -67,7 +72,7 @@ export function usualService(appointments: Appointment[]): string | null {
  * null when none of the history records a price.
  */
 export function usualPrice(appointments: Appointment[]): number | null {
-  const prices = appointments
+  const prices = collapseLoggedGroomDuplicates(appointments)
     .map((a) => a.price)
     .filter((p): p is number => p != null)
     .sort((x, y) => x - y);
@@ -81,7 +86,7 @@ export function usualPrice(appointments: Appointment[]): number | null {
 
 /** Most recent non-null price, used as the editable default for a new booking. */
 export function lastKnownPrice(appointments: Appointment[]): number | null {
-  for (const appointment of sortByDateDesc(appointments)) {
+  for (const appointment of sortByDateDesc(collapseLoggedGroomDuplicates(appointments))) {
     if (appointment.price != null) return appointment.price;
   }
   return null;
@@ -89,7 +94,7 @@ export function lastKnownPrice(appointments: Appointment[]): number | null {
 
 /** Most recent non-null service, used as the editable default for a new booking. */
 export function lastKnownService(appointments: Appointment[]): string | null {
-  for (const appointment of sortByDateDesc(appointments)) {
+  for (const appointment of sortByDateDesc(collapseLoggedGroomDuplicates(appointments))) {
     if (appointment.service != null) return appointment.service;
   }
   return null;
@@ -241,7 +246,9 @@ export function revenueInRange(
   from: string,
   to: string,
 ): RevenueSummary {
-  const inRange = appointments.filter((a) => a.date >= from && a.date <= to);
+  const inRange = collapseLoggedGroomDuplicates(appointments).filter(
+    (a) => a.date >= from && a.date <= to,
+  );
   const collected = inRange.filter(
     (a) => parsePaymentInfo(a.notes).status !== "waiting",
   );

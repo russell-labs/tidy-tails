@@ -22,6 +22,7 @@ import {
 import type { Appointment } from "@/lib/data/types";
 import {
   appointmentDeleteKind,
+  buildBookingUpdateTextMessage,
   buildCancellationTextMessage,
   validateEditAppointment,
   type EditAppointmentErrors,
@@ -38,6 +39,10 @@ import {
   type PaymentMethod,
   type PaymentStatus,
 } from "@/lib/payments";
+import {
+  parseSalonPayoutOverride,
+  stripSalonPayoutOverride,
+} from "@/lib/payoutOverride";
 import { BookingTimeSlotPicker } from "./BookingTimeSlotPicker";
 import { Sheet } from "./Sheet";
 import { SubmitDogOverlay } from "./SubmitDog";
@@ -64,6 +69,7 @@ export function EditAppointment({
   appointment,
   appointments = [appointment],
   petName,
+  ownerFirstName,
   customerPhone,
   mode,
   writesEnabled,
@@ -74,6 +80,7 @@ export function EditAppointment({
   appointment: Appointment;
   appointments?: Appointment[];
   petName?: string;
+  ownerFirstName?: string | null;
   customerPhone?: string;
   mode: "fixtures" | "live";
   writesEnabled: boolean;
@@ -118,6 +125,7 @@ export function EditAppointment({
           appointment={appointment}
           appointments={appointments}
           petName={petName}
+          ownerFirstName={ownerFirstName}
           customerPhone={customerPhone}
           mode={mode}
           writesEnabled={writesEnabled}
@@ -134,6 +142,7 @@ function EditAppointmentForm({
   appointment,
   appointments,
   petName,
+  ownerFirstName,
   customerPhone,
   mode,
   writesEnabled,
@@ -144,6 +153,7 @@ function EditAppointmentForm({
   appointment: Appointment;
   appointments: Appointment[];
   petName?: string;
+  ownerFirstName?: string | null;
   customerPhone?: string;
   mode: "fixtures" | "live";
   writesEnabled: boolean;
@@ -184,16 +194,21 @@ function EditAppointmentForm({
   const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>(
     initialPayment.status ?? "paid",
   );
-  const [notes, setNotes] = useState(stripPaymentInfo(appointment.notes) ?? "");
+  const [notes, setNotes] = useState(
+    stripSalonPayoutOverride(stripPaymentInfo(appointment.notes)) ?? "",
+  );
+  const [salonPayoutOverride, setSalonPayoutOverride] = useState(
+    parseSalonPayoutOverride(appointment.notes)?.toString() ?? "",
+  );
+  const [sendBookingUpdateText, setSendBookingUpdateText] = useState(false);
+  const [bookingUpdateMessage, setBookingUpdateMessage] = useState("");
   const deleteKind = appointmentDeleteKind({
     status: appointment.status,
     date: appointment.date,
     today: todayISO(),
   });
   const canDeleteAppointment = deleteKind !== "disabled";
-  const [sendCancellationText, setSendCancellationText] = useState(
-    deleteKind === "future_booking" && Boolean(customerPhone),
-  );
+  const [sendCancellationText, setSendCancellationText] = useState(false);
   const [cancellationMessage, setCancellationMessage] = useState(
     buildCancellationTextMessage({
       ownerFirstName: null,
@@ -232,6 +247,23 @@ function EditAppointmentForm({
       : fallbackSlots
     : [];
   const bookedTimes = date ? bookedTimesForDate(comparableAppointments, date) : [];
+  const serviceLabel =
+    serviceType ? (SERVICE_LABELS[serviceType as ServiceType] ?? null) : null;
+  const customerLocation = location
+    ? locationLabelFromSettings(location, locationSettings)
+    : null;
+  const defaultBookingUpdateMessage = () =>
+    buildBookingUpdateTextMessage({
+      ownerFirstName: ownerFirstName ?? null,
+      petName: petName ?? "the pet",
+      date,
+      time: time.trim() || null,
+      service: serviceLabel,
+      location: customerLocation,
+    });
+  const currentBookingUpdateMessage = sendBookingUpdateText
+    ? bookingUpdateMessage.trim() || defaultBookingUpdateMessage()
+    : "";
 
   useEffect(() => {
     if (!date) return;
@@ -263,6 +295,7 @@ function EditAppointmentForm({
       payment_method: paymentMethod,
       payment_status: paymentStatus,
       notes,
+      salon_payout_override: salonPayoutOverride,
     });
     if (!validation.ok) {
       setErrors(validation.errors);
@@ -318,6 +351,21 @@ function EditAppointmentForm({
       <input type="hidden" name="payment_method" value={paymentMethod} />
       <input type="hidden" name="payment_status" value={paymentStatus} />
       <input type="hidden" name="notes" value={notes} />
+      <input
+        type="hidden"
+        name="salon_payout_override"
+        value={salonPayoutOverride}
+      />
+      <input
+        type="hidden"
+        name="send_booking_update_text"
+        value={sendBookingUpdateText ? "on" : ""}
+      />
+      <input
+        type="hidden"
+        name="booking_update_message"
+        value={currentBookingUpdateMessage}
+      />
       <input
         type="hidden"
         name="send_cancellation_text"
@@ -423,6 +471,24 @@ function EditAppointmentForm({
               ))}
             </select>
           </Field>
+          {location ? (
+            <Field
+              label="Salon payout override %"
+              error={errors.salon_payout_override}
+            >
+              <span className="text-xs leading-relaxed text-ink-soft">
+                Optional. Use only when Gina or Annette keeps a different percent for this visit.
+              </span>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={salonPayoutOverride}
+                onChange={(e) => setSalonPayoutOverride(e.target.value)}
+                placeholder="Leave blank for location default"
+                className={fieldClass}
+              />
+            </Field>
+          ) : null}
           <Field label="Fee" error={errors.fee}>
             <input
               type="text"
@@ -480,6 +546,31 @@ function EditAppointmentForm({
               className={`${fieldClass} min-h-28 resize-none`}
             />
           </Field>
+          {customerPhone ? (
+            <label className="flex items-start gap-2 rounded-xl border border-line bg-surface px-3.5 py-3 text-sm text-ink-soft">
+              <input
+                type="checkbox"
+                checked={sendBookingUpdateText}
+                onChange={(event) => {
+                  const checked = event.target.checked;
+                  setSendBookingUpdateText(checked);
+                  if (checked && !bookingUpdateMessage.trim()) {
+                    setBookingUpdateMessage(defaultBookingUpdateMessage());
+                  }
+                }}
+                className="mt-1 h-4 w-4 accent-brand"
+              />
+              <span>
+                <span className="font-semibold text-ink">
+                  Text updated booking to owner
+                </span>
+                <span className="block text-xs leading-relaxed">
+                  Sam reviews the updated date, time, service, and location
+                  before anything sends.
+                </span>
+              </span>
+            </label>
+          ) : null}
           <button
             type="button"
             onClick={toReview}
@@ -602,6 +693,12 @@ function EditAppointmentForm({
             />
             <ReviewRow label="Fee" value={fee ? formatMoney(Number(fee)) : "Not set"} />
             <ReviewRow label="Tip" value={tip ? formatMoney(Number(tip)) : "Not set"} />
+            {salonPayoutOverride.trim() ? (
+              <ReviewRow
+                label="Salon payout"
+                value={`Salon keeps ${salonPayoutOverride.trim()}% for this visit`}
+              />
+            ) : null}
             <ReviewRow
               label="Payment"
               value={paymentLabel({
@@ -611,6 +708,20 @@ function EditAppointmentForm({
             />
             <ReviewRow label="Notes" value={notes.trim() || "Not set"} />
           </dl>
+          {sendBookingUpdateText ? (
+            <Field label="Booking update text to send">
+              <textarea
+                value={currentBookingUpdateMessage}
+                onChange={(event) => setBookingUpdateMessage(event.target.value)}
+                rows={5}
+                className={`${fieldClass} resize-none text-sm leading-relaxed`}
+              />
+              <span className="text-xs text-ink-faint">
+                {currentBookingUpdateMessage.length}/480 characters. This sends
+                only after Sam confirms.
+              </span>
+            </Field>
+          ) : null}
           <div className="flex gap-2.5">
             <button
               type="button"
@@ -697,6 +808,18 @@ function ResultScreen({
           }`}
         >
           {state.summary.calendar.message}
+        </p>
+      ) : null}
+      {"bookingUpdateText" in state && state.bookingUpdateText ? (
+        <p
+          className={`rounded-lg px-3 py-2 text-xs font-medium ${
+            state.bookingUpdateText.status === "sent" ||
+            state.bookingUpdateText.status === "skipped"
+              ? "bg-brand-soft text-brand-ink"
+              : "bg-warn-soft text-warn"
+          }`}
+        >
+          {state.bookingUpdateText.message}
         </p>
       ) : null}
       <button

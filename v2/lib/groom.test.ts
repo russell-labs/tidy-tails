@@ -1,8 +1,35 @@
 import { describe, it, expect } from "vitest";
-import { buildGroomInsert, validateGroomLog } from "./groom";
+import type { Appointment } from "./data/types";
+import {
+  buildGroomInsert,
+  findBookedAppointmentForGroom,
+  validateGroomLog,
+} from "./groom";
 
 // Fixed "today" so the date sanity-bounds tests are deterministic.
 const TODAY = new Date("2026-05-17T12:00:00");
+
+function appointment(overrides: Partial<Appointment>): Appointment {
+  return {
+    id: overrides.id ?? "a1",
+    client_id: overrides.client_id ?? "c1",
+    pet_id: overrides.pet_id ?? "p1",
+    date: overrides.date ?? "2026-05-10",
+    time_slot: overrides.time_slot ?? "10:30am",
+    service: overrides.service ?? "Full groom",
+    price: overrides.price ?? 60,
+    tip: overrides.tip ?? null,
+    notes: overrides.notes ?? null,
+    status: overrides.status ?? "booked",
+    location: overrides.location ?? "gina",
+    google_calendar_id: null,
+    google_event_id: null,
+    google_sync_status: null,
+    google_sync_error: null,
+    google_synced_at: null,
+    created_at: overrides.created_at ?? "2026-05-10T00:00:00.000Z",
+  };
+}
 
 describe("validateGroomLog — required fields", () => {
   it("accepts a minimal completed groom (client, pet, date) with optionals empty", () => {
@@ -328,5 +355,20 @@ describe("buildGroomInsert — payload + null policy", () => {
     ]) {
       expect(payload).not.toHaveProperty(k);
     }
+  });
+});
+
+describe("findBookedAppointmentForGroom", () => {
+  it("finds the booked appointment Sam is completing for that dog and day", () => {
+    const match = findBookedAppointmentForGroom(
+      [
+        appointment({ id: "wrong-day", date: "2026-05-09" }),
+        appointment({ id: "booked", date: "2026-05-10" }),
+        appointment({ id: "already-completed", status: "completed" }),
+      ],
+      { client_id: "c1", pet_id: "p1", date: "2026-05-10" },
+    );
+
+    expect(match?.id).toBe("booked");
   });
 });

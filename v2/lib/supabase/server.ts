@@ -7,6 +7,7 @@
 import { cookies } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
 import type { User } from "@supabase/supabase-js";
+import { e2eUser, isE2EAuthBypassEnabled } from "../e2eAuth";
 import { getSupabaseCredentials } from "./env";
 
 export async function createServerSupabase() {
@@ -40,6 +41,8 @@ export async function createServerSupabase() {
 // the Supabase Auth server on every call, so the result is safe to use for
 // authorization decisions. getSession() trusts the cookie unverified.
 export async function getCurrentUser(): Promise<User | null> {
+  if (isE2EAuthBypassEnabled()) return e2eUser();
+
   const supabase = await createServerSupabase();
   const {
     data: { user },

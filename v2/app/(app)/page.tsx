@@ -3,6 +3,7 @@ import type { HouseholdCardData } from "@/components/HouseholdCard";
 import { dataMode, loadDataset } from "@/lib/data/repo";
 import { lastAppointment, usualPrice, usualService } from "@/lib/derive";
 import { fullName } from "@/lib/format";
+import { isPetPassedAway } from "@/lib/petLifecycle";
 
 // Render per request: the cards show time-relative labels ("12 days ago") that
 // must be computed against the current date, not frozen at build.
@@ -38,6 +39,7 @@ export default async function HomePage() {
           lastVisit: lastAppointment(petAppointments)?.date ?? null,
           usualService: usualService(petAppointments),
           usualPrice: usualPrice(petAppointments),
+          passedAway: isPetPassedAway(pet),
         };
       }),
     };

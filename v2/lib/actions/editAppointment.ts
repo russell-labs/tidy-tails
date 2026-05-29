@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { recordAuditEvent } from "@/lib/audit.server";
 import { dataMode, getClientRecord, loadAppointments } from "@/lib/data/repo";
 import { mapAppointmentRow, serviceLabel } from "@/lib/data/live";
@@ -25,6 +26,7 @@ import {
   buildCancellationTextDraft,
   buildEditAppointmentUpdate,
   shouldBlockAppointmentDeleteForCalendarStatus,
+  validateBookingUpdateTextInput,
   validateCancellationTextInput,
   validateEditAppointment,
   type EditAppointmentErrors,
@@ -57,11 +59,19 @@ export type EditAppointmentSummary = {
 export type EditAppointmentState =
   | { status: "idle" }
   | { status: "error"; errors: EditAppointmentErrors; formError?: string }
-  | { status: "demo"; summary: EditAppointmentSummary }
+  | {
+      status: "demo";
+      summary: EditAppointmentSummary;
+      bookingUpdateText?: AppointmentTextSend;
+    }
   | { status: "gated"; summary: EditAppointmentSummary; message: string }
-  | { status: "saved"; summary: EditAppointmentSummary };
+  | {
+      status: "saved";
+      summary: EditAppointmentSummary;
+      bookingUpdateText?: AppointmentTextSend;
+    };
 
-type CancellationTextSend = {
+type AppointmentTextSend = {
   status: "skipped" | "sent" | "gated" | "failed";
   message: string;
 };
@@ -74,7 +84,7 @@ export type DeleteAppointmentState =
       summary: EditAppointmentSummary;
       message?: string;
       calendar?: { status: string; message: string };
-      cancellationText?: CancellationTextSend;
+      cancellationText?: AppointmentTextSend;
     };
 
 function checked(value: FormDataEntryValue | null): boolean {
@@ -106,7 +116,12 @@ export async function editAppointment(
     payment_method: String(formData.get("payment_method") ?? ""),
     payment_status: String(formData.get("payment_status") ?? ""),
     notes: String(formData.get("notes") ?? ""),
+    salon_payout_override: String(formData.get("salon_payout_override") ?? ""),
   };
+  const wantsBookingUpdateText = checked(formData.get("send_booking_update_text"));
+  const bookingUpdateMessage = String(
+    formData.get("booking_update_message") ?? "",
+  ).trim();
 
   const validation = validateEditAppointment(raw);
   if (!validation.ok) return { status: "error", errors: validation.errors };
@@ -152,8 +167,27 @@ export async function editAppointment(
     paymentMethod: appointment.payment_method,
     paymentStatus: appointment.payment_status,
   };
+  let bookingUpdateDraft: string | null = null;
+  if (wantsBookingUpdateText) {
+    const updateText = validateBookingUpdateTextInput(bookingUpdateMessage);
+    if (!updateText.ok) {
+      return { status: "error", errors: {}, formError: updateText.message };
+    }
+    bookingUpdateDraft = updateText.value;
+  }
 
-  if (dataMode() === "fixtures") return { status: "demo", summary };
+  if (dataMode() === "fixtures") {
+    return {
+      status: "demo",
+      summary,
+      bookingUpdateText: bookingUpdateDraft
+        ? {
+            status: "skipped",
+            message: "Demo only - no booking update text was sent.",
+          }
+        : undefined,
+    };
+  }
 
   if (!isEditAppointmentWriteEnabled()) {
     return {
@@ -241,7 +275,27 @@ export async function editAppointment(
       calendarStatus: summary.calendar?.status,
     },
   });
-  return { status: "saved", summary };
+  let bookingUpdateText: AppointmentTextSend | undefined;
+  if (bookingUpdateDraft) {
+    bookingUpdateText = await sendAppointmentText({
+      clientId: appointment.client_id,
+      groomerId: user.id,
+      label: "Booking update",
+      to: record.client.phone,
+      body: bookingUpdateDraft,
+    });
+    if (bookingUpdateText.status === "sent") {
+      await recordAuditEvent({
+        eventType: "sms.sent",
+        clientId: appointment.client_id,
+        petId: existing.pet_id,
+        appointmentId: appointment.appointment_id,
+        summary: `Sent booking update text for ${summary.petName} to ${summary.ownerName}.`,
+        metadata: { channel: "sms", date: summary.date },
+      });
+    }
+  }
+  return { status: "saved", summary, bookingUpdateText };
 }
 
 export async function deleteAppointment(
@@ -343,14 +397,15 @@ export async function deleteAppointment(
       calendarStatus: calendar.status,
     },
   });
-  let cancellationText: CancellationTextSend = {
+  let cancellationText: AppointmentTextSend = {
     status: "skipped",
     message: "No cancellation text was requested.",
   };
   if (cancellationDraft) {
-    cancellationText = await sendCancellationSms({
+    cancellationText = await sendAppointmentText({
       clientId,
       groomerId: user.id,
+      label: "Cancellation",
       to: record.client.phone,
       body: cancellationDraft.message,
     });
@@ -364,6 +419,7 @@ export async function deleteAppointment(
       });
     }
   }
+  redirect(`/schedule?view=day&day=${summary.date}`);
   return {
     status: "deleted",
     summary,
@@ -373,37 +429,37 @@ export async function deleteAppointment(
   };
 }
 
-async function sendCancellationSms({
+async function sendAppointmentText({
   clientId,
   groomerId,
+  label,
   to,
   body,
 }: {
   clientId: string;
   groomerId: string;
+  label: "Booking update" | "Cancellation";
   to: string;
   body: string;
-}): Promise<
-  CancellationTextSend
-> {
+}): Promise<AppointmentTextSend> {
   if (!isReminderSendEnabled()) {
     return {
       status: "gated",
-      message: "Cancellation text was not sent because SMS sending is switched off.",
+      message: `${label} text was not sent because SMS sending is switched off.`,
     };
   }
   const twilioConfig = getTwilioConfig();
   if (!twilioConfig.ok) {
     return {
       status: "failed",
-      message: "Cancellation text was not sent because Twilio is not configured.",
+      message: `${label} text was not sent because Twilio is not configured.`,
     };
   }
   const normalizedPhone = toTwilioPhone(to);
   if (!normalizedPhone) {
     return {
       status: "failed",
-      message: "Cancellation text was not sent because the customer phone number is not textable.",
+      message: `${label} text was not sent because the customer phone number is not textable.`,
     };
   }
   const result = await sendTwilioSms(twilioConfig.value, {
@@ -413,7 +469,7 @@ async function sendCancellationSms({
   if (!result.ok) {
     return {
       status: "failed",
-      message: `${result.message} Cancellation text was not sent.`,
+      message: `${result.message} ${label} text was not sent.`,
     };
   }
   const supabase = await createServerSupabase();
@@ -427,7 +483,7 @@ async function sendCancellationSms({
       messageSid: result.sid,
     }),
   );
-  return { status: "sent", message: "Cancellation text sent to the customer." };
+  return { status: "sent", message: `${label} text sent to the customer.` };
 }
 
 function serviceCodeFromLabel(label: string | null): string | null {

@@ -325,4 +325,21 @@ describe("revenueInRange — totals over a date window", () => {
       averageTotal: 45,
     });
   });
+
+  it("does not double count a booked appointment after the groom is logged", () => {
+    const booked = { ...appt("2026-04-10", "Full groom", 60), status: "booked" };
+    const logged = {
+      ...appt("2026-04-10", "Full groom", 60, 5),
+      status: "completed",
+    };
+
+    expect(revenueInRange([booked, logged], "2026-04-01", "2026-04-30")).toEqual({
+      count: 1,
+      fees: 60,
+      tips: 5,
+      total: 65,
+      averageFee: 60,
+      averageTotal: 65,
+    });
+  });
 });

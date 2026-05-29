@@ -54,21 +54,51 @@ describe("location finance", () => {
     ).toBe(130);
   });
 
+  it("lets a single Gina or Annette appointment override the salon payout percent", () => {
+    expect(
+      calculateAppointmentMoney(
+        appointment({
+          price: 200,
+          location: "gina",
+          notes: "Holiday special [salon_payout:15]",
+        }),
+        DEFAULT_OPERATOR_SETTINGS.locationSettings,
+      ),
+    ).toEqual({
+      gross: 200,
+      salonPayout: 30,
+      samNet: 170,
+      payoutLabel: "Salon keeps 15% override",
+    });
+  });
+
   it("sums day gross and net by appointment location", () => {
     expect(
       calculateDayMoney(
         [
-          appointment({ id: "a1", price: 100, location: "gina" }),
-          appointment({ id: "a2", price: 100, location: "annette" }),
-          appointment({ id: "a3", price: 50, location: "gina", status: "completed" }),
+          appointment({ id: "a1", pet_id: "p1", price: 100, location: "gina" }),
+          appointment({
+            id: "a2",
+            pet_id: "p2",
+            price: 100,
+            location: "annette",
+            notes: "[salon_payout:10]",
+          }),
+          appointment({
+            id: "a3",
+            pet_id: "p3",
+            price: 50,
+            location: "gina",
+            status: "completed",
+          }),
         ],
         "2026-06-12",
         DEFAULT_OPERATOR_SETTINGS.locationSettings,
       ),
     ).toEqual({
       gross: 200,
-      salonPayout: 65,
-      samNet: 135,
+      salonPayout: 40,
+      samNet: 160,
     });
   });
 

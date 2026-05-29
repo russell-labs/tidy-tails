@@ -287,8 +287,62 @@ export default async function SettingsPage({
     <main className="px-4 py-5">
       <h1 className="text-xl font-bold text-ink">Settings</h1>
       <p className="mt-1 text-sm leading-relaxed text-ink-soft">
-        Account, integrations, message templates, and operating controls.
+        Salon locations, schedule calibration, message templates, and account controls.
       </p>
+
+      <CollapsibleCard
+        title="Salon locations"
+        summary="Addresses and payout percentages for gross/net schedule money"
+      >
+        <div className="border-b border-line px-3.5 py-3">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold text-ink">Location money</p>
+              <p className="mt-1 text-xs leading-relaxed text-ink-soft">
+                These addresses feed booking copy. Schedule money uses the
+                salon-keeps percentage to show Sam&apos;s net.
+              </p>
+            </div>
+            <Pill tone="ready">Active</Pill>
+          </div>
+        </div>
+        <LocationSettingsForm settings={settings.locationSettings} />
+      </CollapsibleCard>
+
+      <CollapsibleCard
+        title="Scheduling rules"
+        summary="Day-fit scoring and workload calibration"
+      >
+        <div className="border-b border-line px-3.5 py-3">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold text-ink">
+                Schedule calibration
+              </p>
+              <p className="mt-1 text-xs leading-relaxed text-ink-soft">
+                Groomer limits, large-dog tolerance, coat/style weight, behavior
+                weight, and warning wording.
+              </p>
+            </div>
+            <Pill tone="ready">Active</Pill>
+          </div>
+        </div>
+        <ScheduleCalibrationForm calibration={settings.scheduleCalibration} />
+      </CollapsibleCard>
+
+      <section className="mt-4" id="message-templates">
+        <h2 className="mb-1.5 text-sm font-semibold uppercase tracking-wide text-ink-faint">
+          Message templates
+        </h2>
+        <MessageDraftSettingsForm settings={settings} />
+      </section>
+
+      <Card
+        title="Texting"
+        eyebrow="Connection status for outbound texts and customer replies."
+      >
+        <SmsReadinessPanel readiness={smsReadiness} />
+      </Card>
 
       <Card
         title="Calendar"
@@ -364,26 +418,6 @@ export default async function SettingsPage({
         </div>
       </Card>
 
-      <Card title="Account">
-        <Row label="Signed in as" value={user?.email ?? "—"} />
-        <Row label="Business name" value="Tidy Tails" />
-        <Row label="Reminder sender" value="Samantha" />
-      </Card>
-
-      <Card
-        title="Texting"
-        eyebrow="Connection status for outbound texts and customer replies."
-      >
-        <SmsReadinessPanel readiness={smsReadiness} />
-      </Card>
-
-      <section className="mt-4" id="message-templates">
-        <h2 className="mb-1.5 text-sm font-semibold uppercase tracking-wide text-ink-faint">
-          Message templates
-        </h2>
-        <MessageDraftSettingsForm settings={settings} />
-      </section>
-
       <Card title="Business tools">
         <SettingsLink
           href="/reports"
@@ -391,46 +425,6 @@ export default async function SettingsPage({
           description="Revenue, lapsed clients, and bookkeeper-ready exports."
         />
       </Card>
-
-      <CollapsibleCard
-        title="Salon locations"
-        summary="Addresses and payout percentages for gross/net schedule money"
-      >
-        <div className="border-b border-line px-3.5 py-3">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="text-sm font-semibold text-ink">Location money</p>
-              <p className="mt-1 text-xs leading-relaxed text-ink-soft">
-                These addresses feed booking copy. Schedule money uses the
-                salon-keeps percentage to show Sam&apos;s net.
-              </p>
-            </div>
-            <Pill tone="ready">Active</Pill>
-          </div>
-        </div>
-        <LocationSettingsForm settings={settings.locationSettings} />
-      </CollapsibleCard>
-
-      <CollapsibleCard
-        title="Scheduling rules"
-        summary="Day-fit scoring and workload calibration"
-      >
-        <div className="border-b border-line px-3.5 py-3">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="text-sm font-semibold text-ink">
-                Schedule calibration
-              </p>
-              <p className="mt-1 text-xs leading-relaxed text-ink-soft">
-                Groomer limits, large-dog tolerance, coat/style weight, behavior
-                weight, and warning wording.
-              </p>
-            </div>
-            <Pill tone="ready">Active</Pill>
-          </div>
-        </div>
-        <ScheduleCalibrationForm calibration={settings.scheduleCalibration} />
-      </CollapsibleCard>
 
       <CollapsibleCard
         title="Advanced"
@@ -466,6 +460,12 @@ export default async function SettingsPage({
           </p>
         )}
       </CollapsibleCard>
+
+      <Card title="Account">
+        <Row label="Signed in as" value={user?.email ?? "—"} />
+        <Row label="Business name" value="Tidy Tails" />
+        <Row label="Reminder sender" value="Samantha" />
+      </Card>
 
       <form action={signOut} className="mt-6">
         <button

@@ -5,6 +5,7 @@ import {
   type AuditEvent,
   type AuditEventInput,
 } from "@/lib/audit";
+import { dataMode } from "@/lib/data/repo";
 import { createServerSupabase, getCurrentUser } from "@/lib/supabase/server";
 
 export async function recordAuditEvent(
@@ -30,6 +31,8 @@ export async function recordAuditEvent(
 
 export async function loadRecentAuditEvents(limit = 20): Promise<AuditEvent[]> {
   noStore();
+  if (dataMode() !== "live") return [];
+
   try {
     const supabase = await createServerSupabase();
     const { data, error } = await supabase

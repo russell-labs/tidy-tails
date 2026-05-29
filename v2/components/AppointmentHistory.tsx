@@ -1,7 +1,10 @@
 import type { Appointment } from "@/lib/data/types";
+import { collapseLoggedGroomDuplicates } from "@/lib/appointmentLedger";
 import { sortByDateDesc } from "@/lib/derive";
 import { formatDateShort, formatMoney } from "@/lib/format";
 import type { LocationSettingsMap } from "@/lib/operatorSettings";
+import { stripPaymentInfo } from "@/lib/payments";
+import { stripSalonPayoutOverride } from "@/lib/payoutOverride";
 import { EditAppointment } from "./EditAppointment";
 
 function Row({
@@ -44,9 +47,9 @@ function Row({
         ) : (
           <p className="text-sm text-ink-faint">Service not recorded</p>
         )}
-        {appointment.notes ? (
+        {displayNotes(appointment.notes) ? (
           <p className="mt-1 text-sm leading-snug text-ink">
-            {appointment.notes}
+            {displayNotes(appointment.notes)}
           </p>
         ) : null}
         <span className="mt-2 inline-flex rounded-lg border border-line px-2.5 py-1 text-xs font-semibold text-brand">
@@ -107,12 +110,13 @@ export function AppointmentHistory({
     );
   }
 
+  const visibleAppointments = collapseLoggedGroomDuplicates(appointments);
   const today = todayISO();
-  const upcoming = appointments
+  const upcoming = visibleAppointments
     .filter((a) => a.status === "booked" && a.date >= today)
     .sort((a, b) => `${a.date} ${a.time_slot ?? ""}`.localeCompare(`${b.date} ${b.time_slot ?? ""}`));
   const history = sortByDateDesc(
-    appointments.filter((a) => !(a.status === "booked" && a.date >= today)),
+    visibleAppointments.filter((a) => !(a.status === "booked" && a.date >= today)),
   );
   // Skip fee-less visits so the all-time total never reads low by treating an
   // unrecorded fee as $0.
@@ -200,6 +204,10 @@ export function AppointmentHistory({
       </section>
     </div>
   );
+}
+
+function displayNotes(notes: string | null): string | null {
+  return stripSalonPayoutOverride(stripPaymentInfo(notes));
 }
 
 function todayISO(): string {

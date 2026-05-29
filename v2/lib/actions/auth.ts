@@ -7,6 +7,7 @@
 // allowlist so accidental extra Auth users cannot enter the operator shell.
 
 import { revalidatePath } from "next/cache";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { recordAuditEvent } from "@/lib/audit.server";
 import { isAllowedOperatorEmail } from "@/lib/operatorAccess";
@@ -66,6 +67,31 @@ export async function signIn(
     summary: `Signed in as ${user?.email ?? "operator"}.`,
   });
   redirect("/");
+}
+
+function appOriginFromHeaders(headersList: Headers): string {
+  const forwardedProto = headersList.get("x-forwarded-proto") ?? "https";
+  const forwardedHost = headersList.get("x-forwarded-host");
+  const host = forwardedHost ?? headersList.get("host");
+  return host ? `${forwardedProto}://${host}` : "";
+}
+
+export async function signInWithGoogle(_formData: FormData): Promise<void> {
+  void _formData;
+  const supabase = await createServerSupabase();
+  const origin = appOriginFromHeaders(await headers());
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider: "google",
+    options: {
+      redirectTo: `${origin}/auth/callback`,
+    },
+  });
+
+  if (error || !data.url) {
+    redirect("/login?error=google");
+  }
+
+  redirect(data.url);
 }
 
 export async function signOut() {

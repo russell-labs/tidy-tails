@@ -1,7 +1,9 @@
 import ExcelJS from "exceljs";
+import { collapseLoggedGroomDuplicates } from "./appointmentLedger";
 import { bookingLocationLabel } from "./booking";
 import type { Appointment, Client, Pet } from "./data/types";
 import { parsePaymentInfo, stripPaymentInfo } from "./payments";
+import { stripSalonPayoutOverride } from "./payoutOverride";
 
 export const BOOKKEEPER_HEADERS = [
   "Date",
@@ -41,7 +43,7 @@ export function buildBookkeeperRows({
   const clientsById = new Map(clients.map((client) => [client.id, client]));
   const petsById = new Map(pets.map((pet) => [pet.id, pet]));
 
-  return appointments
+  return collapseLoggedGroomDuplicates(appointments)
     .filter((appointment) => appointment.date >= from && appointment.date <= to)
     .sort((a, b) => a.date.localeCompare(b.date))
     .map((appointment) => {
@@ -71,7 +73,7 @@ export function buildBookkeeperRows({
         paid && payment.method === "interac" ? fee : "",
         payment.status === "waiting" ? "Waiting on payment" : paid ? "Paid" : "",
         appointment.service,
-        stripPaymentInfo(appointment.notes),
+        stripSalonPayoutOverride(stripPaymentInfo(appointment.notes)),
       ];
     });
 }

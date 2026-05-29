@@ -10,6 +10,7 @@ import { digitsOnly } from "./format";
 export type SearchPet = {
   id: string;
   name: string;
+  passedAway?: boolean;
 };
 
 export type SearchHousehold = {
@@ -40,6 +41,7 @@ const PREFIX = 60;
 const SUBSTRING = 40;
 const FUZZY = 20;
 const NO_MATCH = 0;
+const ACTIVE_PET_BONUS = 5;
 
 /** Levenshtein edit distance between `a` and `b`, abandoned once it exceeds `max`. */
 function editDistance(a: string, b: string, max: number): number {
@@ -188,7 +190,11 @@ export function searchHouseholds(
 
     results.push({
       household,
-      score: total,
+      score:
+        total +
+        (household.pets.some((p) => petIds.has(p.id) && !p.passedAway)
+          ? ACTIVE_PET_BONUS
+          : 0),
       matchedFields: FIELD_ORDER.filter((f) => fields.has(f)),
       // Keep the household's own pet order.
       matchedPetIds: household.pets

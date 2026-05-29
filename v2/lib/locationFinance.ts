@@ -3,8 +3,10 @@ import {
   CUSTOMER_BOOKING_LOCATION_LABELS,
   type BookingLocation,
 } from "./booking";
+import { collapseLoggedGroomDuplicates } from "./appointmentLedger";
 import type { Appointment } from "./data/types";
 import type { LocationSettingsMap } from "./operatorSettings";
+import { parseSalonPayoutOverride } from "./payoutOverride";
 
 export type AppointmentMoney = {
   gross: number;
@@ -59,7 +61,7 @@ export function customerLocationLabelFromSettings(
 }
 
 export function calculateAppointmentMoney(
-  appointment: Pick<Appointment, "price" | "location">,
+  appointment: Pick<Appointment, "price" | "location" | "notes">,
   settings: LocationSettingsMap,
 ): AppointmentMoney {
   const gross = appointment.price ?? 0;
@@ -70,6 +72,17 @@ export function calculateAppointmentMoney(
       salonPayout: 0,
       samNet: gross,
       payoutLabel: location ? "No fee" : null,
+    };
+  }
+
+  const payoutOverride = parseSalonPayoutOverride(appointment.notes);
+  if (payoutOverride != null) {
+    const salonPayout = roundMoney(gross * (payoutOverride / 100));
+    return {
+      gross,
+      salonPayout,
+      samNet: roundMoney(gross - salonPayout),
+      payoutLabel: `Salon keeps ${payoutOverride}% override`,
     };
   }
 
@@ -97,7 +110,7 @@ export function calculateDayMoney(
   date: string,
   settings: LocationSettingsMap,
 ): DayMoney {
-  const booked = appointments.filter(
+  const booked = collapseLoggedGroomDuplicates(appointments).filter(
     (appointment) =>
       (appointment.status ?? "completed") === "booked" &&
       appointment.date === date,

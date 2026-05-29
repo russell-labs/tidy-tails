@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   appointmentDeleteKind,
+  buildBookingUpdateTextMessage,
   buildCancellationTextDraft,
   buildCancellationTextMessage,
   buildEditAppointmentUpdate,
@@ -42,6 +43,7 @@ describe("validateEditAppointment", () => {
       payment_method: "interac",
       payment_status: "paid",
       notes: "#4, left ears and tail",
+      salon_payout_override: null,
     });
   });
 
@@ -123,6 +125,23 @@ describe("buildCancellationTextMessage", () => {
   });
 });
 
+describe("buildBookingUpdateTextMessage", () => {
+  it("renders a reviewed customer text for edited booking details", () => {
+    expect(
+      buildBookingUpdateTextMessage({
+        ownerFirstName: "Mary",
+        petName: "Kiwi",
+        date: "2026-06-12",
+        time: "9:30am",
+        service: "Full groom",
+        location: "60 Olive Crescent, Orillia",
+      }),
+    ).toBe(
+      "Hi Mary, updated booking for Kiwi: Full groom on 2026-06-12 at 9:30am at 60 Olive Crescent, Orillia. See you then! - Samantha",
+    );
+  });
+});
+
 describe("validateCancellationTextInput", () => {
   it("accepts a reviewed cancellation text and trims it", () => {
     expect(validateCancellationTextInput("  Hi Mary, Kiwi is cancelled.  ")).toEqual({
@@ -170,6 +189,27 @@ describe("buildEditAppointmentUpdate", () => {
       net: 70,
       notes: "#4, left ears and tail [payment:interac; payment_status:paid]",
     });
+  });
+
+  it("stores a per-appointment salon payout override in the private notes marker", () => {
+    const result = validateEditAppointment(
+      { ...valid, salon_payout_override: "15" },
+      TODAY,
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(buildEditAppointmentUpdate(result.value).notes).toBe(
+      "#4, left ears and tail [salon_payout:15] [payment:interac; payment_status:paid]",
+    );
+  });
+
+  it("rejects a payout override without Gina or Annette selected", () => {
+    const result = validateEditAppointment(
+      { ...valid, location: "", salon_payout_override: "15" },
+      TODAY,
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.errors.salon_payout_override).toBeTruthy();
   });
 
   it("marks waiting payments with a null net", () => {

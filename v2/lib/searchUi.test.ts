@@ -22,8 +22,8 @@ describe("shouldHideBottomNavForSearch", () => {
     expect(shouldHideBottomNavForSearch("")).toBe(false);
   });
 
-  it("hides the bottom nav while typed search results are active", () => {
-    expect(shouldHideBottomNavForSearch("ki")).toBe(true);
+  it("keeps the bottom nav available while typed search results are active", () => {
+    expect(shouldHideBottomNavForSearch("ki")).toBe(false);
   });
 });
 

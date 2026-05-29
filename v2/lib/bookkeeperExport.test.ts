@@ -164,6 +164,33 @@ describe("bookkeeper export rows", () => {
     expect(rows.map((row) => row[3])).toEqual(["Whiskey", "Kiwi"]);
     expect(rows.reduce((sum, row) => sum + Number(row[8] ?? 0), 0)).toBe(105);
   });
+
+  it("exports only the logged groom when an old booked row still exists", () => {
+    const duplicated: Appointment[] = [
+      { ...appointments[0], id: "booked", status: "booked", tip: null },
+      {
+        ...appointments[0],
+        id: "logged",
+        status: "completed",
+        time_slot: null,
+        tip: 5,
+        notes:
+          "#7 left ears and tail [salon_payout:15] [payment:cash; payment_status:paid]",
+      },
+    ];
+
+    const rows = buildBookkeeperRows({
+      clients,
+      pets,
+      appointments: duplicated,
+      from: "2026-01-01",
+      to: "2026-12-31",
+    });
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0][10]).toBe(65);
+    expect(rows[0][16]).toBe("#7 left ears and tail");
+  });
 });
 
 describe("createBookkeeperWorkbookBuffer", () => {

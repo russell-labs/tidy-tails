@@ -10,12 +10,14 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
+import { isE2EAuthBypassEnabled } from "../e2eAuth";
 import { isAllowedOperatorEmail } from "../operatorAccess";
 import { getSupabaseCredentials } from "./env";
 
 // Routes reachable without a session. Everything else requires sign-in.
 const PUBLIC_PATHS = [
   "/login",
+  "/auth/callback",
   "/api/twilio/inbound-sms",
   "/api/twilio/message-status",
 ];
@@ -27,6 +29,10 @@ export function isPublicRoute(pathname: string): boolean {
 }
 
 export async function updateSession(request: NextRequest) {
+  if (isE2EAuthBypassEnabled()) {
+    return NextResponse.next({ request });
+  }
+
   let response = NextResponse.next({ request });
   // Cache directives written by setAll; carried onto redirect responses too.
   const cacheHeaders: Record<string, string> = {};

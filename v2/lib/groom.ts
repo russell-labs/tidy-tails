@@ -9,6 +9,7 @@
 // reuses findOwnedPet for the ownership check. Unit-tested in groom.test.ts.
 
 import { SERVICE_TYPES, type ServiceType } from "./booking";
+import type { Appointment } from "./data/types";
 import {
   isPaymentMethod,
   isPaymentStatus,
@@ -212,4 +213,19 @@ export function buildGroomInsert(g: ValidatedGroomLog): GroomInsert {
     }),
     status: "completed",
   };
+}
+
+export function findBookedAppointmentForGroom(
+  appointments: Appointment[],
+  groom: Pick<ValidatedGroomLog, "client_id" | "pet_id" | "date">,
+): Appointment | null {
+  return (
+    appointments.find(
+      (appointment) =>
+        appointment.client_id === groom.client_id &&
+        appointment.pet_id === groom.pet_id &&
+        appointment.date === groom.date &&
+        appointment.status === "booked",
+    ) ?? null
+  );
 }

@@ -1,19 +1,12 @@
 import type { SmsMessage } from "@/lib/inboundSms";
 import { classifyInboundSmsBody } from "@/lib/inboundSms";
-import { formatPhone } from "@/lib/format";
+import { formatDateTime, formatPhone } from "@/lib/format";
 import { smsDeliveryLabel, smsDeliveryTone } from "@/lib/smsStatus";
 import { SmsMessageHideButton } from "./SmsMessageHideButton";
 
 function messageTime(message: SmsMessage): string {
   const value = message.received_at ?? message.sent_at ?? message.created_at;
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "—";
-  return new Intl.DateTimeFormat("en-CA", {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  }).format(date);
+  return formatDateTime(value) || "—";
 }
 
 function phoneForMessage(message: SmsMessage): string {

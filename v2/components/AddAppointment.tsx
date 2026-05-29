@@ -197,6 +197,7 @@ function BookingForm({
   const [customerPhone, setCustomerPhone] = useState(client.phone);
   const [petFees, setPetFees] = useState<Record<string, string>>(initialPetFees);
   const [notes, setNotes] = useState("");
+  const [salonPayoutOverride, setSalonPayoutOverride] = useState("");
   const [availabilityResult, setAvailabilityResult] = useState<{
     date: string;
     serviceType: ServiceType | "";
@@ -341,6 +342,7 @@ function BookingForm({
       customer_phone: customerPhone,
       fee: primaryFee,
       notes,
+      salon_payout_override: salonPayoutOverride,
     });
     if (!v.ok) {
       setErrors(v.errors);
@@ -405,6 +407,11 @@ function BookingForm({
       <input type="hidden" name="customer_phone" value={customerPhone} />
       <input type="hidden" name="fee" value={primaryFee} />
       <input type="hidden" name="notes" value={notes} />
+      <input
+        type="hidden"
+        name="salon_payout_override"
+        value={salonPayoutOverride}
+      />
 
       <ModeNote mode={mode} writesEnabled={writesEnabled} />
 
@@ -584,6 +591,23 @@ function BookingForm({
             </select>
           </Field>
 
+          {location ? (
+            <Field
+              label="Salon payout override %"
+              error={errors.salon_payout_override}
+              hint="Optional. Use only when Gina or Annette keeps a different percent for this booking."
+            >
+              <input
+                type="text"
+                inputMode="decimal"
+                value={salonPayoutOverride}
+                onChange={(e) => setSalonPayoutOverride(e.target.value)}
+                placeholder="Leave blank for location default"
+                className={fieldClass}
+              />
+            </Field>
+          ) : null}
+
           <label className="flex items-start gap-2 rounded-xl border border-line bg-surface px-3.5 py-3 text-sm text-ink-soft">
             <input
               type="checkbox"
@@ -729,6 +753,12 @@ function BookingForm({
               label="Fee"
               value={totalFee > 0 ? formatMoney(totalFee) : "No fee set"}
             />
+            {salonPayoutOverride.trim() ? (
+              <ReviewRow
+                label="Salon payout"
+                value={`Salon keeps ${salonPayoutOverride.trim()}% for this booking`}
+              />
+            ) : null}
             {notes.trim() ? <ReviewRow label="Notes" value={notes} /> : null}
           </dl>
 

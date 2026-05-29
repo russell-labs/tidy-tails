@@ -3,7 +3,8 @@ export function isActiveHouseholdSearch(query: string): boolean {
 }
 
 export function shouldHideBottomNavForSearch(query: string): boolean {
-  return isActiveHouseholdSearch(query);
+  void query;
+  return false;
 }
 
 export function shouldShowSearchClearButton(query: string): boolean {

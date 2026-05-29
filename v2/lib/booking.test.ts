@@ -91,7 +91,7 @@ describe("validateBookingInput — required fields", () => {
     if (!r.ok) expect(r.errors.pet_id).toBe("Choose at least one pet.");
   });
 
-  it("accepts a minimal booking (client, pet, date, time) with optionals empty", () => {
+  it("rejects a booking without a service so schedule work is never ambiguous", () => {
     const r = validateBookingInput(
       {
         client_id: "c1",
@@ -101,28 +101,8 @@ describe("validateBookingInput — required fields", () => {
       },
       TODAY,
     );
-    expect(r.ok).toBe(true);
-    if (r.ok) {
-      expect(r.value.pet_ids).toEqual(["p1"]);
-      expect(r.value).toEqual({
-        client_id: "c1",
-        pet_id: "p1",
-        pet_ids: ["p1"],
-        pet_bookings: [{ pet_id: "p1", service_type: null, fee: null }],
-        date: "2026-06-01",
-        time_slot: "10:30am",
-        service_type: null,
-        location: null,
-        send_invite: false,
-        customer_email: null,
-        send_booking_text: false,
-        booking_message: null,
-        save_reminder_phone: false,
-        customer_phone: null,
-        fee: null,
-        notes: null,
-      });
-    }
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.errors.service_type).toBe("Pick a service.");
   });
 
   it("rejects a missing date", () => {
@@ -225,6 +205,39 @@ describe("validateBookingInput — optional fields", () => {
     }
   });
 
+  it("accepts a per-booking salon payout override for Gina or Annette", () => {
+    const r = validateBookingInput(
+      {
+        client_id: "c1",
+        pet_id: "p1",
+        date: "2026-06-01",
+        time_slot: "10:00",
+        service_type: "full_groom",
+        location: "gina",
+        salon_payout_override: "15",
+      },
+      TODAY,
+    );
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.value.salon_payout_override).toBe(15);
+  });
+
+  it("rejects a salon payout override without a salon location", () => {
+    const r = validateBookingInput(
+      {
+        client_id: "c1",
+        pet_id: "p1",
+        date: "2026-06-01",
+        time_slot: "10:00",
+        service_type: "full_groom",
+        salon_payout_override: "15",
+      },
+      TODAY,
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.errors.salon_payout_override).toBeTruthy();
+  });
+
   it("requires a valid owner email when email invite is selected", () => {
     const missing = validateBookingInput(
       {
@@ -309,6 +322,7 @@ describe("validateBookingInput — optional fields", () => {
         pet_id: "p1",
         date: "2026-06-01",
         time_slot: "10:30am",
+        service_type: "nail_trim",
         fee: "0",
       },
       TODAY,
@@ -472,12 +486,13 @@ describe("buildAppointmentInsert — payload + null policy", () => {
       customer_phone: "705-555-0199",
       fee: 25,
       notes: "quick visit",
+      salon_payout_override: 15,
     });
     expect(payload.time_slot).toBe("10:00");
     expect(payload.service_type).toBe("nail_trim");
     expect(payload.location).toBe("annette");
     expect(payload.fee).toBe(25);
-    expect(payload.notes).toBe("quick visit");
+    expect(payload.notes).toBe("quick visit [salon_payout:15]");
     expect(payload.status).toBe("booked");
     expect(payload).not.toHaveProperty("send_invite");
   });

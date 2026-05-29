@@ -1,4 +1,5 @@
 import { unstable_noStore as noStore } from "next/cache";
+import { dataMode } from "@/lib/data/repo";
 import { createServerSupabase } from "@/lib/supabase/server";
 import type { Row } from "@/lib/data/live";
 import type { BookingRequestInboxRow } from "@/lib/inbox";
@@ -7,6 +8,8 @@ export async function loadRecentBookingRequests(
   limit = 20,
 ): Promise<BookingRequestInboxRow[]> {
   noStore();
+  if (dataMode() !== "live") return [];
+
   try {
     const supabase = await createServerSupabase();
     const { data, error } = await supabase

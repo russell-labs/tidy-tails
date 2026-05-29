@@ -9,9 +9,10 @@
 //   - live mode    → the write is governed by the server-side kill-switch
 //     isLogGroomWriteEnabled() (env flag TIDYTAILS_ENABLE_LOG_GROOM_WRITE,
 //     default OFF). Flag OFF → the action returns `gated` and runs NO insert;
-//     the OFF path is byte-identical to the pre-flip behaviour. Flag ON → it
-//     persists one completed `appointments` row. The flag is set only after the
-//     Ship 2.2b RLS cutover and an explicit per-surface flip approval.
+//     the OFF path is byte-identical to the pre-flip behaviour. Flag ON →
+//     completes the matching booked row when one exists; otherwise it persists
+//     one completed `appointments` row. The flag is set only after the Ship 2.2b
+//     RLS cutover and an explicit per-surface flip approval.
 //
 // A completed groom is an `appointments` row with status='completed'
 // (buildGroomInsert); validateGroomLog already rejects a future date. The
@@ -27,6 +28,7 @@ import { isLogGroomWriteEnabled } from "@/lib/writeGate";
 import { findOwnedPet } from "@/lib/booking";
 import {
   buildGroomInsert,
+  findBookedAppointmentForGroom,
   validateGroomLog,
   type GroomLogErrors,
 } from "@/lib/groom";
@@ -134,10 +136,19 @@ export async function logGroom(
     };
   }
 
-  // Flag ON: persist exactly one completed appointments row. The auth-aware
-  // server client carries Samantha's JWT, so DEFAULT auth.uid() stamps groomer_id.
+  const existingBooking = findBookedAppointmentForGroom(record.appointments, groom);
+
+  // Flag ON: complete the matching booked row when possible. If Sam logs a
+  // walk-in or old groom with no booking, insert one completed appointment row.
   const supabase = await createServerSupabase();
-  const { error } = await supabase.from("appointments").insert(payload);
+  const write = existingBooking
+    ? await supabase
+        .from("appointments")
+        .update(payload)
+        .eq("id", existingBooking.id)
+        .eq("client_id", groom.client_id)
+    : await supabase.from("appointments").insert(payload);
+  const { error } = write;
   if (error) {
     return {
       status: "error",
@@ -150,6 +161,7 @@ export async function logGroom(
     eventType: "groom.logged",
     clientId: groom.client_id,
     petId: groom.pet_id,
+    appointmentId: existingBooking?.id,
     summary: `Logged groom for ${pet.name} under ${summary.ownerName}.`,
     metadata: {
       date: summary.date,
