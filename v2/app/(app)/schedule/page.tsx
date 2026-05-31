@@ -5,6 +5,7 @@ import { bookingLocationLabel } from "@/lib/booking";
 import {
   appointmentsForDay,
   appointmentsForWeek,
+  groupScheduledAppointments,
   scheduleView,
   shiftDay,
   shiftWeek,
@@ -120,6 +121,15 @@ function daySummaryMetrics(summary: DaySummary, money: DayMoney): string {
   } large · ${summary.loadPoints.toFixed(2).replace(/\.00$/, "")} pts · Gross ${formatMoney(
     money.gross,
   )} · Sam ${formatMoney(money.samNet)}`;
+}
+
+function uniqueText(values: Array<string | null | undefined>): string | null {
+  const unique = Array.from(
+    new Set(values.map((value) => value?.trim()).filter(Boolean) as string[]),
+  );
+  if (unique.length === 0) return null;
+  if (unique.length === 1) return unique[0];
+  return unique.join(" / ");
 }
 
 export default async function SchedulePage({
@@ -417,12 +427,38 @@ function AppointmentList({
 
   return (
     <div className="flex flex-col gap-3">
-      {rows.map(({ appointment, client, pet, workflowLabel, workflowStage }) => {
+      {groupScheduledAppointments(rows).map((group) => {
+        const { appointment, client } = group.primary;
+        const workflowLabel = group.workflowLabel;
+        const workflowStage = group.workflowStage;
         const location =
           locationLabelFromSettings(appointment.location, locationSettings) ??
           bookingLocationLabel(appointment.location);
-        const money = calculateAppointmentMoney(appointment, locationSettings);
-        const profile = dogWorkProfile(pet, appointment.service, calibration);
+        const money = group.rows.reduce(
+          (sum, row) => {
+            const rowMoney = calculateAppointmentMoney(
+              row.appointment,
+              locationSettings,
+            );
+            return {
+              gross: sum.gross + rowMoney.gross,
+              samNet: sum.samNet + rowMoney.samNet,
+            };
+          },
+          { gross: 0, samNet: 0 },
+        );
+        const profilePoints = group.rows.reduce((sum, row) => {
+          const profile = dogWorkProfile(
+            row.pet,
+            row.appointment.service,
+            calibration,
+          );
+          return sum + (profile?.points ?? 0);
+        }, 0);
+        const breeds = uniqueText(group.rows.map((row) => row.pet?.breed));
+        const services = uniqueText(
+          group.rows.map((row) => row.appointment.service),
+        );
         const card = (
           <Link
             href={appointmentHref(appointment.id)}
@@ -465,9 +501,9 @@ function AppointmentList({
             </div>
             <div className="mt-2 border-t border-line pt-2">
               <p className="font-semibold text-ink">
-                {pet?.name ?? "Unknown pet"}
-                {pet?.breed ? (
-                  <span className="font-normal text-ink-soft"> · {pet.breed}</span>
+                {group.petNames.join(" + ")}
+                {breeds ? (
+                  <span className="font-normal text-ink-soft"> · {breeds}</span>
                 ) : null}
               </p>
               <p className="text-sm text-ink-soft">
@@ -476,13 +512,13 @@ function AppointmentList({
                   : "Unknown household"}
               </p>
               <p className="mt-1 text-sm text-ink-soft">
-                {appointment.service ?? "Service not set"}
+                {services ?? "Service not set"}
                 {location ? ` · ${location}` : ""}
               </p>
-              {profile ? (
+              {profilePoints > 0 ? (
                 <p className="mt-1 text-xs text-ink-faint">
-                  {profile.summary || "Normal groom"} ·{" "}
-                  {profile.points.toFixed(2).replace(/\.00$/, "")} pts
+                  {group.petCount} dog{group.petCount === 1 ? "" : "s"} ·{" "}
+                  {profilePoints.toFixed(2).replace(/\.00$/, "")} pts
                 </p>
               ) : null}
             </div>
@@ -490,7 +526,7 @@ function AppointmentList({
         );
 
         return (
-          <div key={appointment.id}>
+          <div key={group.id}>
             {card}
           </div>
         );

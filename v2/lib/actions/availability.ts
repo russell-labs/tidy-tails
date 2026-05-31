@@ -23,10 +23,12 @@ export async function checkBookingAvailability({
   date,
   service_type,
   exclude_appointment_id,
+  exclude_appointment_ids,
 }: {
   date: string;
   service_type: ServiceType | "";
   exclude_appointment_id?: string;
+  exclude_appointment_ids?: string[];
 }): Promise<BookingAvailabilityState> {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
     return {
@@ -36,8 +38,12 @@ export async function checkBookingAvailability({
     };
   }
 
+  const excluded = new Set([
+    ...(exclude_appointment_id ? [exclude_appointment_id] : []),
+    ...(exclude_appointment_ids ?? []),
+  ]);
   const appointments = (await loadAppointments()).filter(
-    (appointment) => appointment.id !== exclude_appointment_id,
+    (appointment) => !excluded.has(appointment.id),
   );
   const tidyTailsSlots = availableBookingTimeSlots(appointments, date);
   const google = await readGoogleCalendarBusyBlocksForDate(date);

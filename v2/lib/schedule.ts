@@ -6,6 +6,7 @@ import {
   isScheduleSlateAppointment,
   type AppointmentWorkflowStage,
 } from "./appointmentWorkflow";
+import { normalizeTimeForCompare } from "./booking";
 
 export type WeekRange = {
   start: string;
@@ -20,6 +21,18 @@ export type ScheduledAppointment = {
   isLogged: boolean;
   workflowStage: AppointmentWorkflowStage;
   workflowLabel: string | null;
+};
+
+export type ScheduledAppointmentGroup = {
+  id: string;
+  primary: ScheduledAppointment;
+  rows: ScheduledAppointment[];
+  appointmentIds: string[];
+  petNames: string[];
+  petCount: number;
+  workflowStage: AppointmentWorkflowStage;
+  workflowLabel: string | null;
+  gross: number;
 };
 
 export type ScheduleView = "week" | "day";
@@ -43,8 +56,81 @@ function timeRank(raw: string | null | undefined): number {
   return hours * 60 + minutes;
 }
 
+function comparableTimeKey(raw: string | null | undefined): string {
+  const rank = timeRank(raw);
+  return Number.isFinite(rank) ? String(rank) : normalizeTimeForCompare(raw);
+}
+
 function visitKey(appointment: Pick<Appointment, "client_id" | "pet_id" | "date">): string {
   return `${appointment.client_id}::${appointment.pet_id}::${appointment.date}`;
+}
+
+function sameHouseholdTimeKey(
+  appointment: Pick<Appointment, "id" | "client_id" | "date" | "time_slot">,
+): string {
+  const time = comparableTimeKey(appointment.time_slot);
+  if (!time) return `${appointment.id}`;
+  return `${appointment.client_id}::${appointment.date}::${time}`;
+}
+
+function groupStage(rows: ScheduledAppointment[]): {
+  stage: AppointmentWorkflowStage;
+  label: string | null;
+} {
+  const stages = rows.map((row) => row.workflowStage);
+  if (stages.includes("exception")) return { stage: "exception", label: "Needs review" };
+  if (stages.includes("active")) {
+    return { stage: "active", label: rows.length > 1 ? "In progress" : rows[0].workflowLabel };
+  }
+  if (stages.every((stage) => stage === "completed")) {
+    return { stage: "completed", label: rows.length > 1 ? "Logged" : rows[0].workflowLabel };
+  }
+  if (stages.includes("completed")) {
+    return { stage: "active", label: "Partly logged" };
+  }
+  return { stage: "scheduled", label: rows.length > 1 ? `${rows.length} dogs` : rows[0].workflowLabel };
+}
+
+export function groupScheduledAppointments(
+  rows: ScheduledAppointment[],
+): ScheduledAppointmentGroup[] {
+  const groups = new Map<string, ScheduledAppointment[]>();
+  for (const row of rows) {
+    const key = sameHouseholdTimeKey(row.appointment);
+    groups.set(key, [...(groups.get(key) ?? []), row]);
+  }
+
+  return Array.from(groups.values()).map((groupRows) => {
+    const primary = groupRows[0];
+    const { stage, label } = groupStage(groupRows);
+    return {
+      id: groupRows.map((row) => row.appointment.id).join(":"),
+      primary,
+      rows: groupRows,
+      appointmentIds: groupRows.map((row) => row.appointment.id),
+      petNames: groupRows.map((row) => row.pet?.name ?? "Unknown pet"),
+      petCount: groupRows.length,
+      workflowStage: stage,
+      workflowLabel: label,
+      gross: groupRows.reduce(
+        (sum, row) => sum + (row.appointment.price ?? 0),
+        0,
+      ),
+    };
+  });
+}
+
+export function scheduledAppointmentGroupFor(
+  appointments: Appointment[],
+  appointmentId: string,
+): Appointment[] {
+  const target = appointments.find((appointment) => appointment.id === appointmentId);
+  if (!target) return [];
+  const key = sameHouseholdTimeKey(target);
+  if (key === target.id) return [target];
+  return appointments.filter(
+    (appointment) => sameHouseholdTimeKey(appointment) === key,
+  );
 }
 
 export function weekRangeForDate(rawDate: string, today = new Date()): WeekRange {

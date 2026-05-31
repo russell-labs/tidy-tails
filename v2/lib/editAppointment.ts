@@ -236,6 +236,16 @@ export function buildEditAppointmentUpdate(
   };
 }
 
+export function buildSharedAppointmentGroupUpdate(
+  v: ValidatedEditAppointment,
+): Pick<EditAppointmentUpdate, "date" | "time_slot" | "location"> {
+  return {
+    date: v.date,
+    time_slot: v.time_slot,
+    location: v.location,
+  };
+}
+
 export function appointmentDeleteKind({
   status,
   date,

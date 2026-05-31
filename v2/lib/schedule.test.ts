@@ -5,6 +5,8 @@ import {
   appointmentsForDay,
   appointmentsForWeek,
   bookedFeesForDate,
+  groupScheduledAppointments,
+  scheduledAppointmentGroupFor,
   scheduleView,
   shiftDay,
   shiftWeek,
@@ -54,6 +56,24 @@ const pets = [
     client_id: "c1",
     name: "Whiskey",
     breed: "Yorkie",
+    color: null,
+    sex: null,
+    date_of_birth: null,
+    allergies: false,
+    allergies_detail: null,
+    grooming_notes: null,
+    typical_fee: null,
+    created_at: "2026-01-01",
+  },
+] satisfies Pet[];
+
+const householdPets = [
+  ...pets,
+  {
+    id: "p2",
+    client_id: "c1",
+    name: "Oliver",
+    breed: "Mix",
     color: null,
     sex: null,
     date_of_birth: null,
@@ -167,6 +187,64 @@ describe("week schedule helpers", () => {
     expect(rows[0].appointment.status).toBe("completed");
     expect(rows[0].appointment.time_slot).toBe("10:30am");
     expect(rows[0].isLogged).toBe(true);
+  });
+
+  it("groups same-household dogs booked in the same time bubble", () => {
+    const rows = appointmentsForDay({
+      appointments: [
+        appt({ id: "pepper", pet_id: "p1", date: "2026-05-21", time_slot: "10:00am", price: 70 }),
+        appt({ id: "oliver", pet_id: "p2", date: "2026-05-21", time_slot: "10 am", price: 55 }),
+        appt({ id: "later", pet_id: "p1", date: "2026-05-21", time_slot: "1:30pm", price: 80 }),
+      ],
+      clients,
+      pets: householdPets,
+      date: "2026-05-21",
+    });
+
+    const groups = groupScheduledAppointments(rows);
+
+    expect(groups).toHaveLength(2);
+    expect(groups[0].appointmentIds).toEqual(["pepper", "oliver"]);
+    expect(groups[0].petNames).toEqual(["Whiskey", "Oliver"]);
+    expect(groups[0].petCount).toBe(2);
+    expect(groups[0].workflowStage).toBe("scheduled");
+    expect(groups[0].workflowLabel).toBe("2 dogs");
+    expect(groups[0].gross).toBe(125);
+  });
+
+  it("uses a yellow group state when one dog is logged and one is still open", () => {
+    const rows = appointmentsForDay({
+      appointments: [
+        appt({ id: "pepper", pet_id: "p1", date: "2026-05-21", time_slot: "10:00am" }),
+        appt({
+          id: "oliver",
+          pet_id: "p2",
+          date: "2026-05-21",
+          time_slot: "10:00am",
+          status: "completed",
+        }),
+      ],
+      clients,
+      pets: householdPets,
+      date: "2026-05-21",
+    });
+
+    const groups = groupScheduledAppointments(rows);
+
+    expect(groups).toHaveLength(1);
+    expect(groups[0].workflowStage).toBe("active");
+    expect(groups[0].workflowLabel).toBe("Partly logged");
+  });
+
+  it("finds only the matching household time group for edit scope", () => {
+    const group = scheduledAppointmentGroupFor([
+      appt({ id: "target", pet_id: "p1", date: "2026-05-21", time_slot: "10:00am" }),
+      appt({ id: "sibling", pet_id: "p2", date: "2026-05-21", time_slot: "10 am" }),
+      appt({ id: "other-time", pet_id: "p2", date: "2026-05-21", time_slot: "1:00pm" }),
+      appt({ id: "other-client", client_id: "c2", pet_id: "p9", date: "2026-05-21", time_slot: "10:00am" }),
+    ], "target");
+
+    expect(group.map((appointment) => appointment.id)).toEqual(["target", "sibling"]);
   });
 
   it("totals booked fees for a selected day", () => {

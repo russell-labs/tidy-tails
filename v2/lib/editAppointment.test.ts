@@ -5,6 +5,7 @@ import {
   buildCancellationTextDraft,
   buildCancellationTextMessage,
   buildEditAppointmentUpdate,
+  buildSharedAppointmentGroupUpdate,
   shouldBlockAppointmentDeleteForCalendarStatus,
   validateCancellationTextInput,
   validateEditAppointment,
@@ -220,6 +221,29 @@ describe("buildEditAppointmentUpdate", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(buildEditAppointmentUpdate(result.value).net).toBeNull();
+  });
+
+  it("limits grouped appointment edits to shared booking fields", () => {
+    const result = validateEditAppointment(
+      {
+        ...valid,
+        date: "2026-05-29",
+        time_slot: "1:30pm",
+        location: "annette",
+        service_type: "bath_only",
+        fee: "120",
+        tip: "30",
+        notes: "Do not copy this to the sibling dog",
+      },
+      TODAY,
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(buildSharedAppointmentGroupUpdate(result.value)).toEqual({
+      date: "2026-05-29",
+      time_slot: "1:30pm",
+      location: "annette",
+    });
   });
 });
 

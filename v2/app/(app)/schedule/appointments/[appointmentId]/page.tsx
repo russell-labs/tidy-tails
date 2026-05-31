@@ -23,7 +23,7 @@ import { readOperatorSettings } from "@/lib/operatorSettings.server";
 import { stripPaymentInfo } from "@/lib/payments";
 import { stripSalonPayoutOverride } from "@/lib/payoutOverride";
 import { buildReminderTarget } from "@/lib/reminders";
-import { weekRangeForDate } from "@/lib/schedule";
+import { scheduledAppointmentGroupFor, weekRangeForDate } from "@/lib/schedule";
 import {
   isEditAppointmentWriteEnabled,
   isLogGroomWriteEnabled,
@@ -65,6 +65,15 @@ export default async function AppointmentActionPage({
   const householdAppointments = appointments.filter(
     (candidate) => candidate.client_id === client.id,
   );
+  const appointmentGroup = scheduledAppointmentGroupFor(
+    householdAppointments,
+    appointment.id,
+  );
+  const appointmentGroupPetNames = appointmentGroup.map(
+    (candidate) =>
+      householdPets.find((householdPet) => householdPet.id === candidate.pet_id)
+        ?.name ?? "Unknown pet",
+  );
   const target = buildReminderTarget(householdAppointments, householdPets, {
     appointmentId: appointment.id,
   });
@@ -104,6 +113,11 @@ export default async function AppointmentActionPage({
       </header>
 
       <section className="mt-4 rounded-xl border border-line bg-surface px-3.5 py-3 shadow-sm">
+        {appointmentGroup.length > 1 ? (
+          <p className="mb-3 rounded-lg bg-brand-soft px-3 py-2 text-sm font-semibold text-brand-ink">
+            Booked together: {appointmentGroupPetNames.join(" + ")}
+          </p>
+        ) : null}
         <dl className="grid grid-cols-1 gap-2 text-sm">
           <DetailRow label="Date" value={formatDate(appointment.date)} />
           <DetailRow
@@ -165,6 +179,8 @@ export default async function AppointmentActionPage({
             clientId={client.id}
             appointment={appointment}
             appointments={householdAppointments}
+            groupAppointmentIds={appointmentGroup.map((candidate) => candidate.id)}
+            groupPetNames={appointmentGroupPetNames}
             petName={pet.name}
             ownerFirstName={client.first_name}
             customerPhone={client.phone}
@@ -174,7 +190,11 @@ export default async function AppointmentActionPage({
             trigger={
               <ActionTile
                 title="Change or cancel appointment"
-                detail="Update the date, time, service, fee, payment, notes, or cancel this booking."
+                detail={
+                  appointmentGroup.length > 1
+                    ? "Update or cancel this dog, or all dogs booked in this time."
+                    : "Update the date, time, service, fee, payment, notes, or cancel this booking."
+                }
               />
             }
           />

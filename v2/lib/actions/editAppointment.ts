@@ -25,6 +25,7 @@ import {
   appointmentDeleteKind,
   buildCancellationTextDraft,
   buildEditAppointmentUpdate,
+  buildSharedAppointmentGroupUpdate,
   shouldBlockAppointmentDeleteForCalendarStatus,
   validateBookingUpdateTextInput,
   validateCancellationTextInput,
@@ -37,6 +38,7 @@ import { buildOutboundSmsInsert } from "@/lib/inboundSms";
 import { customerLocationLabelFromSettings } from "@/lib/locationFinance";
 import { readOperatorSettings } from "@/lib/operatorSettings.server";
 import { parsePaymentInfo, type PaymentMethod, type PaymentStatus } from "@/lib/payments";
+import { scheduledAppointmentGroupFor } from "@/lib/schedule";
 import { getTwilioConfig, sendTwilioSms, toTwilioPhone } from "@/lib/twilio";
 
 export type EditAppointmentSummary = {
@@ -71,6 +73,8 @@ export type EditAppointmentState =
       bookingUpdateText?: AppointmentTextSend;
     };
 
+type CalendarSummary = NonNullable<EditAppointmentSummary["calendar"]>;
+
 type AppointmentTextSend = {
   status: "skipped" | "sent" | "gated" | "failed";
   message: string;
@@ -89,6 +93,55 @@ export type DeleteAppointmentState =
 
 function checked(value: FormDataEntryValue | null): boolean {
   return ["on", "true", "1", "yes"].includes(String(value ?? "").trim().toLowerCase());
+}
+
+function wantsGroupScope(formData: FormData): boolean {
+  return String(formData.get("edit_scope") ?? "").trim() === "group";
+}
+
+function appointmentPetNames(
+  appointments: Appointment[],
+  pets: { id: string; name: string }[],
+): string {
+  return appointments
+    .map(
+      (appointment) =>
+        pets.find((pet) => pet.id === appointment.pet_id)?.name ?? "the pet",
+    )
+    .join(" + ");
+}
+
+function summarizeCalendarResults(
+  results: Array<{ status: string; message: string }>,
+): CalendarSummary {
+  if (results.length === 0) {
+    return { status: "skipped", message: "No calendar events needed syncing." };
+  }
+  if (results.length === 1) {
+    const result = results[0];
+    return {
+      status: result.status as CalendarSummary["status"],
+      message: result.message,
+    };
+  }
+  const failed = results.filter((result) => result.status === "failed").length;
+  const synced = results.filter((result) => result.status === "synced").length;
+  if (failed > 0) {
+    return {
+      status: "failed",
+      message: `${synced}/${results.length} calendar events synced; ${failed} need review.`,
+    };
+  }
+  if (synced > 0) {
+    return {
+      status: "synced",
+      message: `${synced}/${results.length} calendar events synced.`,
+    };
+  }
+  return {
+    status: (results[0].status ?? "skipped") as CalendarSummary["status"],
+    message: `${results.length} calendar events checked.`,
+  };
 }
 
 export async function editAppointment(
@@ -119,6 +172,7 @@ export async function editAppointment(
     salon_payout_override: String(formData.get("salon_payout_override") ?? ""),
   };
   const wantsBookingUpdateText = checked(formData.get("send_booking_update_text"));
+  const groupScope = wantsGroupScope(formData);
   const bookingUpdateMessage = String(
     formData.get("booking_update_message") ?? "",
   ).trim();
@@ -147,23 +201,38 @@ export async function editAppointment(
   }
   const petName =
     record.pets.find((pet) => pet.id === existing.pet_id)?.name ?? "the pet";
+  const groupAppointments = scheduledAppointmentGroupFor(
+    record.appointments,
+    existing.id,
+  );
+  const targetAppointments =
+    groupScope && groupAppointments.length > 1 ? groupAppointments : [existing];
+  const targetAppointmentIds = targetAppointments.map((candidate) => candidate.id);
+  const targetPetName =
+    targetAppointments.length > 1
+      ? appointmentPetNames(targetAppointments, record.pets)
+      : petName;
   const operatorSettings = await readOperatorSettings();
 
-  const payload: EditAppointmentUpdate = buildEditAppointmentUpdate(appointment);
+  const isGroupEdit = targetAppointments.length > 1;
+  const payload: EditAppointmentUpdate | Pick<EditAppointmentUpdate, "date" | "time_slot" | "location"> = isGroupEdit
+    ? buildSharedAppointmentGroupUpdate(appointment)
+    : buildEditAppointmentUpdate(appointment);
+  const fullPayload = isGroupEdit ? null : (payload as EditAppointmentUpdate);
   const summary: EditAppointmentSummary = {
     ownerName: fullName(record.client.first_name, record.client.last_name),
-    petName,
+    petName: targetPetName,
     date: payload.date,
     time: payload.time_slot,
-    service: serviceLabel(payload.service_type),
+    service: fullPayload ? serviceLabel(fullPayload.service_type) : existing.service,
     location:
       customerLocationLabelFromSettings(
         payload.location,
         operatorSettings.locationSettings,
       ) ??
       bookingLocationLabel(payload.location),
-    fee: payload.fee,
-    tip: payload.tip,
+    fee: fullPayload ? fullPayload.fee : existing.price,
+    tip: fullPayload ? fullPayload.tip : existing.tip,
     paymentMethod: appointment.payment_method,
     paymentStatus: appointment.payment_status,
   };
@@ -197,9 +266,18 @@ export async function editAppointment(
     };
   }
 
-  if (payload.time_slot) {
+  const bookingSlotChanged =
+    payload.date !== existing.date || payload.time_slot !== existing.time_slot;
+  const calendarRelevantChanged =
+    bookingSlotChanged ||
+    Boolean(
+      fullPayload &&
+        fullPayload.service_type !== serviceCodeFromLabel(existing.service),
+    );
+
+  if (payload.time_slot && bookingSlotChanged) {
     const allAppointments = (await loadAppointments()).filter(
-      (candidate) => candidate.id !== appointment.appointment_id,
+      (candidate) => !targetAppointmentIds.includes(candidate.id),
     );
     if (hasBookedTimeConflict(allAppointments, payload.date, payload.time_slot)) {
       return {
@@ -209,24 +287,20 @@ export async function editAppointment(
           "That time is already booked in Tidy Tails. Choose another time.",
       };
     }
+  }
 
-    const calendarRelevantChanged =
-      payload.date !== existing.date ||
-      payload.time_slot !== existing.time_slot ||
-      payload.service_type !== serviceCodeFromLabel(existing.service);
-    if (calendarRelevantChanged) {
-      const googleAvailability = await checkGoogleCalendarAppointmentAvailability({
-        date: payload.date,
-        timeSlot: payload.time_slot,
-        service: summary.service,
-      });
-      if (googleAvailabilityBlocksBooking(googleAvailability.status)) {
-        return {
-          status: "error",
-          errors: {},
-          formError: googleAvailability.message,
-        };
-      }
+  if (payload.time_slot && calendarRelevantChanged) {
+    const googleAvailability = await checkGoogleCalendarAppointmentAvailability({
+      date: payload.date,
+      timeSlot: payload.time_slot,
+      service: summary.service,
+    });
+    if (googleAvailabilityBlocksBooking(googleAvailability.status)) {
+      return {
+        status: "error",
+        errors: {},
+        formError: googleAvailability.message,
+      };
     }
   }
 
@@ -234,10 +308,9 @@ export async function editAppointment(
   const { data, error } = await supabase
     .from("appointments")
     .update(payload)
-    .eq("id", appointment.appointment_id)
     .eq("client_id", appointment.client_id)
-    .select("*")
-    .single();
+    .in("id", targetAppointmentIds)
+    .select("*");
   if (error) {
     return {
       status: "error",
@@ -245,19 +318,26 @@ export async function editAppointment(
       formError: "That visit could not be saved. Nothing was written.",
     };
   }
-  const savedAppointment = mapAppointmentRow(data ?? {}) as Appointment;
-  const pet = record.pets.find((candidate) => candidate.id === existing.pet_id);
-  if (pet) {
-    const calendar = await syncAppointmentToGoogleCalendar({
-      appointment: savedAppointment,
-      client: record.client,
-      pet,
-    });
-    summary.calendar = { status: calendar.status, message: calendar.message };
-  }
+  const savedAppointments = (data ?? []).map((row) => mapAppointmentRow(row) as Appointment);
+  const calendarResults = await Promise.all(
+    savedAppointments.map(async (savedAppointment) => {
+      const pet = record.pets.find(
+        (candidate) => candidate.id === savedAppointment.pet_id,
+      );
+      if (!pet) return { status: "skipped", message: "Pet was not found for calendar sync." };
+      return syncAppointmentToGoogleCalendar({
+        appointment: savedAppointment,
+        client: record.client,
+        pet,
+      });
+    }),
+  );
+  summary.calendar = summarizeCalendarResults(calendarResults);
 
   revalidatePath(`/clients/${appointment.client_id}`);
-  revalidatePath(`/clients/${appointment.client_id}/pets/${existing.pet_id}`);
+  for (const targetAppointment of targetAppointments) {
+    revalidatePath(`/clients/${appointment.client_id}/pets/${targetAppointment.pet_id}`);
+  }
   await recordAuditEvent({
     eventType: "appointment.updated",
     clientId: appointment.client_id,
@@ -266,6 +346,7 @@ export async function editAppointment(
     summary: `Edited visit for ${summary.petName} under ${summary.ownerName}.`,
     metadata: {
       date: summary.date,
+      appointmentIds: targetAppointmentIds,
       service: summary.service,
       location: summary.location,
       fee: summary.fee,
@@ -291,7 +372,7 @@ export async function editAppointment(
         petId: existing.pet_id,
         appointmentId: appointment.appointment_id,
         summary: `Sent booking update text for ${summary.petName} to ${summary.ownerName}.`,
-        metadata: { channel: "sms", date: summary.date },
+        metadata: { channel: "sms", date: summary.date, appointmentIds: targetAppointmentIds },
       });
     }
   }
@@ -307,6 +388,7 @@ export async function deleteAppointment(
 
   const clientId = String(formData.get("client_id") ?? "").trim();
   const appointmentId = String(formData.get("appointment_id") ?? "").trim();
+  const groupScope = wantsGroupScope(formData);
   const wantsCancellationText = checked(formData.get("send_cancellation_text"));
   const cancellationMessage = String(formData.get("cancellation_message") ?? "").trim();
   if (!clientId || !appointmentId) {
@@ -319,12 +401,19 @@ export async function deleteAppointment(
     return { status: "error", message: "That appointment could not be found." };
   }
   const pet = record.pets.find((candidate) => candidate.id === existing.pet_id);
+  const groupAppointments = scheduledAppointmentGroupFor(record.appointments, existing.id);
+  const targetAppointments =
+    groupScope && groupAppointments.length > 1 ? groupAppointments : [existing];
+  const targetAppointmentIds = targetAppointments.map((appointment) => appointment.id);
   const payment = parsePaymentInfo(existing.notes);
   const ownerName = fullName(record.client.first_name, record.client.last_name);
   const operatorSettings = await readOperatorSettings();
   const summary: EditAppointmentSummary = {
     ownerName,
-    petName: pet?.name ?? "the pet",
+    petName:
+      targetAppointments.length > 1
+        ? appointmentPetNames(targetAppointments, record.pets)
+        : pet?.name ?? "the pet",
     date: existing.date,
     time: existing.time_slot,
     service: existing.service,
@@ -356,6 +445,19 @@ export async function deleteAppointment(
     date: existing.date,
     today: new Date().toISOString().slice(0, 10),
   });
+  const deleteKinds = targetAppointments.map((targetAppointment) =>
+    appointmentDeleteKind({
+      status: targetAppointment.status,
+      date: targetAppointment.date,
+      today: new Date().toISOString().slice(0, 10),
+    }),
+  );
+  if (deleteKinds.includes("disabled")) {
+    return {
+      status: "error",
+      message: "One of those appointments cannot be deleted from this screen.",
+    };
+  }
   let cancellationDraft: ReturnType<typeof buildCancellationTextDraft> | null = null;
   if (wantsCancellationText && deleteKind === "future_booking") {
     const cancellationText = validateCancellationTextInput(cancellationMessage);
@@ -365,26 +467,38 @@ export async function deleteAppointment(
     cancellationDraft = buildCancellationTextDraft(cancellationText.value);
   }
 
-  const calendar = await deleteAppointmentFromGoogleCalendar(existing);
-  if (shouldBlockAppointmentDeleteForCalendarStatus(calendar.status)) {
+  const calendarResults = await Promise.all(
+    targetAppointments.map((targetAppointment) =>
+      deleteAppointmentFromGoogleCalendar(targetAppointment),
+    ),
+  );
+  const blockingCalendar = calendarResults.find((calendar) =>
+    shouldBlockAppointmentDeleteForCalendarStatus(calendar.status),
+  );
+  if (blockingCalendar) {
     return {
       status: "error",
-      message: `Google Calendar could not remove the event: ${calendar.message}`,
+      message: `Google Calendar could not remove the event: ${blockingCalendar.message}`,
     };
   }
+  const calendar = summarizeCalendarResults(calendarResults);
 
   const supabase = await createServerSupabase();
   const { error } = await supabase
     .from("appointments")
     .delete()
-    .eq("id", appointmentId)
-    .eq("client_id", clientId);
+    .eq("client_id", clientId)
+    .in("id", targetAppointmentIds);
   if (error) {
     return { status: "error", message: "That booking could not be deleted." };
   }
 
   revalidatePath(`/clients/${clientId}`);
-  if (existing.pet_id) revalidatePath(`/clients/${clientId}/pets/${existing.pet_id}`);
+  for (const targetAppointment of targetAppointments) {
+    if (targetAppointment.pet_id) {
+      revalidatePath(`/clients/${clientId}/pets/${targetAppointment.pet_id}`);
+    }
+  }
   await recordAuditEvent({
     eventType: "appointment.deleted",
     clientId,
@@ -392,9 +506,10 @@ export async function deleteAppointment(
     summary: `Deleted booking for ${summary.petName} under ${summary.ownerName}.`,
     metadata: {
       date: summary.date,
+      appointmentIds: targetAppointmentIds,
       service: summary.service,
       fee: summary.fee,
-      calendarStatus: calendar.status,
+      calendarStatus: calendar?.status,
     },
   });
   let cancellationText: AppointmentTextSend = {

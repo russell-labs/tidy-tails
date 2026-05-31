@@ -16,6 +16,9 @@ test("schedule appointment flow opens actions and prepares one grouped reminder"
   await expect(page.getByRole("heading", { name: "Schedule" })).toBeVisible();
   await expect(page.getByText("Sam net · Gross $150.00")).toBeVisible();
   await expect(page.getByText("Sam $105.00")).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: /10:00am[\s\S]*Pepper \+ Olive/ }),
+  ).toHaveCount(1);
 
   await page.getByRole("link", { name: /10:00am[\s\S]*Pepper/ }).click();
 
@@ -63,13 +66,15 @@ test("editing an appointment can review a booking update text", async ({ page })
   await page.getByRole("link", { name: /10:00am[\s\S]*Pepper/ }).click();
   await page.getByRole("button", { name: "Change or cancel appointment" }).click();
 
+  await page.getByRole("button", { name: "All 2 dogs" }).click();
   await page.getByRole("textbox", { name: "Date", exact: true }).fill(isoDaysFromNow(3));
   await page.getByRole("checkbox", { name: "Text updated booking to owner" }).check();
   await page.getByRole("button", { name: "Review changes" }).click();
 
+  await expect(page.getByText("ChangeAll 2 dogs")).toBeVisible();
   await expect(page.getByText("Booking update text to send")).toBeVisible();
   await expect(page.getByRole("textbox", { name: "Booking update text to send" })).toContainText(
-    "updated booking for Pepper",
+    "updated booking for Pepper + Olive",
   );
 });
 
@@ -112,7 +117,7 @@ test("salon payout setting changes update schedule gross and Sam net totals", as
 
   await expect(page.getByText("Sam net · Gross $150.00")).toBeVisible();
   await expect(page.getByText("Sam $75.00")).toBeVisible();
-  await expect(page.getByText("Net $36.00")).toBeVisible();
+  await expect(page.getByText("Net $75.00")).toBeVisible();
 
   await page.getByRole("link", { name: /10:00am[\s\S]*Pepper/ }).click();
   await expect(page.getByText("Sam net$36.00")).toBeVisible();
