@@ -4,6 +4,7 @@ import {
   type BookingLocation,
 } from "./booking";
 import { collapseLoggedGroomDuplicates } from "./appointmentLedger";
+import { isScheduleSlateAppointment } from "./appointmentWorkflow";
 import type { Appointment } from "./data/types";
 import type { LocationSettingsMap } from "./operatorSettings";
 import { parseSalonPayoutOverride } from "./payoutOverride";
@@ -112,8 +113,7 @@ export function calculateDayMoney(
 ): DayMoney {
   const booked = collapseLoggedGroomDuplicates(appointments).filter(
     (appointment) =>
-      (appointment.status ?? "completed") === "booked" &&
-      appointment.date === date,
+      isScheduleSlateAppointment(appointment) && appointment.date === date,
   );
   const percentTotals = booked.reduce(
     (totals, appointment) => {

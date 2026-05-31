@@ -1,5 +1,6 @@
 import type { Appointment, Pet } from "./data/types";
 import type { BookingLocation, ServiceType } from "./booking";
+import { isScheduleSlateAppointment } from "./appointmentWorkflow";
 import {
   DEFAULT_SCHEDULE_CALIBRATION,
   type ScheduleCalibration,
@@ -248,7 +249,7 @@ function largeDogsAtLocation({
   let count = 0;
   for (const appointment of appointments) {
     if (appointment.date !== date) continue;
-    if ((appointment.status ?? "completed") !== "booked") continue;
+    if (!isScheduleSlateAppointment(appointment)) continue;
     if (appointment.location !== location) continue;
     const profile = dogWorkProfile(
       petsById.get(appointment.pet_id),
@@ -319,7 +320,7 @@ export function summarizeDayLoad({
   const petsById = new Map(pets.map((pet) => [pet.id, pet]));
   const booked = appointments.filter(
     (appointment) =>
-      appointment.date === date && (appointment.status ?? "completed") === "booked",
+      appointment.date === date && isScheduleSlateAppointment(appointment),
   );
   const profiles = booked
     .map((appointment) =>

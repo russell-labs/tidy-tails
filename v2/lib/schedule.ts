@@ -1,5 +1,11 @@
 import type { Appointment, Client, Pet } from "./data/types";
 import { collapseLoggedGroomDuplicates } from "./appointmentLedger";
+import {
+  appointmentWorkflowLabel,
+  appointmentWorkflowStage,
+  isScheduleSlateAppointment,
+  type AppointmentWorkflowStage,
+} from "./appointmentWorkflow";
 
 export type WeekRange = {
   start: string;
@@ -11,6 +17,9 @@ export type ScheduledAppointment = {
   appointment: Appointment;
   client: Client | null;
   pet: Pet | null;
+  isLogged: boolean;
+  workflowStage: AppointmentWorkflowStage;
+  workflowLabel: string | null;
 };
 
 export type ScheduleView = "week" | "day";
@@ -32,6 +41,10 @@ function timeRank(raw: string | null | undefined): number {
   if (m[3] === "pm" && hours !== 12) hours += 12;
   if (m[3] === "am" && hours === 12) hours = 0;
   return hours * 60 + minutes;
+}
+
+function visitKey(appointment: Pick<Appointment, "client_id" | "pet_id" | "date">): string {
+  return `${appointment.client_id}::${appointment.pet_id}::${appointment.date}`;
 }
 
 export function weekRangeForDate(rawDate: string, today = new Date()): WeekRange {
@@ -91,12 +104,25 @@ function appointmentRows({
 }): ScheduledAppointment[] {
   const clientsById = new Map(clients.map((client) => [client.id, client]));
   const petsById = new Map(pets.map((pet) => [pet.id, pet]));
+  const bookedByVisitKey = new Map(
+    appointments
+      .filter((appointment) => appointment.status === "booked")
+      .map((appointment) => [visitKey(appointment), appointment]),
+  );
 
   return collapseLoggedGroomDuplicates(appointments)
-    .filter((appointment) => {
+    .map((appointment) => {
       const status = appointment.status ?? "completed";
-      return (
-        status === "booked" &&
+      const booked = status === "completed" ? bookedByVisitKey.get(visitKey(appointment)) : null;
+      if (!booked) return appointment;
+      return {
+        ...appointment,
+        time_slot: appointment.time_slot ?? booked.time_slot,
+        location: appointment.location ?? booked.location,
+      };
+    })
+    .filter((appointment) => {
+      return isScheduleSlateAppointment(appointment) && (
         (range
           ? appointment.date >= range.start && appointment.date <= range.end
           : appointment.date === date)
@@ -107,11 +133,17 @@ function appointmentRows({
       if (byDate !== 0) return byDate;
       return timeRank(a.time_slot) - timeRank(b.time_slot);
     })
-    .map((appointment) => ({
-      appointment,
-      client: clientsById.get(appointment.client_id) ?? null,
-      pet: petsById.get(appointment.pet_id) ?? null,
-    }));
+    .map((appointment) => {
+      const status = appointment.status ?? "completed";
+      return {
+        appointment,
+        client: clientsById.get(appointment.client_id) ?? null,
+        pet: petsById.get(appointment.pet_id) ?? null,
+        isLogged: status === "completed",
+        workflowStage: appointmentWorkflowStage(appointment),
+        workflowLabel: appointmentWorkflowLabel(appointment),
+      };
+    });
 }
 
 export function appointmentsForWeek({

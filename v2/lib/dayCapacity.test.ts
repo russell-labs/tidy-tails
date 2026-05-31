@@ -46,7 +46,7 @@ function appointment(overrides: Partial<Appointment>): Appointment {
     client_id: overrides.client_id ?? "c1",
     pet_id: overrides.pet_id ?? "p1",
     date: overrides.date ?? "2026-05-29",
-    time_slot: overrides.time_slot ?? "9:00am",
+    time_slot: "time_slot" in overrides ? (overrides.time_slot ?? null) : "9:00am",
     service: overrides.service ?? "Full groom",
     price: overrides.price ?? 50,
     tip: null,
@@ -130,7 +130,7 @@ describe("day capacity rubric", () => {
     expect(small!.points).toBe(medium!.points);
   });
 
-  it("summarizes booked day load using booked appointments only", () => {
+  it("summarizes day load using the full scheduled slate", () => {
     const pets = [
       pet({ id: "p1", breed: "German Shepherd" }),
       pet({ id: "p2", breed: "Bichon" }),
@@ -141,9 +141,10 @@ describe("day capacity rubric", () => {
       appointments: [
         appointment({ pet_id: "p1", status: "booked" }),
         appointment({ pet_id: "p2", status: "completed" }),
+        appointment({ pet_id: "p3", status: "completed", time_slot: null }),
       ],
     });
-    expect(summary.totalDogs).toBe(1);
+    expect(summary.totalDogs).toBe(2);
     expect(summary.largeDogs).toBe(1);
   });
 

@@ -21,6 +21,11 @@ import {
 } from "@/lib/booking";
 import type { Appointment } from "@/lib/data/types";
 import {
+  parseAppointmentWorkflowMarker,
+  stripAppointmentWorkflowMarker,
+  withAppointmentWorkflowMarker,
+} from "@/lib/appointmentWorkflow";
+import {
   appointmentDeleteKind,
   buildBookingUpdateTextMessage,
   buildCancellationTextMessage,
@@ -194,8 +199,11 @@ function EditAppointmentForm({
   const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>(
     initialPayment.status ?? "paid",
   );
+  const workflowMarker = parseAppointmentWorkflowMarker(appointment.notes);
   const [notes, setNotes] = useState(
-    stripSalonPayoutOverride(stripPaymentInfo(appointment.notes)) ?? "",
+    stripAppointmentWorkflowMarker(
+      stripSalonPayoutOverride(stripPaymentInfo(appointment.notes)),
+    ) ?? "",
   );
   const [salonPayoutOverride, setSalonPayoutOverride] = useState(
     parseSalonPayoutOverride(appointment.notes)?.toString() ?? "",
@@ -350,7 +358,11 @@ function EditAppointmentForm({
       <input type="hidden" name="tip" value={tip} />
       <input type="hidden" name="payment_method" value={paymentMethod} />
       <input type="hidden" name="payment_status" value={paymentStatus} />
-      <input type="hidden" name="notes" value={notes} />
+      <input
+        type="hidden"
+        name="notes"
+        value={withAppointmentWorkflowMarker(notes, workflowMarker) ?? ""}
+      />
       <input
         type="hidden"
         name="salon_payout_override"

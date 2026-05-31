@@ -88,13 +88,30 @@ describe("week schedule helpers", () => {
     expect(scheduleView("month")).toBe("week");
   });
 
-  it("returns booked appointments for the selected week in date/time order", () => {
+  it("returns scheduled appointments for the selected week in date/time order", () => {
     const range = weekRangeForDate("2026-05-19");
     const rows = appointmentsForWeek({
       appointments: [
-        appt({ id: "completed", status: "completed", date: "2026-05-18" }),
+        appt({
+          id: "completed-scheduled",
+          status: "completed",
+          date: "2026-05-18",
+          time_slot: "10:00am",
+        }),
+        appt({
+          id: "completed-history",
+          status: "completed",
+          date: "2026-05-18",
+          time_slot: null,
+        }),
         appt({ id: "later", date: "2026-05-19", time_slot: "1:30pm" }),
         appt({ id: "earlier", date: "2026-05-19", time_slot: "9:00am" }),
+        appt({
+          id: "active",
+          date: "2026-05-19",
+          time_slot: "12:00pm",
+          notes: "[workflow:in_progress]",
+        }),
         appt({ id: "outside", date: "2026-06-01" }),
       ],
       clients,
@@ -102,9 +119,17 @@ describe("week schedule helpers", () => {
       range,
     });
 
-    expect(rows.map((row) => row.appointment.id)).toEqual(["earlier", "later"]);
+    expect(rows.map((row) => row.appointment.id)).toEqual([
+      "completed-scheduled",
+      "earlier",
+      "active",
+      "later",
+    ]);
     expect(rows[0].client?.first_name).toBe("Mary");
     expect(rows[0].pet?.name).toBe("Whiskey");
+    expect(rows[0].isLogged).toBe(true);
+    expect(rows[2].workflowStage).toBe("active");
+    expect(rows[2].workflowLabel).toBe("In progress");
   });
 
   it("returns booked appointments for a selected day in time order", () => {
@@ -122,7 +147,7 @@ describe("week schedule helpers", () => {
     expect(rows.map((row) => row.appointment.id)).toEqual(["earlier", "later"]);
   });
 
-  it("does not show the booked row after the same dog has a logged groom that day", () => {
+  it("shows the logged groom row after it supersedes a booked appointment that day", () => {
     const rows = appointmentsForDay({
       appointments: [
         appt({ id: "booked", date: "2026-05-21", status: "booked" }),
@@ -138,7 +163,10 @@ describe("week schedule helpers", () => {
       date: "2026-05-21",
     });
 
-    expect(rows).toEqual([]);
+    expect(rows.map((row) => row.appointment.id)).toEqual(["logged"]);
+    expect(rows[0].appointment.status).toBe("completed");
+    expect(rows[0].appointment.time_slot).toBe("10:30am");
+    expect(rows[0].isLogged).toBe(true);
   });
 
   it("totals booked fees for a selected day", () => {

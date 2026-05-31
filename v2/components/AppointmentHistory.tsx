@@ -3,6 +3,7 @@ import { collapseLoggedGroomDuplicates } from "@/lib/appointmentLedger";
 import { sortByDateDesc } from "@/lib/derive";
 import { formatDateShort, formatMoney } from "@/lib/format";
 import type { LocationSettingsMap } from "@/lib/operatorSettings";
+import { stripAppointmentWorkflowMarker } from "@/lib/appointmentWorkflow";
 import { stripPaymentInfo } from "@/lib/payments";
 import { stripSalonPayoutOverride } from "@/lib/payoutOverride";
 import { EditAppointment } from "./EditAppointment";
@@ -207,7 +208,9 @@ export function AppointmentHistory({
 }
 
 function displayNotes(notes: string | null): string | null {
-  return stripSalonPayoutOverride(stripPaymentInfo(notes));
+  return stripAppointmentWorkflowMarker(
+    stripSalonPayoutOverride(stripPaymentInfo(notes)),
+  );
 }
 
 function todayISO(): string {

@@ -96,9 +96,9 @@ describe("location finance", () => {
         DEFAULT_OPERATOR_SETTINGS.locationSettings,
       ),
     ).toEqual({
-      gross: 200,
-      salonPayout: 40,
-      samNet: 160,
+      gross: 250,
+      salonPayout: 55,
+      samNet: 195,
     });
   });
 

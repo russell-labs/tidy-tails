@@ -1,12 +1,18 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { BackLink } from "@/components/BackLink";
+import { AppointmentWorkflowControls } from "@/components/AppointmentWorkflowControls";
 import { EditAppointment } from "@/components/EditAppointment";
 import { LogGroom } from "@/components/LogGroom";
 import { ReadyPickupMessage } from "@/components/ReadyPickupMessage";
 import { SchedulePetProfileLink } from "@/components/SchedulePetProfileLink";
 import { ScheduleReminder } from "@/components/ScheduleReminder";
 import { bookingLocationLabel } from "@/lib/booking";
+import {
+  appointmentWorkflowStage,
+  parseAppointmentWorkflowMarker,
+  stripAppointmentWorkflowMarker,
+} from "@/lib/appointmentWorkflow";
 import { dataMode, loadDataset } from "@/lib/data/repo";
 import { formatDate, formatMoney, formatPhone, fullName } from "@/lib/format";
 import {
@@ -14,6 +20,8 @@ import {
   locationLabelFromSettings,
 } from "@/lib/locationFinance";
 import { readOperatorSettings } from "@/lib/operatorSettings.server";
+import { stripPaymentInfo } from "@/lib/payments";
+import { stripSalonPayoutOverride } from "@/lib/payoutOverride";
 import { buildReminderTarget } from "@/lib/reminders";
 import { weekRangeForDate } from "@/lib/schedule";
 import {
@@ -64,6 +72,12 @@ export default async function AppointmentActionPage({
     locationLabelFromSettings(appointment.location, settings.locationSettings) ??
     bookingLocationLabel(appointment.location);
   const money = calculateAppointmentMoney(appointment, settings.locationSettings);
+  const workflowStage = appointmentWorkflowStage(appointment);
+  const workflowCurrent =
+    parseAppointmentWorkflowMarker(appointment.notes) ?? "scheduled";
+  const visibleNotes = stripAppointmentWorkflowMarker(
+    stripSalonPayoutOverride(stripPaymentInfo(appointment.notes)),
+  );
   const scheduleBack = `/schedule?view=day&day=${appointment.date}&week=${
     weekRangeForDate(appointment.date).start
   }`;
@@ -113,8 +127,8 @@ export default async function AppointmentActionPage({
             <DetailRow label="Salon payout" value={money.payoutLabel} />
           ) : null}
           {location ? <DetailRow label="Location" value={location} /> : null}
-          {appointment.notes ? (
-            <DetailRow label="Notes" value={appointment.notes} />
+          {visibleNotes ? (
+            <DetailRow label="Notes" value={visibleNotes} />
           ) : null}
         </dl>
       </section>
@@ -124,6 +138,13 @@ export default async function AppointmentActionPage({
           Actions
         </h2>
         <div className="flex flex-col gap-2.5">
+          <AppointmentWorkflowControls
+            clientId={client.id}
+            appointmentId={appointment.id}
+            current={workflowCurrent}
+            disabled={workflowStage === "completed" || workflowStage === "exception"}
+          />
+
           {target ? (
             <ScheduleReminder
               clientId={client.id}

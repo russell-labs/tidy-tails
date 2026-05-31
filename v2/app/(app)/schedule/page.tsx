@@ -28,6 +28,7 @@ import type {
   ScheduleCalibration,
 } from "@/lib/operatorSettings";
 import { readOperatorSettings } from "@/lib/operatorSettings.server";
+import type { AppointmentWorkflowStage } from "@/lib/appointmentWorkflow";
 
 export const metadata: Metadata = { title: "Schedule" };
 
@@ -95,6 +96,24 @@ function statusTone(summary: DaySummary): string {
   return "border-line bg-surface text-ink";
 }
 
+function appointmentCardTone(stage: AppointmentWorkflowStage): string {
+  if (stage === "completed") return "border-ok/40 bg-ok-soft active:bg-ok-soft/70";
+  if (stage === "active") {
+    return "border-warn/40 bg-warn-soft active:bg-warn-soft/70";
+  }
+  if (stage === "exception") {
+    return "border-danger/40 bg-danger-soft active:bg-danger-soft/70";
+  }
+  return "border-line bg-surface active:bg-brand-soft";
+}
+
+function appointmentPillTone(stage: AppointmentWorkflowStage): string {
+  if (stage === "completed") return "bg-surface/80 text-ok";
+  if (stage === "active") return "bg-surface/80 text-warn";
+  if (stage === "exception") return "bg-surface/80 text-danger-ink";
+  return "";
+}
+
 function daySummaryMetrics(summary: DaySummary, money: DayMoney): string {
   return `${summary.totalDogs} dog${summary.totalDogs === 1 ? "" : "s"} · ${
     summary.largeDogs
@@ -149,7 +168,7 @@ export default async function SchedulePage({
           <p className="mt-1 text-sm text-ink-soft">
             {view === "day"
               ? `Slate and day fit for ${dayLabel(selectedDay)}.`
-              : "Booked appointments in the Tidy Tails book."}
+              : "Scheduled dogs in the Tidy Tails book."}
           </p>
         </div>
         <Link
@@ -212,9 +231,7 @@ export default async function SchedulePage({
         <div className="grid grid-cols-2 gap-2">
           <div className="rounded-xl border border-line bg-surface px-3 py-3">
             <p className="text-2xl font-bold text-ink">{rows.length}</p>
-            <p className="text-xs font-medium text-ink-soft">
-              {view === "day" ? "Dogs this day" : "Bookings"}
-            </p>
+            <p className="text-xs font-medium text-ink-soft">Scheduled dogs</p>
           </div>
           <div className="rounded-xl border border-line bg-surface px-3 py-3">
             <p className="text-2xl font-bold text-ink">
@@ -276,7 +293,7 @@ export default async function SchedulePage({
             rows={rows}
             calibration={calibration}
             locationSettings={settings.locationSettings}
-            empty="No booked appointments this week."
+            empty="No scheduled dogs this week."
           />
         </section>
       ) : null}
@@ -369,7 +386,7 @@ function OpenedDay({
           rows={rows}
           calibration={calibration}
           locationSettings={locationSettings}
-          empty="No booked dogs on this day yet."
+          empty="No scheduled dogs on this day yet."
           compact
         />
       </div>
@@ -400,7 +417,7 @@ function AppointmentList({
 
   return (
     <div className="flex flex-col gap-3">
-      {rows.map(({ appointment, client, pet }) => {
+      {rows.map(({ appointment, client, pet, workflowLabel, workflowStage }) => {
         const location =
           locationLabelFromSettings(appointment.location, locationSettings) ??
           bookingLocationLabel(appointment.location);
@@ -409,15 +426,26 @@ function AppointmentList({
         const card = (
           <Link
             href={appointmentHref(appointment.id)}
-            className={`rounded-xl border border-line bg-surface px-3.5 py-3 shadow-sm ${
+            className={`block rounded-xl border px-3.5 py-3 shadow-sm ${
               compact ? "shadow-none" : ""
-            } block active:bg-brand-soft`}
+            } ${appointmentCardTone(workflowStage)}`}
           >
             <div className="flex items-start justify-between gap-3">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-ink-faint">
-                  {dayLabel(appointment.date)}
-                </p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-ink-faint">
+                    {dayLabel(appointment.date)}
+                  </p>
+                  {workflowLabel ? (
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-xs font-bold ${appointmentPillTone(
+                        workflowStage,
+                      )}`}
+                    >
+                      {workflowLabel}
+                    </span>
+                  ) : null}
+                </div>
                 <p className="mt-1 text-lg font-bold text-ink">
                   {appointment.time_slot ?? "Time not set"}
                 </p>
