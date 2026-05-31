@@ -66,15 +66,18 @@ test("editing an appointment can review a booking update text", async ({ page })
   await page.getByRole("link", { name: /10:00am[\s\S]*Pepper/ }).click();
   await page.getByRole("button", { name: "Change or cancel appointment" }).click();
 
-  await page.getByRole("button", { name: "All 2 dogs" }).click();
+  await page.getByLabel("Appointment").selectOption({ label: "Pepper + Olive" });
   await page.getByRole("textbox", { name: "Date", exact: true }).fill(isoDaysFromNow(3));
   await page.getByRole("checkbox", { name: "Text updated booking to owner" }).check();
   await page.getByRole("button", { name: "Review changes" }).click();
 
-  await expect(page.getByText("ChangeAll 2 dogs")).toBeVisible();
+  await expect(page.getByText("AppointmentPepper + Olive")).toBeVisible();
   await expect(page.getByText("Booking update text to send")).toBeVisible();
   await expect(page.getByRole("textbox", { name: "Booking update text to send" })).toContainText(
     "updated booking for Pepper + Olive",
+  );
+  await expect(page.getByRole("textbox", { name: "Booking update text to send" })).toContainText(
+    "60 Olive Crescent",
   );
 });
 

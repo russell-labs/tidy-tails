@@ -25,6 +25,7 @@ import {
   appointmentDeleteKind,
   buildCancellationTextDraft,
   buildEditAppointmentUpdate,
+  buildSharedAppointmentGroupRowUpdate,
   buildSharedAppointmentGroupUpdate,
   shouldBlockAppointmentDeleteForCalendarStatus,
   validateBookingUpdateTextInput,
@@ -305,20 +306,45 @@ export async function editAppointment(
   }
 
   const supabase = await createServerSupabase();
-  const { data, error } = await supabase
-    .from("appointments")
-    .update(payload)
-    .eq("client_id", appointment.client_id)
-    .in("id", targetAppointmentIds)
-    .select("*");
-  if (error) {
+  const writeResults = isGroupEdit
+    ? await Promise.all(
+        targetAppointments.map((targetAppointment) =>
+          supabase
+            .from("appointments")
+            .update(
+              buildSharedAppointmentGroupRowUpdate(appointment, {
+                price: targetAppointment.price,
+                tip: targetAppointment.tip,
+                notes: targetAppointment.notes,
+              }),
+            )
+            .eq("client_id", appointment.client_id)
+            .eq("id", targetAppointment.id)
+            .select("*")
+            .single(),
+        ),
+      )
+    : [
+        await supabase
+          .from("appointments")
+          .update(payload)
+          .eq("client_id", appointment.client_id)
+          .eq("id", appointment.appointment_id)
+          .select("*")
+          .single(),
+      ];
+  const writeError = writeResults.find((result) => result.error)?.error;
+  if (writeError) {
     return {
       status: "error",
       errors: {},
       formError: "That visit could not be saved. Nothing was written.",
     };
   }
-  const savedAppointments = (data ?? []).map((row) => mapAppointmentRow(row) as Appointment);
+  const savedAppointments = writeResults
+    .map((result) => result.data)
+    .filter(Boolean)
+    .map((row) => mapAppointmentRow(row ?? {}) as Appointment);
   const calendarResults = await Promise.all(
     savedAppointments.map(async (savedAppointment) => {
       const pet = record.pets.find(

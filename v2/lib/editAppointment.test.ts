@@ -5,6 +5,7 @@ import {
   buildCancellationTextDraft,
   buildCancellationTextMessage,
   buildEditAppointmentUpdate,
+  buildSharedAppointmentGroupRowUpdate,
   buildSharedAppointmentGroupUpdate,
   shouldBlockAppointmentDeleteForCalendarStatus,
   validateCancellationTextInput,
@@ -243,6 +244,38 @@ describe("buildEditAppointmentUpdate", () => {
       date: "2026-05-29",
       time_slot: "1:30pm",
       location: "annette",
+    });
+  });
+
+  it("applies one grouped payment without copying grooming notes or fees", () => {
+    const result = validateEditAppointment(
+      {
+        ...valid,
+        date: "2026-05-29",
+        time_slot: "1:30pm",
+        location: "annette",
+        fee: "120",
+        tip: "30",
+        notes: "Do not copy this to the sibling dog",
+        payment_method: "interac",
+        payment_status: "paid",
+      },
+      TODAY,
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(
+      buildSharedAppointmentGroupRowUpdate(result.value, {
+        price: 70,
+        tip: 5,
+        notes: "Milo teddy bear face",
+      }),
+    ).toEqual({
+      date: "2026-05-29",
+      time_slot: "1:30pm",
+      location: "annette",
+      net: 75,
+      notes: "Milo teddy bear face [payment:interac; payment_status:paid]",
     });
   });
 });

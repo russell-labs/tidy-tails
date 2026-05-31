@@ -246,6 +246,28 @@ export function buildSharedAppointmentGroupUpdate(
   };
 }
 
+export function buildSharedAppointmentGroupRowUpdate(
+  v: ValidatedEditAppointment,
+  existing: Pick<{
+    price: number | null;
+    tip: number | null;
+    notes: string | null;
+  }, "price" | "tip" | "notes">,
+): Pick<
+  EditAppointmentUpdate,
+  "date" | "time_slot" | "location" | "net" | "notes"
+> {
+  const total = (existing.price ?? 0) + (existing.tip ?? 0);
+  return {
+    ...buildSharedAppointmentGroupUpdate(v),
+    net: v.payment_status === "paid" ? total : null,
+    notes: withPaymentInfo(existing.notes, {
+      method: v.payment_method,
+      status: v.payment_status,
+    }),
+  };
+}
+
 export function appointmentDeleteKind({
   status,
   date,

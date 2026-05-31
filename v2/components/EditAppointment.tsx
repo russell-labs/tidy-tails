@@ -33,7 +33,10 @@ import {
   type EditAppointmentErrors,
 } from "@/lib/editAppointment";
 import { formatMoney } from "@/lib/format";
-import { locationLabelFromSettings } from "@/lib/locationFinance";
+import {
+  customerLocationLabelFromSettings,
+  locationLabelFromSettings,
+} from "@/lib/locationFinance";
 import type { LocationSettingsMap } from "@/lib/operatorSettings";
 import {
   PAYMENT_METHODS,
@@ -55,6 +58,7 @@ import { SubmitDogOverlay } from "./SubmitDog";
 const fieldClass =
   "w-full min-w-0 max-w-full rounded-xl border border-line bg-surface px-3.5 py-2.5 text-base text-ink placeholder:text-ink-faint";
 const labelClass = "text-sm font-medium text-ink-soft";
+const GROUP_APPOINTMENT_VALUE = "__group__";
 
 const SERVICE_LABELS: Record<ServiceType, string> = {
   full_groom: "Full groom",
@@ -190,16 +194,33 @@ function EditAppointmentForm({
     new Set(groupAppointmentIds.filter(Boolean)),
   );
   const canEditGroup = cleanGroupAppointmentIds.length > 1;
-  const [editScope, setEditScope] = useState<"single" | "group">("single");
+  const groupAppointments = cleanGroupAppointmentIds
+    .map((id) => appointments.find((candidate) => candidate.id === id))
+    .filter(Boolean) as Appointment[];
+  const groupOptions = groupAppointments.map((groupAppointment, index) => ({
+    id: groupAppointment.id,
+    name: groupPetNames[index] ?? `Dog ${index + 1}`,
+  }));
+  const groupPetLabel =
+    groupOptions.length > 1
+      ? groupOptions.map((option) => option.name).join(" + ")
+      : petName ?? "this pet";
+  const [editTargetId, setEditTargetId] = useState(appointment.id);
+  const editScope = editTargetId === GROUP_APPOINTMENT_VALUE ? "group" : "single";
+  const targetAppointment =
+    appointments.find((candidate) => candidate.id === editTargetId) ??
+    appointment;
   const scopedAppointmentIds =
     editScope === "group" && canEditGroup
       ? cleanGroupAppointmentIds
-      : [appointment.id];
+      : [targetAppointment.id];
   const scopedAppointmentIdKey = scopedAppointmentIds.join("|");
   const scopedPetLabel =
-    editScope === "group" && canEditGroup && groupPetNames.length > 1
-      ? groupPetNames.join(" + ")
-      : petName ?? "this pet";
+    editScope === "group" && canEditGroup
+      ? groupPetLabel
+      : groupOptions.find((option) => option.id === targetAppointment.id)?.name ??
+        petName ??
+        "this pet";
   const [date, setDate] = useState(appointment.date);
   const [time, setTime] = useState(appointment.time_slot ?? "");
   const [serviceType, setServiceType] = useState(
@@ -223,7 +244,6 @@ function EditAppointmentForm({
   const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>(
     initialPayment.status ?? "paid",
   );
-  const workflowMarker = parseAppointmentWorkflowMarker(appointment.notes);
   const [notes, setNotes] = useState(
     stripAppointmentWorkflowMarker(
       stripSalonPayoutOverride(stripPaymentInfo(appointment.notes)),
@@ -235,8 +255,8 @@ function EditAppointmentForm({
   const [sendBookingUpdateText, setSendBookingUpdateText] = useState(false);
   const [bookingUpdateMessage, setBookingUpdateMessage] = useState("");
   const deleteKind = appointmentDeleteKind({
-    status: appointment.status,
-    date: appointment.date,
+    status: targetAppointment.status,
+    date: targetAppointment.date,
     today: todayISO(),
   });
   const canDeleteAppointment = deleteKind !== "disabled";
@@ -246,10 +266,10 @@ function EditAppointmentForm({
       ownerFirstName: null,
       petName:
         scope === "group" && canEditGroup && groupPetNames.length > 1
-          ? groupPetNames.join(" + ")
-          : petName ?? "the pet",
-      date: appointment.date,
-      time: appointment.time_slot,
+          ? groupPetLabel
+          : scopedPetLabel,
+      date: targetAppointment.date,
+      time: targetAppointment.time_slot,
     });
   const [cancellationMessage, setCancellationMessage] = useState(
     defaultCancellationMessage("single"),
@@ -289,7 +309,7 @@ function EditAppointmentForm({
   const serviceLabel =
     serviceType ? (SERVICE_LABELS[serviceType as ServiceType] ?? null) : null;
   const customerLocation = location
-    ? locationLabelFromSettings(location, locationSettings)
+    ? customerLocationLabelFromSettings(location, locationSettings)
     : null;
   const defaultBookingUpdateMessage = () =>
     buildBookingUpdateTextMessage({
@@ -324,10 +344,60 @@ function EditAppointmentForm({
     };
   }, [appointment.id, date, serviceType, scopedAppointmentIdKey]);
 
+  function applyAppointmentFields(nextAppointment: Appointment) {
+    setDate(nextAppointment.date);
+    setTime(nextAppointment.time_slot ?? "");
+    setServiceType(serviceCodeFromLabel(nextAppointment.service));
+    setLocation(
+      (nextAppointment.location === "gina" || nextAppointment.location === "annette"
+        ? nextAppointment.location
+        : "") as BookingLocation | "",
+    );
+    setFee(nextAppointment.price != null ? String(nextAppointment.price) : "");
+    setTip(nextAppointment.tip != null ? String(nextAppointment.tip) : "");
+    const nextPayment = parsePaymentInfo(nextAppointment.notes);
+    setPaymentMethod(nextPayment.method ?? "cash");
+    setPaymentStatus(nextPayment.status ?? "paid");
+    setNotes(
+      stripAppointmentWorkflowMarker(
+        stripSalonPayoutOverride(stripPaymentInfo(nextAppointment.notes)),
+      ) ?? "",
+    );
+    setSalonPayoutOverride(
+      parseSalonPayoutOverride(nextAppointment.notes)?.toString() ?? "",
+    );
+  }
+
+  function onEditTargetChange(value: string) {
+    setEditTargetId(value);
+    setBookingUpdateMessage("");
+    setConfirmDelete(false);
+    setErrors({});
+    if (value === GROUP_APPOINTMENT_VALUE) {
+      setCancellationMessage(defaultCancellationMessage("group"));
+      return;
+    }
+    const nextAppointment =
+      appointments.find((candidate) => candidate.id === value) ?? appointment;
+    applyAppointmentFields(nextAppointment);
+    setCancellationMessage(
+      buildCancellationTextMessage({
+        ownerFirstName: null,
+        petName:
+          groupOptions.find((option) => option.id === nextAppointment.id)?.name ??
+          petName ??
+          "the pet",
+        date: nextAppointment.date,
+        time: nextAppointment.time_slot,
+      }),
+    );
+  }
+
   function toReview() {
     const validation = validateEditAppointment({
       client_id: clientId,
-      appointment_id: appointment.id,
+      appointment_id:
+        editScope === "group" ? groupAppointments[0]?.id ?? appointment.id : targetAppointment.id,
       date,
       time_slot: time,
       service_type: serviceType,
@@ -383,7 +453,15 @@ function EditAppointmentForm({
         }
       />
       <input type="hidden" name="client_id" value={clientId} />
-      <input type="hidden" name="appointment_id" value={appointment.id} />
+      <input
+        type="hidden"
+        name="appointment_id"
+        value={
+          editScope === "group"
+            ? groupAppointments[0]?.id ?? appointment.id
+            : targetAppointment.id
+        }
+      />
       <input type="hidden" name="edit_scope" value={editScope} />
       <input type="hidden" name="date" value={date} />
       <input type="hidden" name="time_slot" value={time} />
@@ -396,7 +474,12 @@ function EditAppointmentForm({
       <input
         type="hidden"
         name="notes"
-        value={withAppointmentWorkflowMarker(notes, workflowMarker) ?? ""}
+        value={
+          withAppointmentWorkflowMarker(
+            notes,
+            parseAppointmentWorkflowMarker(targetAppointment.notes),
+          ) ?? ""
+        }
       />
       <input
         type="hidden"
@@ -440,35 +523,26 @@ function EditAppointmentForm({
             <span className="font-semibold text-ink">{scopedPetLabel}</span>.
           </p>
           {canEditGroup ? (
-            <fieldset className="flex flex-col gap-2 rounded-xl border border-line bg-canvas p-3">
-              <legend className={labelClass}>Change</legend>
-              <div className="grid grid-cols-2 gap-2">
-                <ChoiceButton
-                  active={editScope === "single"}
-                  onClick={() => {
-                    setEditScope("single");
-                    setCancellationMessage(defaultCancellationMessage("single"));
-                  }}
-                >
-                  This dog
-                </ChoiceButton>
-                <ChoiceButton
-                  active={editScope === "group"}
-                  onClick={() => {
-                    setEditScope("group");
-                    setCancellationMessage(defaultCancellationMessage("group"));
-                  }}
-                >
-                  All {cleanGroupAppointmentIds.length} dogs
-                </ChoiceButton>
-              </div>
+            <Field label="Appointment">
+              <select
+                value={editTargetId}
+                onChange={(event) => onEditTargetChange(event.target.value)}
+                className={fieldClass}
+              >
+                {groupOptions.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.name}
+                  </option>
+                ))}
+                <option value={GROUP_APPOINTMENT_VALUE}>{groupPetLabel}</option>
+              </select>
               {editScope === "group" ? (
                 <p className="text-xs leading-relaxed text-ink-soft">
-                  This changes date, drop-off time, and location together. Groom
-                  notes, fee, tip, payment, and payout stay separate for each dog.
+                  Date, drop-off time, location, and payment update together.
+                  Groom notes, fee, tip, service, and payout stay separate.
                 </p>
               ) : null}
-            </fieldset>
+            </Field>
           ) : null}
           <Field label="Date" error={errors.date}>
             <input
@@ -591,35 +665,6 @@ function EditAppointmentForm({
                   className={fieldClass}
                 />
               </Field>
-              <fieldset className="flex flex-col gap-2">
-                <legend className={labelClass}>Payment</legend>
-                <div className="grid grid-cols-2 gap-2">
-                  <ChoiceButton
-                    active={paymentStatus === "paid"}
-                    onClick={() => setPaymentStatus("paid")}
-                  >
-                    Paid
-                  </ChoiceButton>
-                  <ChoiceButton
-                    active={paymentStatus === "waiting"}
-                    onClick={() => setPaymentStatus("waiting")}
-                  >
-                    Waiting
-                  </ChoiceButton>
-                </div>
-                <div className="grid grid-cols-3 gap-2">
-                  {PAYMENT_METHODS.map((method) => (
-                    <ChoiceButton
-                      key={method}
-                      active={paymentMethod === method}
-                      onClick={() => setPaymentMethod(method)}
-                      disabled={paymentStatus === "waiting"}
-                    >
-                      {PAYMENT_METHOD_LABELS[method]}
-                    </ChoiceButton>
-                  ))}
-                </div>
-              </fieldset>
               <Field label="Notes" error={errors.notes}>
                 <textarea
                   value={notes}
@@ -630,6 +675,37 @@ function EditAppointmentForm({
               </Field>
             </>
           ) : null}
+          <fieldset className="flex flex-col gap-2">
+            <legend className={labelClass}>
+              {editScope === "group" ? "Payment for all selected dogs" : "Payment"}
+            </legend>
+            <div className="grid grid-cols-2 gap-2">
+              <ChoiceButton
+                active={paymentStatus === "paid"}
+                onClick={() => setPaymentStatus("paid")}
+              >
+                Paid
+              </ChoiceButton>
+              <ChoiceButton
+                active={paymentStatus === "waiting"}
+                onClick={() => setPaymentStatus("waiting")}
+              >
+                Waiting
+              </ChoiceButton>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              {PAYMENT_METHODS.map((method) => (
+                <ChoiceButton
+                  key={method}
+                  active={paymentMethod === method}
+                  onClick={() => setPaymentMethod(method)}
+                  disabled={paymentStatus === "waiting"}
+                >
+                  {PAYMENT_METHOD_LABELS[method]}
+                </ChoiceButton>
+              ))}
+            </div>
+          </fieldset>
           {customerPhone ? (
             <label className="flex items-start gap-2 rounded-xl border border-line bg-surface px-3.5 py-3 text-sm text-ink-soft">
               <input
@@ -765,12 +841,8 @@ function EditAppointmentForm({
           <dl className="flex flex-col gap-1.5 rounded-xl border border-line bg-canvas px-3.5 py-3 text-sm">
             {canEditGroup ? (
               <ReviewRow
-                label="Change"
-                value={
-                  editScope === "group"
-                    ? `All ${cleanGroupAppointmentIds.length} dogs`
-                    : "This dog"
-                }
+                label="Appointment"
+                value={scopedPetLabel}
               />
             ) : null}
             <ReviewRow label="Date" value={date} />
@@ -804,16 +876,16 @@ function EditAppointmentForm({
                     value={`Salon keeps ${salonPayoutOverride.trim()}% for this visit`}
                   />
                 ) : null}
-                <ReviewRow
-                  label="Payment"
-                  value={paymentLabel({
-                    method: paymentMethod,
-                    status: paymentStatus,
-                  })}
-                />
                 <ReviewRow label="Notes" value={notes.trim() || "Not set"} />
               </>
             ) : null}
+            <ReviewRow
+              label="Payment"
+              value={paymentLabel({
+                method: paymentMethod,
+                status: paymentStatus,
+              })}
+            />
           </dl>
           {sendBookingUpdateText ? (
             <Field label="Booking update text to send">
