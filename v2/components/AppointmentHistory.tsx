@@ -4,7 +4,7 @@ import { sortByDateDesc } from "@/lib/derive";
 import { formatDateShort, formatMoney } from "@/lib/format";
 import type { LocationSettingsMap } from "@/lib/operatorSettings";
 import { stripAppointmentWorkflowMarker } from "@/lib/appointmentWorkflow";
-import { stripPaymentInfo } from "@/lib/payments";
+import { paymentPillForAppointments, stripPaymentInfo } from "@/lib/payments";
 import { stripSalonPayoutOverride } from "@/lib/payoutOverride";
 import { EditAppointment } from "./EditAppointment";
 
@@ -28,6 +28,7 @@ function Row({
   locationSettings: LocationSettingsMap;
 }) {
   const total = (appointment.price ?? 0) + (appointment.tip ?? 0);
+  const paymentPill = paymentPillForAppointments([appointment]);
   const trigger = (
     <div className="flex items-start justify-between gap-3 px-3.5 py-3">
       <div className="min-w-0">
@@ -53,9 +54,24 @@ function Row({
             {displayNotes(appointment.notes)}
           </p>
         ) : null}
-        <span className="mt-2 inline-flex rounded-lg border border-line px-2.5 py-1 text-xs font-semibold text-brand">
-          Edit visit
-        </span>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {paymentPill ? (
+            <span
+              className={`inline-flex rounded-lg px-2.5 py-1 text-xs font-semibold ${
+                paymentPill.status === "paid"
+                  ? "bg-ok-soft text-ok"
+                  : paymentPill.status === "waiting"
+                    ? "bg-warn-soft text-warn"
+                    : "bg-canvas text-ink-soft"
+              }`}
+            >
+              {paymentPill.label}
+            </span>
+          ) : null}
+          <span className="inline-flex rounded-lg border border-line px-2.5 py-1 text-xs font-semibold text-brand">
+            Edit visit
+          </span>
+        </div>
       </div>
       <div className="shrink-0 text-right">
         <p className="text-sm font-semibold text-ink">

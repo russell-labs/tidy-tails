@@ -30,6 +30,7 @@ import type {
 } from "@/lib/operatorSettings";
 import { readOperatorSettings } from "@/lib/operatorSettings.server";
 import type { AppointmentWorkflowStage } from "@/lib/appointmentWorkflow";
+import type { PaymentPill } from "@/lib/payments";
 
 export const metadata: Metadata = { title: "Schedule" };
 
@@ -113,6 +114,12 @@ function appointmentPillTone(stage: AppointmentWorkflowStage): string {
   if (stage === "active") return "bg-surface/80 text-warn";
   if (stage === "exception") return "bg-surface/80 text-danger-ink";
   return "";
+}
+
+function paymentPillTone(payment: PaymentPill): string {
+  if (payment.status === "paid") return "bg-surface/80 text-ok";
+  if (payment.status === "waiting") return "bg-surface/80 text-warn";
+  return "bg-surface/80 text-ink-soft";
 }
 
 function daySummaryMetrics(summary: DaySummary, money: DayMoney): string {
@@ -431,6 +438,7 @@ function AppointmentList({
         const { appointment, client } = group.primary;
         const workflowLabel = group.workflowLabel;
         const workflowStage = group.workflowStage;
+        const paymentPill = group.paymentPill;
         const location =
           locationLabelFromSettings(appointment.location, locationSettings) ??
           bookingLocationLabel(appointment.location);
@@ -479,6 +487,15 @@ function AppointmentList({
                       )}`}
                     >
                       {workflowLabel}
+                    </span>
+                  ) : null}
+                  {paymentPill ? (
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-xs font-bold ${paymentPillTone(
+                        paymentPill,
+                      )}`}
+                    >
+                      {paymentPill.label}
                     </span>
                   ) : null}
                 </div>

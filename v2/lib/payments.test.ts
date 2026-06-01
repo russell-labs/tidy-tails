@@ -3,6 +3,7 @@ import {
   normalizePaymentMethod,
   parsePaymentInfo,
   paymentLabel,
+  paymentPillForAppointments,
   stripPaymentInfo,
   withPaymentInfo,
 } from "./payments";
@@ -67,5 +68,27 @@ describe("payment note metadata", () => {
       "Waiting on payment",
     );
     expect(paymentLabel({ method: null, status: null })).toBe("Not recorded");
+  });
+
+  it("summarizes payment pills across grouped appointments", () => {
+    expect(
+      paymentPillForAppointments([
+        { notes: "[payment:cash; payment_status:paid]" },
+        { notes: "[payment:interac; payment_status:paid]" },
+      ]),
+    ).toEqual({ status: "paid", label: "Paid" });
+    expect(
+      paymentPillForAppointments([
+        { notes: "[payment:cash; payment_status:paid]" },
+        { notes: "[payment:cash; payment_status:waiting]" },
+      ]),
+    ).toEqual({ status: "waiting", label: "Waiting payment" });
+    expect(
+      paymentPillForAppointments([
+        { notes: "[payment:cash; payment_status:paid]" },
+        { notes: null },
+      ]),
+    ).toEqual({ status: "partial", label: "Partial payment" });
+    expect(paymentPillForAppointments([{ notes: null }])).toBeNull();
   });
 });

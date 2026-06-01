@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { BackLink } from "@/components/BackLink";
+import { AppointmentPaymentControls } from "@/components/AppointmentPaymentControls";
 import { AppointmentWorkflowControls } from "@/components/AppointmentWorkflowControls";
 import { EditAppointment } from "@/components/EditAppointment";
 import { LogGroom } from "@/components/LogGroom";
@@ -20,7 +21,12 @@ import {
   locationLabelFromSettings,
 } from "@/lib/locationFinance";
 import { readOperatorSettings } from "@/lib/operatorSettings.server";
-import { stripPaymentInfo } from "@/lib/payments";
+import {
+  parsePaymentInfo,
+  paymentLabel,
+  paymentPillForAppointments,
+  stripPaymentInfo,
+} from "@/lib/payments";
 import { stripSalonPayoutOverride } from "@/lib/payoutOverride";
 import { buildReminderTarget } from "@/lib/reminders";
 import { scheduledAppointmentGroupFor, weekRangeForDate } from "@/lib/schedule";
@@ -81,6 +87,12 @@ export default async function AppointmentActionPage({
     locationLabelFromSettings(appointment.location, settings.locationSettings) ??
     bookingLocationLabel(appointment.location);
   const money = calculateAppointmentMoney(appointment, settings.locationSettings);
+  const payment = parsePaymentInfo(appointment.notes);
+  const paymentPill = paymentPillForAppointments([appointment]);
+  const groupPaymentPill =
+    appointmentGroup.length > 1
+      ? paymentPillForAppointments(appointmentGroup)
+      : null;
   const workflowStage = appointmentWorkflowStage(appointment);
   const workflowCurrent =
     parseAppointmentWorkflowMarker(appointment.notes) ?? "scheduled";
@@ -140,6 +152,7 @@ export default async function AppointmentActionPage({
           {appointment.price != null && money.payoutLabel ? (
             <DetailRow label="Salon payout" value={money.payoutLabel} />
           ) : null}
+          <DetailRow label="Payment" value={paymentLabel(payment)} />
           {location ? <DetailRow label="Location" value={location} /> : null}
           {visibleNotes ? (
             <DetailRow label="Notes" value={visibleNotes} />
@@ -157,6 +170,19 @@ export default async function AppointmentActionPage({
             appointmentId={appointment.id}
             current={workflowCurrent}
             disabled={workflowStage === "completed" || workflowStage === "exception"}
+          />
+
+          <AppointmentPaymentControls
+            clientId={client.id}
+            appointmentId={appointment.id}
+            payment={paymentPill}
+            groupPayment={groupPaymentPill}
+            groupLabel={
+              appointmentGroup.length > 1
+                ? appointmentGroupPetNames.join(" + ")
+                : undefined
+            }
+            disabled={workflowStage === "exception"}
           />
 
           {target ? (

@@ -7,6 +7,10 @@ import {
   type AppointmentWorkflowStage,
 } from "./appointmentWorkflow";
 import { normalizeTimeForCompare } from "./booking";
+import {
+  paymentPillForAppointments,
+  type PaymentPill,
+} from "./payments";
 
 export type WeekRange = {
   start: string;
@@ -21,6 +25,7 @@ export type ScheduledAppointment = {
   isLogged: boolean;
   workflowStage: AppointmentWorkflowStage;
   workflowLabel: string | null;
+  paymentPill: PaymentPill | null;
 };
 
 export type ScheduledAppointmentGroup = {
@@ -32,6 +37,7 @@ export type ScheduledAppointmentGroup = {
   petCount: number;
   workflowStage: AppointmentWorkflowStage;
   workflowLabel: string | null;
+  paymentPill: PaymentPill | null;
   gross: number;
 };
 
@@ -112,6 +118,9 @@ export function groupScheduledAppointments(
       petCount: groupRows.length,
       workflowStage: stage,
       workflowLabel: label,
+      paymentPill: paymentPillForAppointments(
+        groupRows.map((row) => row.appointment),
+      ),
       gross: groupRows.reduce(
         (sum, row) => sum + (row.appointment.price ?? 0),
         0,
@@ -228,6 +237,7 @@ function appointmentRows({
         isLogged: status === "completed",
         workflowStage: appointmentWorkflowStage(appointment),
         workflowLabel: appointmentWorkflowLabel(appointment),
+        paymentPill: paymentPillForAppointments([appointment]),
       };
     });
 }

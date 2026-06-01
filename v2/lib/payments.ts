@@ -9,6 +9,11 @@ export type PaymentInfo = {
   status: PaymentStatus | null;
 };
 
+export type PaymentPill = {
+  status: "paid" | "waiting" | "partial";
+  label: string;
+};
+
 export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
   cash: "Cash",
   interac: "Interac",
@@ -81,4 +86,23 @@ export function paymentLabel(payment: PaymentInfo): string {
 
 export function paymentMethodLabel(method: PaymentMethod | null): string {
   return method ? PAYMENT_METHOD_LABELS[method] : "Not recorded";
+}
+
+export function paymentPillForAppointments(
+  appointments: Array<{ notes: string | null | undefined }>,
+): PaymentPill | null {
+  if (appointments.length === 0) return null;
+  const statuses = appointments.map(
+    (appointment) => parsePaymentInfo(appointment.notes).status,
+  );
+  if (statuses.includes("waiting")) {
+    return { status: "waiting", label: "Waiting payment" };
+  }
+  if (statuses.every((status) => status === "paid")) {
+    return { status: "paid", label: "Paid" };
+  }
+  if (statuses.some((status) => status === "paid")) {
+    return { status: "partial", label: "Partial payment" };
+  }
+  return null;
 }

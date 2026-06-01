@@ -117,6 +117,7 @@ describe("week schedule helpers", () => {
           status: "completed",
           date: "2026-05-18",
           time_slot: "10:00am",
+          notes: "[payment:cash; payment_status:paid]",
         }),
         appt({
           id: "completed-history",
@@ -148,6 +149,7 @@ describe("week schedule helpers", () => {
     expect(rows[0].client?.first_name).toBe("Mary");
     expect(rows[0].pet?.name).toBe("Whiskey");
     expect(rows[0].isLogged).toBe(true);
+    expect(rows[0].paymentPill?.label).toBe("Paid");
     expect(rows[2].workflowStage).toBe("active");
     expect(rows[2].workflowLabel).toBe("In progress");
   });
@@ -193,7 +195,14 @@ describe("week schedule helpers", () => {
     const rows = appointmentsForDay({
       appointments: [
         appt({ id: "pepper", pet_id: "p1", date: "2026-05-21", time_slot: "10:00am", price: 70 }),
-        appt({ id: "oliver", pet_id: "p2", date: "2026-05-21", time_slot: "10 am", price: 55 }),
+        appt({
+          id: "oliver",
+          pet_id: "p2",
+          date: "2026-05-21",
+          time_slot: "10 am",
+          price: 55,
+          notes: "[payment:cash; payment_status:waiting]",
+        }),
         appt({ id: "later", pet_id: "p1", date: "2026-05-21", time_slot: "1:30pm", price: 80 }),
       ],
       clients,
@@ -209,6 +218,7 @@ describe("week schedule helpers", () => {
     expect(groups[0].petCount).toBe(2);
     expect(groups[0].workflowStage).toBe("scheduled");
     expect(groups[0].workflowLabel).toBe("2 dogs");
+    expect(groups[0].paymentPill?.label).toBe("Waiting payment");
     expect(groups[0].gross).toBe(125);
   });
 
