@@ -12,7 +12,7 @@
 // client — so the row-shaping contract is unit-tested with synthetic rows
 // (live.test.ts). The Supabase wiring lives in repo.ts.
 
-import type { Appointment, Client, Pet } from "./types";
+import type { Appointment, Client, DayCloseoutOverride, Pet } from "./types";
 import { parseStoredPetBirthDate } from "../petAge";
 
 export type Row = Record<string, unknown>;
@@ -109,6 +109,19 @@ export function mapAppointmentRow(r: Row): Appointment {
     google_sync_error: strOrNull(r.google_sync_error),
     google_synced_at: strOrNull(r.google_synced_at),
     created_at: str(r.created_at),
+  };
+}
+
+export function mapDayCloseoutOverrideRow(r: Row): DayCloseoutOverride {
+  return {
+    id: str(r.id),
+    date: str(r.date).slice(0, 10),
+    location: str(r.location),
+    final_payout: numOrNull(r.final_payout) ?? 0,
+    calculated_payout: numOrNull(r.calculated_payout),
+    note: str(r.note),
+    created_at: str(r.created_at),
+    updated_at: str(r.updated_at),
   };
 }
 

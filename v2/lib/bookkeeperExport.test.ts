@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import ExcelJS from "exceljs";
-import type { Appointment, Client, Pet } from "./data/types";
+import type { Appointment, Client, DayCloseoutOverride, Pet } from "./data/types";
 import {
   BOOKKEEPER_HEADERS,
   buildBookkeeperRows,
@@ -56,6 +56,19 @@ const appointments: Appointment[] = [
     google_sync_error: null,
     google_synced_at: null,
     created_at: "2026-04-10",
+  },
+];
+
+const closeoutOverrides: DayCloseoutOverride[] = [
+  {
+    id: "closeout-1",
+    date: "2026-04-10",
+    location: "gina",
+    final_payout: 20,
+    calculated_payout: 18,
+    note: "Rounded at end of day",
+    created_at: "2026-04-10T20:00:00.000Z",
+    updated_at: "2026-04-10T20:00:00.000Z",
   },
 ];
 
@@ -199,6 +212,7 @@ describe("createBookkeeperWorkbookBuffer", () => {
       clients,
       pets,
       appointments,
+      closeoutOverrides,
       from: "2026-01-01",
       to: "2026-12-31",
       period: "all",
@@ -216,5 +230,11 @@ describe("createBookkeeperWorkbookBuffer", () => {
     expect(sheet?.getCell("K2").value).toBe(70);
     expect(sheet?.getCell("N2").value).toBe(60);
     expect(sheet?.getCell("O2").value).toBe("Paid");
+
+    const closeouts = workbook.getWorksheet("Day Closeouts");
+    expect(closeouts?.getCell("A2").value).toBe("2026-04-10");
+    expect(closeouts?.getCell("C2").value).toBe(18);
+    expect(closeouts?.getCell("D2").value).toBe(20);
+    expect(closeouts?.getCell("F2").value).toBe("Rounded at end of day");
   });
 });

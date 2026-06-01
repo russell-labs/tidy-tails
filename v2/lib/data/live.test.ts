@@ -4,6 +4,7 @@ import {
   fetchAllRows,
   mapAppointmentRow,
   mapClientRow,
+  mapDayCloseoutOverrideRow,
   mapPetRow,
   serviceLabel,
 } from "./live";
@@ -175,6 +176,32 @@ describe("mapAppointmentRow — live appointments row → Appointment", () => {
     expect(mapAppointmentRow({ date: "2026-04-10T14:30:00Z" }).date).toBe(
       "2026-04-10",
     );
+  });
+});
+
+describe("mapDayCloseoutOverrideRow — live closeout row → DayCloseoutOverride", () => {
+  it("maps numeric strings and timestamp dates for closeout overrides", () => {
+    expect(
+      mapDayCloseoutOverrideRow({
+        id: "d1",
+        date: "2026-06-01T00:00:00Z",
+        location: "annette",
+        final_payout: "85.50",
+        calculated_payout: 84.63,
+        note: "Rounded at end of day",
+        created_at: "2026-06-01T20:00:00Z",
+        updated_at: "2026-06-01T20:30:00Z",
+      }),
+    ).toEqual({
+      id: "d1",
+      date: "2026-06-01",
+      location: "annette",
+      final_payout: 85.5,
+      calculated_payout: 84.63,
+      note: "Rounded at end of day",
+      created_at: "2026-06-01T20:00:00Z",
+      updated_at: "2026-06-01T20:30:00Z",
+    });
   });
 });
 

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { loadDataset } from "@/lib/data/repo";
+import { DayCloseoutControls } from "@/components/DayCloseoutControls";
+import { loadDataset, loadDayCloseoutOverrideState } from "@/lib/data/repo";
 import { bookingLocationLabel } from "@/lib/booking";
 import {
   appointmentsForDay,
@@ -21,8 +22,10 @@ import { formatMoney, formatPhone, fullName } from "@/lib/format";
 import {
   calculateAppointmentMoney,
   calculateDayMoney,
+  calculateDayLocationMoney,
   locationLabelFromSettings,
   type DayMoney,
+  type DayLocationMoney,
 } from "@/lib/locationFinance";
 import type {
   LocationSettingsMap,
@@ -159,8 +162,13 @@ export default async function SchedulePage({
   const view = scheduleView(params.view);
   const selectedDay = params.day ?? params.week ?? todayISO();
   const range = weekRangeForDate(params.week ?? selectedDay);
-  const { clients, pets, appointments } = await loadDataset();
-  const settings = await readOperatorSettings();
+  const [{ clients, pets, appointments }, closeoutState, settings] =
+    await Promise.all([
+      loadDataset(),
+      loadDayCloseoutOverrideState(),
+      readOperatorSettings(),
+    ]);
+  const closeoutOverrides = closeoutState.overrides;
   const calibration = settings.scheduleCalibration;
   const rows =
     view === "day"
@@ -174,19 +182,27 @@ export default async function SchedulePage({
     summarizeDayLoad({ date: selectedDay, appointments, pets, calibration });
   const prev = view === "day" ? shiftDay(selectedDay, -1) : shiftWeek(range.start, -1);
   const next = view === "day" ? shiftDay(selectedDay, 1) : shiftWeek(range.start, 1);
-  const totalMoney = rows.reduce(
-    (sum, row) => {
-      const money = calculateAppointmentMoney(
-        row.appointment,
-        settings.locationSettings,
-      );
-      return {
-        gross: sum.gross + money.gross,
-        samNet: sum.samNet + money.samNet,
-      };
-    },
-    { gross: 0, samNet: 0 },
-  );
+  const totalMoney =
+    view === "day"
+      ? calculateDayMoney(
+          appointments,
+          selectedDay,
+          settings.locationSettings,
+          closeoutOverrides,
+        )
+      : rows.reduce(
+          (sum, row) => {
+            const money = calculateAppointmentMoney(
+              row.appointment,
+              settings.locationSettings,
+            );
+            return {
+              gross: sum.gross + money.gross,
+              samNet: sum.samNet + money.samNet,
+            };
+          },
+          { gross: 0, samNet: 0 },
+        );
 
   return (
     <main className="px-4 py-4">
@@ -291,7 +307,15 @@ export default async function SchedulePage({
               appointments,
               selectedDaySummary.date,
               settings.locationSettings,
+              closeoutOverrides,
             )}
+            closeouts={calculateDayLocationMoney(
+              appointments,
+              selectedDaySummary.date,
+              settings.locationSettings,
+              closeoutOverrides,
+            )}
+            closeoutReady={closeoutState.ready}
             calibration={calibration}
             locationSettings={settings.locationSettings}
           />
@@ -305,6 +329,7 @@ export default async function SchedulePage({
                   appointments,
                   summary.date,
                   settings.locationSettings,
+                  closeoutOverrides,
                 )}
               />
             ))}
@@ -376,12 +401,16 @@ function OpenedDay({
   summary,
   rows,
   money,
+  closeouts,
+  closeoutReady,
   calibration,
   locationSettings,
 }: {
   summary: DaySummary;
   rows: ScheduledAppointment[];
   money: DayMoney;
+  closeouts: DayLocationMoney[];
+  closeoutReady: boolean;
   calibration: ScheduleCalibration;
   locationSettings: LocationSettingsMap;
 }) {
@@ -417,6 +446,16 @@ function OpenedDay({
           empty="No scheduled dogs on this day yet."
           compact
         />
+        {closeoutReady ? (
+          <DayCloseoutControls
+            rows={closeouts}
+            locationLabels={{
+              gina: locationLabelFromSettings("gina", locationSettings) ?? "Gina",
+              annette:
+                locationLabelFromSettings("annette", locationSettings) ?? "Annette",
+            }}
+          />
+        ) : null}
       </div>
     </div>
   );

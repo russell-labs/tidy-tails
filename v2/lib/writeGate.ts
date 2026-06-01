@@ -1,8 +1,9 @@
 // Server-side write kill-switches for the post-cutover write flips.
 //
 // Each of v2's write/send/sync surfaces — Add Appointment, Log Groom, Add Pet,
-// Edit Pet, Edit Client, Edit Appointment, Reminder send, Add Household, and
-// Google Calendar sync — is gated by a PRIVATE, server-only environment flag. The flag
+// Edit Pet, Edit Client, Edit Appointment, Day Closeout, Reminder send, Add
+// Household, and Google Calendar sync — is gated by a PRIVATE, server-only
+// environment flag. The flag
 // names are deliberately NOT prefixed `NEXT_PUBLIC_`, so their values never
 // reach the browser bundle: a flip is a server-side decision only.
 //
@@ -57,6 +58,14 @@ export function isEditClientWriteEnabled(): boolean {
 /** Edit Appointment live writes — `TIDYTAILS_ENABLE_EDIT_APPOINTMENT_WRITE`. */
 export function isEditAppointmentWriteEnabled(): boolean {
   return isFlagEnabled(process.env.TIDYTAILS_ENABLE_EDIT_APPOINTMENT_WRITE);
+}
+
+/** Day closeout payout override writes — `TIDYTAILS_ENABLE_DAY_CLOSEOUT_WRITE`. */
+export function isDayCloseoutWriteEnabled(): boolean {
+  return (
+    isFlagEnabled(process.env.TIDYTAILS_ENABLE_DAY_CLOSEOUT_WRITE) ||
+    isEditAppointmentWriteEnabled()
+  );
 }
 
 /** Add Household live writes — `TIDYTAILS_ENABLE_ADD_HOUSEHOLD_WRITE`. */

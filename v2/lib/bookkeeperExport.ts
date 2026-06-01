@@ -1,7 +1,7 @@
 import ExcelJS from "exceljs";
 import { collapseLoggedGroomDuplicates } from "./appointmentLedger";
 import { bookingLocationLabel } from "./booking";
-import type { Appointment, Client, Pet } from "./data/types";
+import type { Appointment, Client, DayCloseoutOverride, Pet } from "./data/types";
 import { parsePaymentInfo, stripPaymentInfo } from "./payments";
 import { stripSalonPayoutOverride } from "./payoutOverride";
 
@@ -29,9 +29,19 @@ type ExportInput = {
   clients: Client[];
   pets: Pet[];
   appointments: Appointment[];
+  closeoutOverrides?: DayCloseoutOverride[];
   from: string;
   to: string;
 };
+
+const DAY_CLOSEOUT_HEADERS = [
+  "Date",
+  "Location",
+  "Calculated payout",
+  "Final payout",
+  "Difference",
+  "Note",
+] as const;
 
 export function buildBookkeeperRows({
   clients,
@@ -85,6 +95,7 @@ export async function createBookkeeperWorkbookBuffer({
   from,
   to,
   period,
+  closeoutOverrides = [],
 }: ExportInput & { period: string }): Promise<ArrayBuffer> {
   const rows = buildBookkeeperRows({ clients, pets, appointments, from, to });
   const workbook = new ExcelJS.Workbook();
@@ -149,6 +160,43 @@ export async function createBookkeeperWorkbookBuffer({
   summary.getCell("A1").font = { bold: true, size: 14 };
   summary.getColumn(1).font = { bold: true };
   for (const cell of ["B6", "B7", "B8"]) summary.getCell(cell).numFmt = "$#,##0.00";
+
+  const closeoutRows = closeoutOverrides
+    .filter((override) => override.date >= from && override.date <= to)
+    .sort((a, b) => a.date.localeCompare(b.date) || a.location.localeCompare(b.location))
+    .map((override) => [
+      override.date,
+      bookingLocationLabel(override.location) ?? override.location,
+      override.calculated_payout,
+      override.final_payout,
+      override.calculated_payout == null
+        ? null
+        : override.final_payout - override.calculated_payout,
+      override.note,
+    ]);
+
+  const closeouts = workbook.addWorksheet("Day Closeouts", {
+    views: [{ state: "frozen", ySplit: 1 }],
+  });
+  closeouts.addRow([...DAY_CLOSEOUT_HEADERS]);
+  for (const row of closeoutRows) closeouts.addRow(row);
+  closeouts.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
+  closeouts.getRow(1).fill = {
+    type: "pattern",
+    pattern: "solid",
+    fgColor: { argb: "FF6D28D9" },
+  };
+  closeouts.columns = [
+    { width: 12 },
+    { width: 18 },
+    { width: 18 },
+    { width: 16 },
+    { width: 14 },
+    { width: 42 },
+  ];
+  for (const column of [3, 4, 5]) {
+    closeouts.getColumn(column).numFmt = "$#,##0.00";
+  }
 
   const buffer = await workbook.xlsx.writeBuffer();
   if (buffer instanceof ArrayBuffer) return buffer;

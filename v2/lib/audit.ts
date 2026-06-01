@@ -17,6 +17,7 @@ export type AuditEventType =
   | "appointment.group_created"
   | "appointment.updated"
   | "appointment.deleted"
+  | "day_closeout.updated"
   | "groom.logged"
   | "sms.sent"
   | "sms.handled"
@@ -55,6 +56,8 @@ const SAFE_METADATA_KEYS = new Set([
   "channel",
   "date",
   "fee",
+  "calculatedPayout",
+  "finalPayout",
   "appointmentIds",
   "location",
   "paymentMethod",
@@ -64,6 +67,7 @@ const SAFE_METADATA_KEYS = new Set([
   "fromClientId",
   "toClientId",
   "service",
+  "note",
   "alreadyCorrect",
   "failed",
   "scanned",
@@ -93,6 +97,7 @@ const LABELS: Record<AuditEventType, string> = {
   "appointment.group_created": "Booked household group",
   "appointment.updated": "Edited visit",
   "appointment.deleted": "Deleted booking",
+  "day_closeout.updated": "Saved day closeout",
   "groom.logged": "Logged groom",
   "sms.sent": "Sent SMS",
   "sms.handled": "Handled SMS",

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { collapseLoggedGroomDuplicates } from "@/lib/appointmentLedger";
-import { loadDataset } from "@/lib/data/repo";
+import { loadDataset, loadDayCloseoutOverrides } from "@/lib/data/repo";
 import { lapsedClients, revenueInRange, vaccinationState } from "@/lib/derive";
 import {
   formatDate,
@@ -12,6 +12,10 @@ import {
 } from "@/lib/format";
 import { readOperatorSettings } from "@/lib/operatorSettings.server";
 import { parsePaymentInfo } from "@/lib/payments";
+import {
+  calculateDayLocationMoney,
+  locationLabelFromSettings,
+} from "@/lib/locationFinance";
 
 export const metadata: Metadata = { title: "Reports" };
 
@@ -50,8 +54,12 @@ export default async function ReportsPage({
     lapsed: lapsedParam,
   } = await searchParams;
   const { year, month } = parseMonth(monthParam);
-  const operatorSettings = await readOperatorSettings();
-  const { clients, pets, appointments: rawAppointments, vaccinations } = await loadDataset();
+  const [operatorSettings, dataset, closeoutOverrides] = await Promise.all([
+    readOperatorSettings(),
+    loadDataset(),
+    loadDayCloseoutOverrides(),
+  ]);
+  const { clients, pets, appointments: rawAppointments, vaccinations } = dataset;
   const appointments = collapseLoggedGroomDuplicates(rawAppointments);
   const threshold = parseThreshold(
     thresholdParam,
@@ -89,6 +97,29 @@ export default async function ReportsPage({
         ? `${new Date().getFullYear()} year to date`
         : monthLabel;
   const revenue = revenueInRange(appointments, from, to);
+  const rangeDates = Array.from(
+    new Set(appointments.filter((a) => a.date >= from && a.date <= to).map((a) => a.date)),
+  ).sort();
+  for (const override of closeoutOverrides) {
+    if (override.date >= from && override.date <= to && !rangeDates.includes(override.date)) {
+      rangeDates.push(override.date);
+    }
+  }
+  rangeDates.sort();
+  const closeoutRows = rangeDates.flatMap((date) =>
+    calculateDayLocationMoney(
+      appointments,
+      date,
+      operatorSettings.locationSettings,
+      closeoutOverrides,
+    ),
+  );
+  const closeoutCalculated = closeoutRows.reduce(
+    (sum, row) => sum + row.calculatedSalonPayout,
+    0,
+  );
+  const closeoutFinal = closeoutRows.reduce((sum, row) => sum + row.salonPayout, 0);
+  const closeoutOverridesCount = closeoutRows.filter((row) => row.override).length;
   const clientsById = new Map(clients.map((client) => [client.id, client]));
   const petsById = new Map(pets.map((pet) => [pet.id, pet]));
   const waitingPayments = appointments
@@ -184,6 +215,62 @@ export default async function ReportsPage({
             ? "No appointments are recorded in this range; try All or Year."
             : "Collected totals exclude visits marked waiting on payment; active card clients are still being added."}
         </p>
+      </section>
+
+      {/* Salon payouts ----------------------------------------------------- */}
+      <section className="mt-7">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-faint">
+          Salon payouts
+        </h2>
+        <div className="mt-2 grid grid-cols-2 gap-2">
+          <StatTile
+            label="Final payout"
+            value={formatMoney(closeoutFinal)}
+            className="col-span-2"
+          />
+          <StatTile label="Calculated" value={formatMoney(closeoutCalculated)} />
+          <StatTile label="Overrides" value={String(closeoutOverridesCount)} />
+        </div>
+        {closeoutRows.length === 0 ? (
+          <p className="mt-2 text-sm text-ink-faint">
+            No salon payout rows in this range.
+          </p>
+        ) : (
+          <ul className="mt-2 flex flex-col gap-2">
+            {closeoutRows.slice(0, 12).map((row) => (
+              <li
+                key={`${row.date}-${row.location}`}
+                className="rounded-xl border border-line bg-surface px-4 py-3 shadow-sm"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-semibold text-ink">
+                      {formatDate(row.date)} ·{" "}
+                      {locationLabelFromSettings(
+                        row.location,
+                        operatorSettings.locationSettings,
+                      ) ?? row.location}
+                    </p>
+                    <p className="mt-0.5 text-xs text-ink-faint">
+                      Calculated {formatMoney(row.calculatedSalonPayout)}
+                      {row.override ? ` · ${row.override.note}` : ""}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="font-bold text-ink">
+                      {formatMoney(row.salonPayout)}
+                    </p>
+                    {row.override ? (
+                      <span className="mt-1 inline-flex rounded-full bg-brand-soft px-2 py-0.5 text-xs font-bold text-brand-ink">
+                        Override
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
 
       {/* Payment follow-up -------------------------------------------------- */}

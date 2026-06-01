@@ -62,6 +62,17 @@ export type Vaccination = {
   notes: string | null;
 };
 
+export type DayCloseoutOverride = {
+  id: string;
+  date: string; // ISO date (YYYY-MM-DD)
+  location: string;
+  final_payout: number;
+  calculated_payout: number | null;
+  note: string;
+  created_at: string;
+  updated_at: string;
+};
+
 // Convenience shape: a client with their pets and appointment history attached.
 export type ClientRecord = {
   client: Client;

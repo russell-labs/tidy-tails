@@ -15,7 +15,14 @@
 // Intended for use by Server Components only.
 
 import { createServerSupabase } from "../supabase/server";
-import type { Appointment, Client, ClientRecord, Pet, Vaccination } from "./types";
+import type {
+  Appointment,
+  Client,
+  ClientRecord,
+  DayCloseoutOverride,
+  Pet,
+  Vaccination,
+} from "./types";
 import {
   FIXTURE_APPOINTMENTS,
   FIXTURE_CLIENTS,
@@ -26,6 +33,7 @@ import {
   fetchAllRows,
   mapAppointmentRow,
   mapClientRow,
+  mapDayCloseoutOverrideRow,
   mapPetRow,
   type Row,
 } from "./live";
@@ -55,6 +63,21 @@ async function liveSelect(table: string): Promise<Row[]> {
   });
 }
 
+async function liveSelectOptional(table: string): Promise<{ rows: Row[]; ready: boolean }> {
+  try {
+    return { rows: await liveSelect(table), ready: true };
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      (error.message.includes("Could not find the table") ||
+        error.message.includes("day_closeout_overrides"))
+    ) {
+      return { rows: [], ready: false };
+    }
+    throw error;
+  }
+}
+
 // ---- public load functions ---------------------------------------------------
 
 export async function loadClients(): Promise<Client[]> {
@@ -76,6 +99,19 @@ export async function loadVaccinations(): Promise<Vaccination[]> {
   // The `vaccinations` table is a v2 schema addition (design-lock spec §6.2).
   // It does not exist on live v1, so the live path returns an empty set.
   return dataMode() === "live" ? [] : FIXTURE_VACCINATIONS;
+}
+
+export async function loadDayCloseoutOverrides(): Promise<DayCloseoutOverride[]> {
+  return (await loadDayCloseoutOverrideState()).overrides;
+}
+
+export async function loadDayCloseoutOverrideState(): Promise<{
+  overrides: DayCloseoutOverride[];
+  ready: boolean;
+}> {
+  if (dataMode() !== "live") return { overrides: [], ready: true };
+  const { rows, ready } = await liveSelectOptional("day_closeout_overrides");
+  return { overrides: rows.map(mapDayCloseoutOverrideRow), ready };
 }
 
 export type Dataset = {
