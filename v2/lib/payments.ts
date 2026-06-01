@@ -14,6 +14,20 @@ export type PaymentPill = {
   label: string;
 };
 
+export type PaymentSummary = {
+  fee: number;
+  paid: number | null;
+  tip: number | null;
+  isPaid: boolean;
+};
+
+export type PaidAllocationResult =
+  | {
+      ok: true;
+      updates: Array<{ id: string; tip: number; net: number }>;
+    }
+  | { ok: false; message: string };
+
 export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
   cash: "Cash",
   interac: "Interac",
@@ -105,4 +119,73 @@ export function paymentPillForAppointments(
     return { status: "partial", label: "Partial payment" };
   }
   return null;
+}
+
+function roundMoney(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+export function paymentSummaryForAppointments(
+  appointments: Array<{
+    price: number | null | undefined;
+    tip: number | null | undefined;
+    notes: string | null | undefined;
+  }>,
+): PaymentSummary {
+  const fee = roundMoney(
+    appointments.reduce((sum, appointment) => sum + (appointment.price ?? 0), 0),
+  );
+  const isPaid =
+    appointments.length > 0 &&
+    appointments.every(
+      (appointment) => parsePaymentInfo(appointment.notes).status === "paid",
+    );
+  if (!isPaid) {
+    return {
+      fee,
+      paid: null,
+      tip: null,
+      isPaid: false,
+    };
+  }
+  const tip = roundMoney(
+    appointments.reduce((sum, appointment) => sum + (appointment.tip ?? 0), 0),
+  );
+  return {
+    fee,
+    paid: roundMoney(fee + tip),
+    tip,
+    isPaid: true,
+  };
+}
+
+export function allocatePaidTotalAcrossAppointments(
+  appointments: Array<{ id: string; price: number | null | undefined }>,
+  paidTotal: number,
+): PaidAllocationResult {
+  if (!Number.isFinite(paidTotal) || paidTotal < 0) {
+    return { ok: false, message: "Paid amount must be a valid number." };
+  }
+  const fee = roundMoney(
+    appointments.reduce((sum, appointment) => sum + (appointment.price ?? 0), 0),
+  );
+  const paid = roundMoney(paidTotal);
+  if (paid < fee) {
+    return {
+      ok: false,
+      message: "Paid amount cannot be less than the groom fee.",
+    };
+  }
+  const tip = roundMoney(paid - fee);
+  return {
+    ok: true,
+    updates: appointments.map((appointment, index) => {
+      const rowTip = index === 0 ? tip : 0;
+      return {
+        id: appointment.id,
+        tip: rowTip,
+        net: roundMoney((appointment.price ?? 0) + rowTip),
+      };
+    }),
+  };
 }

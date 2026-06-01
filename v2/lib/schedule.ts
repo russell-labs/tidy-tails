@@ -9,7 +9,9 @@ import {
 import { normalizeTimeForCompare } from "./booking";
 import {
   paymentPillForAppointments,
+  paymentSummaryForAppointments,
   type PaymentPill,
+  type PaymentSummary,
 } from "./payments";
 
 export type WeekRange = {
@@ -26,6 +28,7 @@ export type ScheduledAppointment = {
   workflowStage: AppointmentWorkflowStage;
   workflowLabel: string | null;
   paymentPill: PaymentPill | null;
+  paymentSummary: PaymentSummary;
 };
 
 export type ScheduledAppointmentGroup = {
@@ -38,6 +41,7 @@ export type ScheduledAppointmentGroup = {
   workflowStage: AppointmentWorkflowStage;
   workflowLabel: string | null;
   paymentPill: PaymentPill | null;
+  paymentSummary: PaymentSummary;
   gross: number;
 };
 
@@ -119,6 +123,9 @@ export function groupScheduledAppointments(
       workflowStage: stage,
       workflowLabel: label,
       paymentPill: paymentPillForAppointments(
+        groupRows.map((row) => row.appointment),
+      ),
+      paymentSummary: paymentSummaryForAppointments(
         groupRows.map((row) => row.appointment),
       ),
       gross: groupRows.reduce(
@@ -238,6 +245,7 @@ function appointmentRows({
         workflowStage: appointmentWorkflowStage(appointment),
         workflowLabel: appointmentWorkflowLabel(appointment),
         paymentPill: paymentPillForAppointments([appointment]),
+        paymentSummary: paymentSummaryForAppointments([appointment]),
       };
     });
 }

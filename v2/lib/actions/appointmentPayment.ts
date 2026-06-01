@@ -6,6 +6,7 @@ import { dataMode, getClientRecord } from "@/lib/data/repo";
 import type { Appointment } from "@/lib/data/types";
 import { fullName } from "@/lib/format";
 import {
+  allocatePaidTotalAcrossAppointments,
   isPaymentMethod,
   withPaymentInfo,
   type PaymentMethod,
@@ -49,9 +50,14 @@ export async function markAppointmentPaid(
   const clientId = String(formData.get("client_id") ?? "").trim();
   const appointmentId = String(formData.get("appointment_id") ?? "").trim();
   const methodRaw = String(formData.get("payment_method") ?? "").trim();
+  const paidAmountRaw = String(formData.get("paid_amount") ?? "").trim();
   const groupScope = checked(formData.get("payment_scope_group"));
   if (!clientId || !appointmentId || !isPaymentMethod(methodRaw)) {
     return { status: "error", message: "Missing payment details." };
+  }
+  const paidAmount = Number(paidAmountRaw);
+  if (!paidAmountRaw || !Number.isFinite(paidAmount) || paidAmount < 0) {
+    return { status: "error", message: "Enter the amount they paid." };
   }
   const paymentMethod = methodRaw as PaymentMethod;
 
@@ -72,6 +78,13 @@ export async function markAppointmentPaid(
   const group = scheduledAppointmentGroupFor(record.appointments, appointment.id);
   const targets = groupScope && group.length > 1 ? group : [appointment];
   const petLabel = petLabelFor(targets, record.pets);
+  const allocation = allocatePaidTotalAcrossAppointments(targets, paidAmount);
+  if (!allocation.ok) {
+    return { status: "error", message: allocation.message };
+  }
+  const allocationById = new Map(
+    allocation.updates.map((update) => [update.id, update]),
+  );
 
   if (dataMode() === "fixtures") {
     return {
@@ -90,19 +103,21 @@ export async function markAppointmentPaid(
 
   const supabase = await createServerSupabase();
   const writes = await Promise.all(
-    targets.map((target) =>
-      supabase
+    targets.map((target) => {
+      const allocated = allocationById.get(target.id);
+      return supabase
         .from("appointments")
         .update({
           notes: withPaymentInfo(target.notes, {
             method: paymentMethod,
             status: "paid",
           }),
-          net: (target.price ?? 0) + (target.tip ?? 0),
+          tip: allocated?.tip ?? 0,
+          net: allocated?.net ?? target.price ?? 0,
         })
         .eq("id", target.id)
-        .eq("client_id", clientId),
-    ),
+        .eq("client_id", clientId);
+    }),
   );
   if (writes.some((write) => write.error)) {
     return { status: "error", message: "That payment could not be saved." };
@@ -126,6 +141,8 @@ export async function markAppointmentPaid(
       appointmentIds: targets.map((target) => target.id),
       paymentMethod,
       paymentStatus: "paid",
+      paidAmount,
+      tip: allocation.updates.reduce((sum, update) => sum + update.tip, 0),
       date: appointment.date,
     },
   });

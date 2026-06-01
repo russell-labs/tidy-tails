@@ -219,6 +219,12 @@ describe("week schedule helpers", () => {
     expect(groups[0].workflowStage).toBe("scheduled");
     expect(groups[0].workflowLabel).toBe("2 dogs");
     expect(groups[0].paymentPill?.label).toBe("Waiting payment");
+    expect(groups[0].paymentSummary).toEqual({
+      fee: 125,
+      paid: null,
+      tip: null,
+      isPaid: false,
+    });
     expect(groups[0].gross).toBe(125);
   });
 

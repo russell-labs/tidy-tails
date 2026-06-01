@@ -30,7 +30,7 @@ import type {
 } from "@/lib/operatorSettings";
 import { readOperatorSettings } from "@/lib/operatorSettings.server";
 import type { AppointmentWorkflowStage } from "@/lib/appointmentWorkflow";
-import type { PaymentPill } from "@/lib/payments";
+import type { PaymentPill, PaymentSummary } from "@/lib/payments";
 
 export const metadata: Metadata = { title: "Schedule" };
 
@@ -120,6 +120,17 @@ function paymentPillTone(payment: PaymentPill): string {
   if (payment.status === "paid") return "bg-surface/80 text-ok";
   if (payment.status === "waiting") return "bg-surface/80 text-warn";
   return "bg-surface/80 text-ink-soft";
+}
+
+function paymentSummaryText(summary: PaymentSummary): string {
+  const parts = [`Groom ${formatMoney(summary.fee)}`];
+  if (summary.paid == null) {
+    parts.push("Paid not recorded");
+  } else {
+    parts.push(`Paid ${formatMoney(summary.paid)}`);
+    parts.push(`Tip ${formatMoney(summary.tip ?? 0)}`);
+  }
+  return parts.join(" · ");
 }
 
 function daySummaryMetrics(summary: DaySummary, money: DayMoney): string {
@@ -439,6 +450,7 @@ function AppointmentList({
         const workflowLabel = group.workflowLabel;
         const workflowStage = group.workflowStage;
         const paymentPill = group.paymentPill;
+        const paymentSummary = group.paymentSummary;
         const location =
           locationLabelFromSettings(appointment.location, locationSettings) ??
           bookingLocationLabel(appointment.location);
@@ -531,6 +543,9 @@ function AppointmentList({
               <p className="mt-1 text-sm text-ink-soft">
                 {services ?? "Service not set"}
                 {location ? ` · ${location}` : ""}
+              </p>
+              <p className="mt-1 text-xs font-semibold text-ink-soft">
+                {paymentSummaryText(paymentSummary)}
               </p>
               {profilePoints > 0 ? (
                 <p className="mt-1 text-xs text-ink-faint">

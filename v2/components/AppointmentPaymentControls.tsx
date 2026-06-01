@@ -5,7 +5,8 @@ import {
   markAppointmentPaid,
   type AppointmentPaymentState,
 } from "@/lib/actions/appointmentPayment";
-import type { PaymentPill } from "@/lib/payments";
+import { formatMoney } from "@/lib/format";
+import type { PaymentPill, PaymentSummary } from "@/lib/payments";
 
 const methods = [
   { value: "cash", label: "Cash" },
@@ -24,6 +25,8 @@ export function AppointmentPaymentControls({
   appointmentId,
   payment,
   groupPayment,
+  paymentSummary,
+  groupPaymentSummary,
   groupLabel,
   disabled,
 }: {
@@ -31,6 +34,8 @@ export function AppointmentPaymentControls({
   appointmentId: string;
   payment: PaymentPill | null;
   groupPayment?: PaymentPill | null;
+  paymentSummary: PaymentSummary;
+  groupPaymentSummary?: PaymentSummary | null;
   groupLabel?: string;
   disabled: boolean;
 }) {
@@ -39,8 +44,10 @@ export function AppointmentPaymentControls({
     FormData
   >(markAppointmentPaid, { status: "idle" });
   const effectivePayment = groupPayment ?? payment;
+  const effectiveSummary = groupPaymentSummary ?? paymentSummary;
   const isPaid = effectivePayment?.status === "paid";
   const isGroup = Boolean(groupLabel);
+  const defaultPaidAmount = effectiveSummary.paid ?? effectiveSummary.fee;
 
   return (
     <form action={formAction} className="rounded-xl border border-line bg-surface px-3.5 py-3">
@@ -63,33 +70,64 @@ export function AppointmentPaymentControls({
           </span>
         ) : null}
       </div>
-      {isPaid ? (
-        <p className="mt-2 text-xs leading-relaxed text-ink-soft">
-          {groupLabel ? `${groupLabel} are marked paid.` : "This visit is marked paid."}
-        </p>
-      ) : (
-        <>
-          <p className="mt-2 text-xs leading-relaxed text-ink-soft">
-            {groupLabel
-              ? `Mark payment for ${groupLabel}.`
-              : "Mark this visit paid."}
+      <div className="mt-2 grid grid-cols-3 gap-2 text-xs">
+        <div className="rounded-lg bg-canvas px-2.5 py-2">
+          <p className="font-medium text-ink-faint">Groom</p>
+          <p className="mt-0.5 font-bold text-ink">
+            {formatMoney(effectiveSummary.fee)}
           </p>
-          <div className="mt-2 grid grid-cols-3 gap-2">
-            {methods.map((method) => (
-              <button
-                key={method.value}
-                type="submit"
-                name="payment_method"
-                value={method.value}
-                disabled={disabled || pending}
-                className="min-h-11 rounded-xl border border-line bg-surface px-2 text-sm font-semibold text-ink-soft active:bg-brand-soft disabled:opacity-55"
-              >
-                {method.label}
-              </button>
-            ))}
-          </div>
-        </>
-      )}
+        </div>
+        <div className="rounded-lg bg-canvas px-2.5 py-2">
+          <p className="font-medium text-ink-faint">Paid</p>
+          <p className="mt-0.5 font-bold text-ink">
+            {effectiveSummary.paid == null
+              ? "Not set"
+              : formatMoney(effectiveSummary.paid)}
+          </p>
+        </div>
+        <div className="rounded-lg bg-canvas px-2.5 py-2">
+          <p className="font-medium text-ink-faint">Tip</p>
+          <p className="mt-0.5 font-bold text-ink">
+            {effectiveSummary.tip == null
+              ? "Not set"
+              : formatMoney(effectiveSummary.tip)}
+          </p>
+        </div>
+      </div>
+      <label className="mt-3 flex flex-col gap-1.5">
+        <span className="text-xs font-semibold uppercase tracking-wide text-ink-faint">
+          Amount paid
+        </span>
+        <input
+          name="paid_amount"
+          type="number"
+          inputMode="decimal"
+          min={effectiveSummary.fee}
+          step="0.01"
+          defaultValue={defaultPaidAmount.toFixed(2)}
+          disabled={disabled || pending}
+          className="min-h-11 rounded-xl border border-line bg-surface px-3 text-base font-semibold text-ink disabled:opacity-55"
+        />
+      </label>
+      <p className="mt-2 text-xs leading-relaxed text-ink-soft">
+        {groupLabel
+          ? `${isPaid ? "Update" : "Mark"} payment for ${groupLabel}. Tip is paid amount minus groom total.`
+          : `${isPaid ? "Update" : "Mark"} this visit paid. Tip is paid amount minus groom fee.`}
+      </p>
+      <div className="mt-2 grid grid-cols-3 gap-2">
+        {methods.map((method) => (
+          <button
+            key={method.value}
+            type="submit"
+            name="payment_method"
+            value={method.value}
+            disabled={disabled || pending}
+            className="min-h-11 rounded-xl border border-line bg-surface px-2 text-sm font-semibold text-ink-soft active:bg-brand-soft disabled:opacity-55"
+          >
+            {method.label}
+          </button>
+        ))}
+      </div>
       {state.status === "error" ? (
         <p className="mt-2 rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger-ink">
           {state.message}

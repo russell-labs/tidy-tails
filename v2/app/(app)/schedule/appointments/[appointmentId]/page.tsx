@@ -25,6 +25,7 @@ import {
   parsePaymentInfo,
   paymentLabel,
   paymentPillForAppointments,
+  paymentSummaryForAppointments,
   stripPaymentInfo,
 } from "@/lib/payments";
 import { stripSalonPayoutOverride } from "@/lib/payoutOverride";
@@ -92,6 +93,11 @@ export default async function AppointmentActionPage({
   const groupPaymentPill =
     appointmentGroup.length > 1
       ? paymentPillForAppointments(appointmentGroup)
+      : null;
+  const paymentSummary = paymentSummaryForAppointments([appointment]);
+  const groupPaymentSummary =
+    appointmentGroup.length > 1
+      ? paymentSummaryForAppointments(appointmentGroup)
       : null;
   const workflowStage = appointmentWorkflowStage(appointment);
   const workflowCurrent =
@@ -177,6 +183,8 @@ export default async function AppointmentActionPage({
             appointmentId={appointment.id}
             payment={paymentPill}
             groupPayment={groupPaymentPill}
+            paymentSummary={paymentSummary}
+            groupPaymentSummary={groupPaymentSummary}
             groupLabel={
               appointmentGroup.length > 1
                 ? appointmentGroupPetNames.join(" + ")

@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  allocatePaidTotalAcrossAppointments,
+  paymentSummaryForAppointments,
   normalizePaymentMethod,
   parsePaymentInfo,
   paymentLabel,
@@ -90,5 +92,63 @@ describe("payment note metadata", () => {
       ]),
     ).toEqual({ status: "partial", label: "Partial payment" });
     expect(paymentPillForAppointments([{ notes: null }])).toBeNull();
+  });
+
+  it("summarizes groom fee, paid total, and tip for the schedule bubble", () => {
+    expect(
+      paymentSummaryForAppointments([
+        {
+          price: 60,
+          tip: 10,
+          notes: "[payment:cash; payment_status:paid]",
+        },
+        {
+          price: 55,
+          tip: null,
+          notes: "[payment:cash; payment_status:paid]",
+        },
+      ]),
+    ).toEqual({
+      fee: 115,
+      paid: 125,
+      tip: 10,
+      isPaid: true,
+    });
+
+    expect(
+      paymentSummaryForAppointments([
+        { price: 60, tip: null, notes: "[payment:cash; payment_status:waiting]" },
+      ]),
+    ).toEqual({
+      fee: 60,
+      paid: null,
+      tip: null,
+      isPaid: false,
+    });
+  });
+
+  it("derives tip and net from one paid total for grouped household appointments", () => {
+    expect(
+      allocatePaidTotalAcrossAppointments(
+        [
+          { id: "milo", price: 70 },
+          { id: "chloe", price: 55 },
+        ],
+        140,
+      ),
+    ).toEqual({
+      ok: true,
+      updates: [
+        { id: "milo", tip: 15, net: 85 },
+        { id: "chloe", tip: 0, net: 55 },
+      ],
+    });
+
+    expect(
+      allocatePaidTotalAcrossAppointments([{ id: "milo", price: 70 }], 60),
+    ).toEqual({
+      ok: false,
+      message: "Paid amount cannot be less than the groom fee.",
+    });
   });
 });
