@@ -7,36 +7,47 @@
 // URL. The actual sign-in runs server-side in the signIn server action.
 
 import { useActionState } from "react";
+import { useFormStatus } from "react-dom";
 import { signIn, signInWithGoogle, type AuthState } from "@/lib/actions/auth";
 import { SubmitDogOverlay } from "./SubmitDog";
 
-export function LoginForm() {
+function GoogleSubmitButton() {
+  const { pending } = useFormStatus();
+
+  return (
+    <button
+      type="submit"
+      disabled={pending}
+      className="flex min-h-12 w-full items-center justify-center gap-3 rounded-xl border border-line bg-white px-4 py-3 text-base font-semibold text-ink shadow-sm transition hover:border-brand/40 hover:bg-brand-soft/40 active:bg-canvas disabled:opacity-60"
+    >
+      <span
+        aria-hidden="true"
+        className="flex h-6 w-6 items-center justify-center rounded-full bg-white text-sm font-bold text-brand shadow-sm ring-1 ring-line"
+      >
+        G
+      </span>
+      {pending ? "Opening Google..." : "Sign in with Google"}
+    </button>
+  );
+}
+
+export function LoginForm({ initialError }: { initialError?: string | null }) {
   const [state, formAction, pending] = useActionState<AuthState, FormData>(
     signIn,
     null,
   );
+  const error = state?.error ?? initialError;
 
   return (
     <div className="flex flex-col gap-4">
       <SubmitDogOverlay label="Signing in" show={pending} />
       <form action={signInWithGoogle}>
-        <button
-          type="submit"
-          className="flex w-full items-center justify-center gap-2 rounded-xl border border-line bg-surface px-4 py-3 text-base font-semibold text-ink active:bg-canvas"
-        >
-          <span
-            aria-hidden="true"
-            className="flex h-5 w-5 items-center justify-center rounded-full bg-white text-sm font-bold text-brand shadow-sm"
-          >
-            G
-          </span>
-          Sign in with Google
-        </button>
+        <GoogleSubmitButton />
       </form>
 
       <div className="flex items-center gap-3 text-xs font-semibold uppercase tracking-wide text-ink-faint">
         <span className="h-px flex-1 bg-line" />
-        <span>Email</span>
+        <span>Email fallback</span>
         <span className="h-px flex-1 bg-line" />
       </div>
 
@@ -50,7 +61,7 @@ export function LoginForm() {
             autoComplete="email"
             required
             placeholder="you@example.com"
-            className="rounded-xl border border-line bg-surface px-4 py-3 text-base text-ink placeholder:text-ink-faint"
+            className="min-h-12 rounded-xl border border-line bg-white px-4 py-3 text-base text-ink placeholder:text-ink-faint transition focus:border-brand"
           />
         </label>
 
@@ -62,25 +73,25 @@ export function LoginForm() {
             autoComplete="current-password"
             required
             placeholder="••••••••"
-            className="rounded-xl border border-line bg-surface px-4 py-3 text-base text-ink placeholder:text-ink-faint"
+            className="min-h-12 rounded-xl border border-line bg-white px-4 py-3 text-base text-ink placeholder:text-ink-faint transition focus:border-brand"
           />
         </label>
 
-        {state?.error ? (
+        {error ? (
           <p
             role="alert"
             className="rounded-xl bg-danger-soft px-4 py-3 text-sm text-danger-ink"
           >
-            {state.error}
+            {error}
           </p>
         ) : null}
 
         <button
           type="submit"
           disabled={pending}
-          className="mt-2 rounded-xl bg-brand px-4 py-3 text-base font-semibold text-white active:bg-brand-ink disabled:opacity-60"
+          className="mt-2 min-h-12 rounded-xl bg-brand px-4 py-3 text-base font-semibold text-white shadow-sm transition hover:bg-brand-ink active:bg-brand-ink disabled:opacity-60"
         >
-          Sign in
+          {pending ? "Signing in..." : "Sign in"}
         </button>
       </form>
     </div>
