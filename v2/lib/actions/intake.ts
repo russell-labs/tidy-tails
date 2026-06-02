@@ -19,10 +19,11 @@ import { createServerSupabase, getCurrentUser } from "@/lib/supabase/server";
 import { isAddHouseholdWriteEnabled } from "@/lib/writeGate";
 import {
   buildClientInsert,
-  buildPetInsert,
+  buildPetInserts,
   validateIntake,
   type IntakeErrors,
   type PetSize,
+  type PetIntakeInput,
 } from "@/lib/intake";
 import { fullName } from "@/lib/format";
 
@@ -30,7 +31,7 @@ import { fullName } from "@/lib/format";
 export type IntakeSummary = {
   ownerName: string;
   phone: string;
-  petName: string;
+  petNames: string[];
   petBreed: string | null;
   petSize: PetSize | null;
   allergies: boolean | null; // true = yes, false = no, null = unknown
@@ -43,6 +44,35 @@ export type IntakeState =
   | { status: "demo"; summary: IntakeSummary }
   | { status: "gated"; summary: IntakeSummary; message: string }
   | { status: "saved"; summary: IntakeSummary };
+
+function formString(formData: FormData, key: string): string {
+  return String(formData.get(key) ?? "");
+}
+
+function petFromIndexedFields(formData: FormData, index: number): PetIntakeInput {
+  const prefix = `pet_${index}_`;
+  return {
+    pet_name: formString(formData, `${prefix}name`),
+    breed: formString(formData, `${prefix}breed`),
+    size: formString(formData, `${prefix}size`),
+    allergy_state: formString(formData, `${prefix}allergy_state`),
+    allergies_detail: formString(formData, `${prefix}allergies_detail`),
+    vaccination_state: formString(formData, `${prefix}vaccination_state`),
+    vaccination_detail: formString(formData, `${prefix}vaccination_detail`),
+    age: formString(formData, `${prefix}age`),
+    date_of_birth: formString(formData, `${prefix}date_of_birth`),
+    grooming_notes: formString(formData, `${prefix}grooming_notes`),
+    typical_fee: formString(formData, `${prefix}typical_fee`),
+  };
+}
+
+function petsFromFormData(formData: FormData): PetIntakeInput[] | undefined {
+  const count = Number(formData.get("pet_count") ?? 0);
+  if (!Number.isInteger(count) || count < 1) return undefined;
+  return Array.from({ length: count }, (_, index) =>
+    petFromIndexedFields(formData, index),
+  );
+}
 
 export async function saveIntake(
   _prev: IntakeState,
@@ -60,19 +90,27 @@ export async function saveIntake(
   }
 
   const raw = {
-    first_name: String(formData.get("first_name") ?? ""),
-    last_name: String(formData.get("last_name") ?? ""),
-    phone: String(formData.get("phone") ?? ""),
-    email: String(formData.get("email") ?? ""),
-    address: String(formData.get("address") ?? ""),
-    notes: String(formData.get("notes") ?? ""),
-    pet_name: String(formData.get("pet_name") ?? ""),
-    breed: String(formData.get("breed") ?? ""),
-    size: String(formData.get("size") ?? ""),
-    allergy_state: String(formData.get("allergy_state") ?? ""),
-    allergies_detail: String(formData.get("allergies_detail") ?? ""),
-    grooming_notes: String(formData.get("grooming_notes") ?? ""),
-    typical_fee: String(formData.get("typical_fee") ?? ""),
+    first_name: formString(formData, "first_name"),
+    last_name: formString(formData, "last_name"),
+    phone: formString(formData, "phone"),
+    secondary_contact_name: formString(formData, "secondary_contact_name"),
+    secondary_cell: formString(formData, "secondary_cell"),
+    landline: formString(formData, "landline"),
+    email: formString(formData, "email"),
+    address: formString(formData, "address"),
+    notes: formString(formData, "notes"),
+    pet_name: formString(formData, "pet_name"),
+    breed: formString(formData, "breed"),
+    size: formString(formData, "size"),
+    allergy_state: formString(formData, "allergy_state"),
+    allergies_detail: formString(formData, "allergies_detail"),
+    vaccination_state: formString(formData, "vaccination_state"),
+    vaccination_detail: formString(formData, "vaccination_detail"),
+    age: formString(formData, "age"),
+    date_of_birth: formString(formData, "date_of_birth"),
+    grooming_notes: formString(formData, "grooming_notes"),
+    typical_fee: formString(formData, "typical_fee"),
+    pets: petsFromFormData(formData),
   };
 
   const validation = validateIntake(raw);
@@ -85,16 +123,17 @@ export async function saveIntake(
   // summary echoes them so the review/result screens show exactly what would
   // be written.
   const clientPayload = buildClientInsert(intake);
-  const petPayload = buildPetInsert(intake);
+  const petPayloads = buildPetInserts(intake);
+  const firstPetPayload = petPayloads[0];
 
   const summary: IntakeSummary = {
     ownerName: fullName(clientPayload.first_name, clientPayload.last_name ?? ""),
     phone: clientPayload.phone,
-    petName: petPayload.name,
-    petBreed: petPayload.breed,
-    petSize: petPayload.size,
-    allergies: petPayload.allergies,
-    typicalFee: petPayload.standard_fee,
+    petNames: petPayloads.map((pet) => pet.name),
+    petBreed: firstPetPayload?.breed ?? null,
+    petSize: firstPetPayload?.size ?? null,
+    allergies: firstPetPayload?.allergies ?? null,
+    typicalFee: firstPetPayload?.standard_fee ?? null,
   };
 
   if (dataMode() === "fixtures") {
@@ -129,7 +168,7 @@ export async function saveIntake(
 
   const { error: petError } = await supabase
     .from("pets")
-    .insert({ ...petPayload, client_id: clientRow.id });
+    .insert(petPayloads.map((pet) => ({ ...pet, client_id: clientRow.id })));
 
   if (petError) {
     await supabase.from("clients").delete().eq("id", clientRow.id);
@@ -142,11 +181,12 @@ export async function saveIntake(
   }
 
   revalidatePath("/");
+  revalidatePath(`/clients/${clientRow.id}`);
   await recordAuditEvent({
     eventType: "client.created",
     clientId: clientRow.id,
-    summary: `Added household ${summary.ownerName} with pet ${summary.petName}.`,
-    metadata: { fee: summary.typicalFee },
+    summary: `Added household ${summary.ownerName} with ${summary.petNames.length} pet${summary.petNames.length === 1 ? "" : "s"}: ${summary.petNames.join(", ")}.`,
+    metadata: { fee: summary.typicalFee, petNames: summary.petNames },
   });
   return { status: "saved", summary };
 }

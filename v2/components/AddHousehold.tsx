@@ -8,13 +8,14 @@ import {
   type AllergyState,
   type IntakeErrors,
   type PetSize,
+  type VaccinationState,
 } from "@/lib/intake";
 import { formatMoney, formatPhone } from "@/lib/format";
 import { Sheet } from "./Sheet";
 import { SubmitDogOverlay } from "./SubmitDog";
 
-// Add household — onboard a new client + their first pet: form → review →
-// result. Fixture mode is a dry-run; live mode persists only when the private
+// Add household — onboard a new client plus every pet Sam knows about during
+// the call. Fixture mode is a dry-run; live mode persists only when the private
 // TIDYTAILS_ENABLE_ADD_HOUSEHOLD_WRITE gate is on.
 
 const fieldClass =
@@ -28,10 +29,56 @@ const SIZE_LABELS: Record<PetSize, string> = {
   xl: "Extra large",
 };
 
+type PetDraft = {
+  id: string;
+  name: string;
+  breed: string;
+  size: string;
+  allergyState: AllergyState;
+  allergiesDetail: string;
+  vaccinationState: VaccinationState;
+  vaccinationDetail: string;
+  age: string;
+  dateOfBirth: string;
+  groomingNotes: string;
+  typicalFee: string;
+};
+
+function newPetDraft(): PetDraft {
+  return {
+    id:
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random()}`,
+    name: "",
+    breed: "",
+    size: "",
+    allergyState: "unknown",
+    allergiesDetail: "",
+    vaccinationState: "unknown",
+    vaccinationDetail: "",
+    age: "",
+    dateOfBirth: "",
+    groomingNotes: "",
+    typicalFee: "",
+  };
+}
+
 function allergyLabel(allergies: boolean | null): string {
   if (allergies === true) return "Yes";
   if (allergies === false) return "No";
   return "Unknown";
+}
+
+function choiceLabel(value: AllergyState | VaccinationState, detail: string): string {
+  if (value === "yes") return detail.trim() ? `Yes - ${detail.trim()}` : "Yes";
+  if (value === "no") return detail.trim() ? `No - ${detail.trim()}` : "No";
+  return "Unknown";
+}
+
+function feeLabel(value: string): string {
+  const trimmed = value.trim();
+  return trimmed ? formatMoney(Number(trimmed)) : "No fee set";
 }
 
 export function AddHousehold({ mode }: { mode: "fixtures" | "live" }) {
@@ -93,43 +140,81 @@ function IntakeForm({
     saveIntake,
     { status: "idle" },
   );
-  // `step` is plain local state, never derived from `state` — a server result
-  // must not lock navigation. A server-side error (expired session) surfaces
-  // as the banner below, which renders on either step.
   const [step, setStep] = useState<"form" | "review">("form");
   const [errors, setErrors] = useState<IntakeErrors>({});
 
-  // Owner fields.
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [phone, setPhone] = useState("");
+  const [secondaryName, setSecondaryName] = useState("");
+  const [secondaryCell, setSecondaryCell] = useState("");
+  const [landline, setLandline] = useState("");
   const [email, setEmail] = useState("");
   const [address, setAddress] = useState("");
   const [clientNotes, setClientNotes] = useState("");
-  // Pet fields. Allergy state defaults to "unknown" — it asserts nothing.
-  const [petName, setPetName] = useState("");
-  const [breed, setBreed] = useState("");
-  const [size, setSize] = useState("");
-  const [allergyState, setAllergyState] = useState<AllergyState>("unknown");
-  const [allergiesDetail, setAllergiesDetail] = useState("");
-  const [groomingNotes, setGroomingNotes] = useState("");
-  const [typicalFee, setTypicalFee] = useState("");
+  const [pets, setPets] = useState<PetDraft[]>(() => [newPetDraft()]);
+  const [collapsedPetIds, setCollapsedPetIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+
+  function patchPet(id: string, patch: Partial<PetDraft>) {
+    setPets((current) =>
+      current.map((pet) => (pet.id === id ? { ...pet, ...patch } : pet)),
+    );
+  }
+
+  function addPet() {
+    const next = newPetDraft();
+    setPets((current) => [...current, next]);
+    setCollapsedPetIds((current) => {
+      const copy = new Set(current);
+      copy.delete(next.id);
+      return copy;
+    });
+  }
+
+  function removePet(id: string) {
+    setPets((current) => current.filter((pet) => pet.id !== id));
+    setCollapsedPetIds((current) => {
+      const copy = new Set(current);
+      copy.delete(id);
+      return copy;
+    });
+  }
+
+  function togglePet(id: string) {
+    setCollapsedPetIds((current) => {
+      const copy = new Set(current);
+      if (copy.has(id)) copy.delete(id);
+      else copy.add(id);
+      return copy;
+    });
+  }
 
   function toReview() {
     const v = validateIntake({
       first_name: firstName,
       last_name: lastName,
       phone,
+      secondary_contact_name: secondaryName,
+      secondary_cell: secondaryCell,
+      landline,
       email,
       address,
       notes: clientNotes,
-      pet_name: petName,
-      breed,
-      size,
-      allergy_state: allergyState,
-      allergies_detail: allergiesDetail,
-      grooming_notes: groomingNotes,
-      typical_fee: typicalFee,
+      pets: pets.map((pet) => ({
+        pet_name: pet.name,
+        breed: pet.breed,
+        size: pet.size,
+        allergy_state: pet.allergyState,
+        allergies_detail: pet.allergiesDetail,
+        vaccination_state: pet.vaccinationState,
+        vaccination_detail: pet.vaccinationDetail,
+        age: pet.age,
+        date_of_birth: pet.dateOfBirth,
+        grooming_notes: pet.groomingNotes,
+        typical_fee: pet.typicalFee,
+      })),
     });
     if (!v.ok) {
       setErrors(v.errors);
@@ -139,7 +224,6 @@ function IntakeForm({
     setStep("review");
   }
 
-  // Terminal: the action ran.
   if (
     state.status === "demo" ||
     state.status === "gated" ||
@@ -148,35 +232,71 @@ function IntakeForm({
     return <ResultScreen state={state} onDone={onDone} />;
   }
 
-  // Field-level errors come from the client-side review check; a server error
-  // surfaces as a banner. The server's own field errors are unreachable in the
-  // happy path (the review step runs the same validator first), so a generic
-  // banner covers the rare case rather than re-mapping them onto fields.
   const formError =
     state.status === "error"
       ? (state.formError ?? "Please check the household details and try again.")
       : undefined;
 
   const ownerName = `${firstName} ${lastName}`.trim();
+  const petNames = pets.map((pet) => pet.name.trim()).filter(Boolean);
 
   return (
     <form action={formAction} className="flex flex-col gap-4 pb-2">
       <SubmitDogOverlay label="Saving household" show={pending} />
-      {/* Hidden fields carry the current values into the server action,
-          regardless of which step is visible. */}
+
       <input type="hidden" name="first_name" value={firstName} />
       <input type="hidden" name="last_name" value={lastName} />
       <input type="hidden" name="phone" value={phone} />
+      <input type="hidden" name="secondary_contact_name" value={secondaryName} />
+      <input type="hidden" name="secondary_cell" value={secondaryCell} />
+      <input type="hidden" name="landline" value={landline} />
       <input type="hidden" name="email" value={email} />
       <input type="hidden" name="address" value={address} />
       <input type="hidden" name="notes" value={clientNotes} />
-      <input type="hidden" name="pet_name" value={petName} />
-      <input type="hidden" name="breed" value={breed} />
-      <input type="hidden" name="size" value={size} />
-      <input type="hidden" name="allergy_state" value={allergyState} />
-      <input type="hidden" name="allergies_detail" value={allergiesDetail} />
-      <input type="hidden" name="grooming_notes" value={groomingNotes} />
-      <input type="hidden" name="typical_fee" value={typicalFee} />
+      <input type="hidden" name="pet_count" value={pets.length} />
+      {pets.map((pet, index) => (
+        <div key={pet.id} className="hidden">
+          <input type="hidden" name={`pet_${index}_name`} value={pet.name} />
+          <input type="hidden" name={`pet_${index}_breed`} value={pet.breed} />
+          <input type="hidden" name={`pet_${index}_size`} value={pet.size} />
+          <input
+            type="hidden"
+            name={`pet_${index}_allergy_state`}
+            value={pet.allergyState}
+          />
+          <input
+            type="hidden"
+            name={`pet_${index}_allergies_detail`}
+            value={pet.allergiesDetail}
+          />
+          <input
+            type="hidden"
+            name={`pet_${index}_vaccination_state`}
+            value={pet.vaccinationState}
+          />
+          <input
+            type="hidden"
+            name={`pet_${index}_vaccination_detail`}
+            value={pet.vaccinationDetail}
+          />
+          <input type="hidden" name={`pet_${index}_age`} value={pet.age} />
+          <input
+            type="hidden"
+            name={`pet_${index}_date_of_birth`}
+            value={pet.dateOfBirth}
+          />
+          <input
+            type="hidden"
+            name={`pet_${index}_grooming_notes`}
+            value={pet.groomingNotes}
+          />
+          <input
+            type="hidden"
+            name={`pet_${index}_typical_fee`}
+            value={pet.typicalFee}
+          />
+        </div>
+      ))}
 
       <ModeNote mode={mode} />
 
@@ -210,7 +330,7 @@ function IntakeForm({
             />
           </Field>
 
-          <Field label="Phone" error={errors.phone}>
+          <Field label="Cell phone" error={errors.phone}>
             <input
               type="tel"
               inputMode="tel"
@@ -220,6 +340,45 @@ function IntakeForm({
               className={fieldClass}
             />
           </Field>
+
+          <SectionLabel>Other contacts</SectionLabel>
+
+          <Field
+            label="Secondary contact name (optional)"
+            error={errors.secondary_contact_name}
+          >
+            <input
+              type="text"
+              value={secondaryName}
+              onChange={(e) => setSecondaryName(e.target.value)}
+              placeholder="Partner, spouse, or backup contact"
+              className={fieldClass}
+            />
+          </Field>
+
+          <Field label="Secondary cell (optional)" error={errors.secondary_cell}>
+            <input
+              type="tel"
+              inputMode="tel"
+              value={secondaryCell}
+              onChange={(e) => setSecondaryCell(e.target.value)}
+              placeholder="416-555-0199"
+              className={fieldClass}
+            />
+          </Field>
+
+          <Field label="Landline (optional)" error={errors.landline}>
+            <input
+              type="tel"
+              inputMode="tel"
+              value={landline}
+              onChange={(e) => setLandline(e.target.value)}
+              placeholder="416-555-0200"
+              className={fieldClass}
+            />
+          </Field>
+
+          <SectionLabel>Household</SectionLabel>
 
           <Field label="Email (optional)" error={errors.email}>
             <input
@@ -243,80 +402,41 @@ function IntakeForm({
           </Field>
 
           <Field label="Owner notes (optional)" error={errors.notes}>
-            <input
-              type="text"
+            <textarea
               value={clientNotes}
               onChange={(e) => setClientNotes(e.target.value)}
               placeholder="Anything to remember about the owner"
-              className={fieldClass}
+              className={`${fieldClass} min-h-24 resize-none`}
             />
           </Field>
 
-          <SectionLabel>Pet</SectionLabel>
+          <SectionLabel>Pets</SectionLabel>
+          <div className="flex flex-col gap-3">
+            {pets.map((pet, index) => {
+              const collapsed = index > 0 && collapsedPetIds.has(pet.id);
+              return (
+                <PetSection
+                  key={pet.id}
+                  pet={pet}
+                  index={index}
+                  collapsed={collapsed}
+                  canRemove={pets.length > 1}
+                  errors={errors}
+                  onChange={(patch) => patchPet(pet.id, patch)}
+                  onRemove={() => removePet(pet.id)}
+                  onToggle={() => togglePet(pet.id)}
+                />
+              );
+            })}
+          </div>
 
-          <Field label="Pet name" error={errors.pet_name}>
-            <input
-              type="text"
-              value={petName}
-              onChange={(e) => setPetName(e.target.value)}
-              placeholder="Biscuit"
-              className={fieldClass}
-            />
-          </Field>
-
-          <Field label="Breed (optional)" error={errors.breed}>
-            <input
-              type="text"
-              value={breed}
-              onChange={(e) => setBreed(e.target.value)}
-              placeholder="Cockapoo"
-              className={fieldClass}
-            />
-          </Field>
-
-          <Field label="Size (optional)" error={errors.size}>
-            <select
-              value={size}
-              onChange={(e) => setSize(e.target.value)}
-              className={fieldClass}
-            >
-              <option value="">Not set</option>
-              {PET_SIZES.map((code) => (
-                <option key={code} value={code}>
-                  {SIZE_LABELS[code]}
-                </option>
-              ))}
-            </select>
-          </Field>
-
-          <AllergyPicker
-            value={allergyState}
-            onChange={setAllergyState}
-            detail={allergiesDetail}
-            onDetailChange={setAllergiesDetail}
-            detailError={errors.allergies_detail}
-          />
-
-          <Field label="Grooming notes (optional)" error={errors.grooming_notes}>
-            <input
-              type="text"
-              value={groomingNotes}
-              onChange={(e) => setGroomingNotes(e.target.value)}
-              placeholder="Cut, temperament, anything useful"
-              className={fieldClass}
-            />
-          </Field>
-
-          <Field label="Typical fee (optional)" error={errors.typical_fee}>
-            <input
-              type="text"
-              inputMode="decimal"
-              value={typicalFee}
-              onChange={(e) => setTypicalFee(e.target.value)}
-              placeholder="0.00"
-              className={fieldClass}
-            />
-          </Field>
+          <button
+            type="button"
+            onClick={addPet}
+            className="rounded-xl border border-brand bg-brand-soft px-4 py-3 text-base font-semibold text-brand-ink active:bg-brand-soft/70"
+          >
+            Add another pet
+          </button>
 
           <button
             type="button"
@@ -330,14 +450,26 @@ function IntakeForm({
         <>
           <p className="text-sm text-ink">
             This will create a new household for{" "}
-            <span className="font-semibold">{ownerName}</span> with one pet,{" "}
-            <span className="font-semibold">{petName}</span>.
+            <span className="font-semibold">{ownerName}</span> with{" "}
+            <span className="font-semibold">
+              {petNames.length} {petNames.length === 1 ? "pet" : "pets"}
+            </span>
+            {petNames.length > 0 ? `: ${petNames.join(", ")}.` : "."}
           </p>
 
           <SectionLabel>Owner</SectionLabel>
           <dl className="flex flex-col gap-1.5 rounded-xl border border-line bg-canvas px-3.5 py-3 text-sm">
             <ReviewRow label="Name" value={ownerName} />
-            <ReviewRow label="Phone" value={formatPhone(phone)} />
+            <ReviewRow label="Cell" value={formatPhone(phone)} />
+            {secondaryName.trim() ? (
+              <ReviewRow label="Secondary" value={secondaryName} />
+            ) : null}
+            {secondaryCell.trim() ? (
+              <ReviewRow label="Secondary cell" value={formatPhone(secondaryCell)} />
+            ) : null}
+            {landline.trim() ? (
+              <ReviewRow label="Landline" value={formatPhone(landline)} />
+            ) : null}
             {email.trim() ? <ReviewRow label="Email" value={email} /> : null}
             {address.trim() ? (
               <ReviewRow label="Address" value={address} />
@@ -347,36 +479,42 @@ function IntakeForm({
             ) : null}
           </dl>
 
-          <SectionLabel>Pet</SectionLabel>
-          <dl className="flex flex-col gap-1.5 rounded-xl border border-line bg-canvas px-3.5 py-3 text-sm">
-            <ReviewRow label="Name" value={petName} />
-            <ReviewRow label="Breed" value={breed.trim() || "Not set"} />
-            <ReviewRow
-              label="Size"
-              value={size ? (SIZE_LABELS[size as PetSize] ?? "Not set") : "Not set"}
-            />
-            <ReviewRow
-              label="Allergies"
-              value={
-                allergyState === "yes"
-                  ? allergiesDetail.trim()
-                    ? `Yes — ${allergiesDetail.trim()}`
-                    : "Yes"
-                  : allergyState === "no"
-                    ? "No"
-                    : "Unknown"
-              }
-            />
-            {groomingNotes.trim() ? (
-              <ReviewRow label="Grooming notes" value={groomingNotes} />
-            ) : null}
-            <ReviewRow
-              label="Typical fee"
-              value={
-                typicalFee.trim() ? formatMoney(Number(typicalFee)) : "No fee set"
-              }
-            />
-          </dl>
+          {pets.map((pet, index) => (
+            <div key={pet.id}>
+              <SectionLabel>{`Pet ${index + 1}`}</SectionLabel>
+              <dl className="flex flex-col gap-1.5 rounded-xl border border-line bg-canvas px-3.5 py-3 text-sm">
+                <ReviewRow label="Name" value={pet.name} />
+                <ReviewRow label="Breed" value={pet.breed.trim() || "Not set"} />
+                <ReviewRow
+                  label="Size"
+                  value={
+                    pet.size
+                      ? (SIZE_LABELS[pet.size as PetSize] ?? "Not set")
+                      : "Not set"
+                  }
+                />
+                <ReviewRow
+                  label="Age"
+                  value={pet.dateOfBirth || pet.age.trim() || "Not set"}
+                />
+                <ReviewRow
+                  label="Allergies"
+                  value={choiceLabel(pet.allergyState, pet.allergiesDetail)}
+                />
+                <ReviewRow
+                  label="Vaccinations"
+                  value={choiceLabel(
+                    pet.vaccinationState,
+                    pet.vaccinationDetail,
+                  )}
+                />
+                {pet.groomingNotes.trim() ? (
+                  <ReviewRow label="Grooming notes" value={pet.groomingNotes} />
+                ) : null}
+                <ReviewRow label="Typical fee" value={feeLabel(pet.typicalFee)} />
+              </dl>
+            </div>
+          ))}
 
           <div className="flex gap-2.5">
             <button
@@ -401,32 +539,203 @@ function IntakeForm({
   );
 }
 
-function AllergyPicker({
+function PetSection({
+  pet,
+  index,
+  collapsed,
+  canRemove,
+  errors,
+  onChange,
+  onRemove,
+  onToggle,
+}: {
+  pet: PetDraft;
+  index: number;
+  collapsed: boolean;
+  canRemove: boolean;
+  errors: IntakeErrors;
+  onChange: (patch: Partial<PetDraft>) => void;
+  onRemove: () => void;
+  onToggle: () => void;
+}) {
+  const prefix = index === 0 ? "" : `pets.${index}.`;
+  const title = `Pet ${index + 1}${pet.name.trim() ? ` - ${pet.name.trim()}` : ""}`;
+
+  return (
+    <section className="rounded-xl border border-line bg-canvas p-3.5">
+      <div className="flex items-center justify-between gap-2">
+        <h4 className="text-sm font-semibold text-ink">{title}</h4>
+        <div className="flex items-center gap-2">
+          {index > 0 ? (
+            <button
+              type="button"
+              onClick={onToggle}
+              className="rounded-lg border border-line bg-surface px-3 py-2 text-xs font-semibold text-ink-soft"
+            >
+              {collapsed ? "Edit" : "Hide"}
+            </button>
+          ) : null}
+          {canRemove ? (
+            <button
+              type="button"
+              onClick={onRemove}
+              className="rounded-lg border border-danger-ink/20 bg-danger-soft px-3 py-2 text-xs font-semibold text-danger-ink"
+            >
+              Remove
+            </button>
+          ) : null}
+        </div>
+      </div>
+
+      {collapsed ? (
+        <p className="mt-2 text-xs text-ink-soft">
+          {pet.breed.trim() || "Details hidden"}{" "}
+          {pet.typicalFee.trim() ? `- ${feeLabel(pet.typicalFee)}` : ""}
+        </p>
+      ) : (
+        <div className="mt-3 flex flex-col gap-3">
+          <Field label="Pet name" error={errors[`${prefix}pet_name`]}>
+            <input
+              type="text"
+              value={pet.name}
+              onChange={(e) => onChange({ name: e.target.value })}
+              placeholder="Biscuit"
+              className={fieldClass}
+            />
+          </Field>
+
+          <Field label="Breed (optional)" error={errors[`${prefix}breed`]}>
+            <input
+              type="text"
+              value={pet.breed}
+              onChange={(e) => onChange({ breed: e.target.value })}
+              placeholder="Cockapoo"
+              className={fieldClass}
+            />
+          </Field>
+
+          <Field label="Size (optional)" error={errors[`${prefix}size`]}>
+            <select
+              value={pet.size}
+              onChange={(e) => onChange({ size: e.target.value })}
+              className={fieldClass}
+            >
+              <option value="">Not set</option>
+              {PET_SIZES.map((code) => (
+                <option key={code} value={code}>
+                  {SIZE_LABELS[code]}
+                </option>
+              ))}
+            </select>
+          </Field>
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <Field label="Age (optional)" error={errors[`${prefix}age`]}>
+              <input
+                type="text"
+                value={pet.age}
+                onChange={(e) => onChange({ age: e.target.value })}
+                placeholder="5-ish"
+                className={fieldClass}
+              />
+            </Field>
+
+            <Field
+              label="Date of birth (optional)"
+              error={errors[`${prefix}date_of_birth`]}
+            >
+              <input
+                type="date"
+                value={pet.dateOfBirth}
+                onChange={(e) => onChange({ dateOfBirth: e.target.value })}
+                className={fieldClass}
+              />
+            </Field>
+          </div>
+
+          <ChoicePicker
+            label="Allergies"
+            value={pet.allergyState}
+            onChange={(allergyState) => onChange({ allergyState })}
+            detail={pet.allergiesDetail}
+            onDetailChange={(allergiesDetail) => onChange({ allergiesDetail })}
+            detailError={errors[`${prefix}allergies_detail`]}
+            detailMode="yes"
+            detailPlaceholder="What is the pet allergic to?"
+          />
+
+          <ChoicePicker
+            label="Vaccinations"
+            value={pet.vaccinationState}
+            onChange={(vaccinationState) => onChange({ vaccinationState })}
+            detail={pet.vaccinationDetail}
+            onDetailChange={(vaccinationDetail) =>
+              onChange({ vaccinationDetail })
+            }
+            detailError={errors[`${prefix}vaccination_detail`]}
+            detailMode="known"
+            detailPlaceholder="Which records, expiry, or what is missing?"
+          />
+
+          <Field
+            label="Grooming notes (optional)"
+            error={errors[`${prefix}grooming_notes`]}
+          >
+            <textarea
+              value={pet.groomingNotes}
+              onChange={(e) => onChange({ groomingNotes: e.target.value })}
+              placeholder="Cut, temperament, anything useful"
+              className={`${fieldClass} min-h-24 resize-none`}
+            />
+          </Field>
+
+          <Field label="Typical fee (optional)" error={errors[`${prefix}typical_fee`]}>
+            <input
+              type="text"
+              inputMode="decimal"
+              value={pet.typicalFee}
+              onChange={(e) => onChange({ typicalFee: e.target.value })}
+              placeholder="0.00"
+              className={fieldClass}
+            />
+          </Field>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function ChoicePicker({
+  label,
   value,
   onChange,
   detail,
   onDetailChange,
   detailError,
+  detailMode,
+  detailPlaceholder,
 }: {
-  value: AllergyState;
+  label: string;
+  value: AllergyState | VaccinationState;
   onChange: (v: AllergyState) => void;
   detail: string;
   onDetailChange: (v: string) => void;
   detailError?: string;
+  detailMode: "yes" | "known";
+  detailPlaceholder: string;
 }) {
   const options: { code: AllergyState; label: string }[] = [
     { code: "unknown", label: "Unknown" },
     { code: "no", label: "No" },
     { code: "yes", label: "Yes" },
   ];
+  const showDetail =
+    detailMode === "yes" ? value === "yes" : value === "yes" || value === "no";
+
   return (
     <div className="flex flex-col gap-1.5">
-      <span className={labelClass}>Allergies</span>
-      <div
-        role="radiogroup"
-        aria-label="Allergies"
-        className="flex gap-2"
-      >
+      <span className={labelClass}>{label}</span>
+      <div role="radiogroup" aria-label={label} className="flex gap-2">
         {options.map((o) => {
           const selected = value === o.code;
           return (
@@ -447,14 +756,14 @@ function AllergyPicker({
           );
         })}
       </div>
-      {value === "yes" ? (
+      {showDetail ? (
         <div className="mt-1.5">
           <input
             type="text"
             value={detail}
             onChange={(e) => onDetailChange(e.target.value)}
-            placeholder="What is the pet allergic to?"
-            aria-label="Allergy detail"
+            placeholder={detailPlaceholder}
+            aria-label={`${label} detail`}
             className={fieldClass}
           />
           {detailError ? (
@@ -472,14 +781,14 @@ function ModeNote({ mode }: { mode: "fixtures" | "live" }) {
   if (mode === "live") {
     return (
       <p className="rounded-lg bg-brand-soft px-3 py-2 text-xs font-medium text-brand-ink">
-        Use this for a brand-new owner plus first pet. Review carefully before
-        saving.
+        Use this for a brand-new owner and every pet in the household. Review
+        carefully before saving.
       </p>
     );
   }
   return (
     <p className="rounded-lg bg-brand-soft px-3 py-2 text-xs font-medium text-brand-ink">
-      Demo mode — this is anonymized practice data. Confirming will not save
+      Demo mode - this is anonymized practice data. Confirming will not save
       anything.
     </p>
   );
@@ -497,12 +806,12 @@ function ResultScreen({
   const headline = saved
     ? "Household saved"
     : state.status === "demo"
-      ? "Demo only — nothing was saved"
-      : "Not saved — client/pet creation is switched off.";
+      ? "Demo only - nothing was saved"
+      : "Not saved - client/pet creation is switched off.";
   const detail = saved
-    ? "The new owner and first pet were added to the production book."
+    ? `The new owner and ${summary.petNames.length} pet${summary.petNames.length === 1 ? "" : "s"} were added to the production book.`
     : state.status === "demo"
-      ? "This is anonymized practice data, so the household was not created. The whole flow above is real — it starts saving once live writes are enabled."
+      ? "This is anonymized practice data, so the household was not created. The whole flow above is real - it starts saving once live writes are enabled."
       : state.message;
 
   return (
@@ -542,16 +851,18 @@ function ResultScreen({
 
       <p className="text-sm text-ink-soft">
         The household reviewed was{" "}
-        <span className="font-semibold text-ink">{summary.ownerName}</span> with
-        the pet{" "}
-        <span className="font-semibold text-ink">{summary.petName}</span>.
+        <span className="font-semibold text-ink">{summary.ownerName}</span> with{" "}
+        <span className="font-semibold text-ink">
+          {summary.petNames.join(", ")}
+        </span>
+        .
       </p>
 
       <dl className="flex flex-col gap-1.5 rounded-xl border border-line bg-canvas px-3.5 py-3 text-sm">
         <ReviewRow label="Phone" value={formatPhone(summary.phone)} />
-        <ReviewRow label="Breed" value={summary.petBreed ?? "Not set"} />
+        <ReviewRow label="First pet breed" value={summary.petBreed ?? "Not set"} />
         <ReviewRow
-          label="Size"
+          label="First pet size"
           value={summary.petSize ? SIZE_LABELS[summary.petSize] : "Not set"}
         />
         <ReviewRow label="Allergies" value={allergyLabel(summary.allergies)} />
