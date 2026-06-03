@@ -28,8 +28,10 @@ npm run build && npm start
 Other scripts: `npm run lint`, `npm run typecheck`, `npm run icons` (regenerate
 placeholder PWA icons).
 
-The app is auth-gated. The placeholder login accepts any email — real Supabase
-Auth arrives in Ship 2.2.
+The app is auth-gated by Supabase Auth (email/password plus Google OAuth) and
+restricted to an operator allowlist (see `lib/operatorAccess.ts`). The proxy
+enforces the allowlist on every routed request, and each server action
+re-verifies the session.
 
 ## Safety — what this build does NOT do
 
