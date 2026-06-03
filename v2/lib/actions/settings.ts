@@ -10,8 +10,13 @@ import {
   readOperatorSettings,
   writeOperatorSettings,
 } from "@/lib/operatorSettings.server";
+import { getCurrentUser } from "@/lib/supabase/server";
 
 export async function saveOperatorSettings(formData: FormData): Promise<void> {
+  // Defense-in-depth: the proxy gates every route, but a server action is its
+  // own POST endpoint — re-verify the operator before writing settings.
+  const user = await getCurrentUser();
+  if (!user) return;
   const current = await readOperatorSettings();
   await writeOperatorSettings({
     ...operatorSettingsFromForm(formData),
@@ -26,6 +31,8 @@ export async function saveLocationSettingsWithState(
   _prev: OperatorSettingsState,
   formData: FormData,
 ): Promise<OperatorSettingsState> {
+  const user = await getCurrentUser();
+  if (!user) return { status: "idle" };
   const current = await readOperatorSettings();
   await writeOperatorSettings({
     ...current,
@@ -46,6 +53,8 @@ export async function saveOperatorSettingsWithState(
   _prev: OperatorSettingsState,
   formData: FormData,
 ): Promise<OperatorSettingsState> {
+  const user = await getCurrentUser();
+  if (!user) return { status: "idle" };
   await saveOperatorSettings(formData);
   return { status: "saved", savedAt: new Date().toISOString() };
 }
@@ -54,6 +63,8 @@ export async function saveScheduleCalibrationWithState(
   _prev: OperatorSettingsState,
   formData: FormData,
 ): Promise<OperatorSettingsState> {
+  const user = await getCurrentUser();
+  if (!user) return { status: "idle" };
   const current = await readOperatorSettings();
   await writeOperatorSettings({
     ...current,
