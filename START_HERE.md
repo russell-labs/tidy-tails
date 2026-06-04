@@ -1,55 +1,69 @@
 ---
 venture: tidy-tails
-last-updated: 2026-05-28
+last-updated: 2026-06-04
 ---
 
 # START_HERE - Tidy Tails
 
-Tidy Tails is a Founder-lane B2B SaaS venture for solopreneur groomers, monetized by subscription.
+Tidy Tails is the live grooming-operations product for Samantha McLennan's
+business. The active production app is v2, a Next.js app deployed to Vercel and
+connected to live Supabase, Twilio, and Google Calendar integrations.
 
-## Venture Identity
+## Doctrine Pre-Flight
 
-- Name: Tidy Tails
-- subType: B2B SaaS
-- scale: solopreneur
-- monetization: subscription
-- lane: FOUNDER
-- MC project ID: not documented in this repo.
-- Identity inferred from `HANDOFF.md` + `CLAUDE.md` as of 2026-05-28; will be reconciled to BP frontmatter when `MASTER-BUSINESS-PLAN.md` is authored. Source of truth flips to BP frontmatter at that time.
+Read KoyaOS doctrine before acting. In Russell's local workspace it lives one
+level above this repo:
 
-## Canonical Reading Order
+1. `/Users/russellcole/Developer/RussellLabs/.koya/ORIENTATION.md`
+2. `/Users/russellcole/Developer/RussellLabs/.koya/MODES.md`
+3. `/Users/russellcole/Developer/RussellLabs/.koya/AGENTS.md`
+4. `/Users/russellcole/Developer/RussellLabs/.koya/VOLATILE.md`
 
-1. `.koya/ORIENTATION.md`
-2. `.koya/MODES.md`
-3. `.koya/AGENTS.md`
-4. `.koya/VOLATILE.md` (doctrine-changes section)
-5. `tidy-tails/HANDOFF.md`
-6. `tidy-tails/CLAUDE.md`
-7. `tidy-tails/CLAUDE.md` (temporary BP stand-in; `tidy-tails/MASTER-BUSINESS-PLAN.md` is absent until authored)
-8. Anything else only as `HANDOFF.md` names it.
+If those files are not available in your environment, say so and continue with
+the repo-local rules below. Do not invent missing doctrine.
+
+## Canonical Repo Reading Order
+
+1. `tidy-tails/START_HERE.md`
+2. `tidy-tails/HANDOFF.md`
+3. `tidy-tails/AGENTS.md`
+4. `tidy-tails/v2/AGENTS.md`
+5. `tidy-tails/TECH-DEVELOPMENT.md`
+6. `tidy-tails/ENGINEERING-ROADMAP.md`
+7. Any additional file explicitly named by `HANDOFF.md` or Russell.
+
+Treat older `CLAUDE.md`, `ROADMAP.md`, and historical `_reports/` files as
+context only unless the current handoff points to them.
 
 ## Live URLs
 
-- Production URL: `https://russell-labs.github.io/tidy-tails/home.html`
-- Staging URL: none documented.
-- Koya / Mission Control dashboard: `http://100.76.140.23:3000`
-- MC project ID: not documented in this repo.
+- Production v2 app: `https://tidy-tails-v2.vercel.app`
+- Vercel project: `tidy-tails-v2`
+- Supabase project id: `pgkwovokciaqnbhpttba`
+- Legacy v1 GitHub Pages app: historical/fallback only; do not edit v1 unless
+  Russell explicitly asks.
 
 ## Repo Paths
 
-- Operator workspace path: `~/Developer/RussellLabs/tidy-tails`
-- VPS deploy path: none; v1 ships via GitHub Pages from `main`.
+- Main repo path: `/Users/russellcole/Developer/RussellLabs/tidy-tails`
+- Active app path: `/Users/russellcole/Developer/RussellLabs/tidy-tails/v2`
 - Git remote: `https://github.com/russell-labs/tidy-tails.git`
 
-## Operator Constraints
+## Hold-Fire Rules
 
-- Samantha's live workflow is load-bearing; do not change production behavior casually.
-- Do not mutate live Supabase data, RLS policies, Twilio settings, or customer records without explicit Russell authorization.
-- Do not mutate `data/venture-pulse/proj_tidy_tails.json`; it is a known dirty Mission Control seed outside this repo.
-- Do not run Generate BP for Tidy Tails until Russell authorizes it.
-- Do not broaden from Sam's workflow to a multi-groomer platform without Russell approving that product gate.
+- Do not deploy, mutate production data, send live SMS, run schema/RLS changes,
+  or change Supabase/Twilio/Google production settings without Russell's
+  explicit go for that exact action.
+- Preserve unrelated dirty/untracked files. This repo often contains operator
+  docs and reports that are not part of the current code task.
+- Prefer fixture mode and local/browser verification before touching live flows.
+- Customer-facing location copy should use addresses, not internal owner names.
+- New server actions must re-verify the operator session server-side.
+- CI must stay green before merge.
 
 ## Who To Ask
 
-- Russell owns all venture, product, data, deployment, BP, and customer-facing decisions.
-- Samantha is the design partner and workflow source of truth only when Russell chooses to involve her.
+- Russell owns product, venture, production, deployment, data, and customer
+  communication decisions.
+- Sam is the operator/design-partner workflow source of truth when Russell
+  chooses to involve her.
