@@ -1,4 +1,5 @@
 import { unstable_noStore as noStore } from "next/cache";
+import * as Sentry from "@sentry/nextjs";
 import {
   buildAuditEventInsert,
   mapAuditEventRow,
@@ -22,10 +23,14 @@ export async function recordAuditEvent(
         actorId: user.id,
       }),
     );
-  } catch {
+  } catch (error) {
     // Activity logging is operational evidence, not the primary action.
     // A missing table, transient network issue, or policy problem must never
     // prevent Sam from booking, editing, exporting, or sending a message.
+    console.error("Failed to record audit event", error);
+    if (process.env.SENTRY_DSN ?? process.env.NEXT_PUBLIC_SENTRY_DSN) {
+      Sentry.captureException(error);
+    }
   }
 }
 
