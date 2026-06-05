@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-06-04
+last-updated: 2026-06-05
 current-owner: Russell
 lane: FOUNDER
 active-app: tidy-tails-v2
@@ -8,179 +8,99 @@ hold-fire: true
 
 # HANDOFF - Tidy Tails
 
-## Doctrine And Stop Conditions
+## Right Now
 
-Hold-fire default is in force. Do not deploy, mutate production data, send live
-SMS, run DB migrations/schema/RLS changes, or alter production integration
-settings without Russell's explicit go for that exact action.
+- **READY TO SHIP (awaiting your review/merge):** PR #7 — "Explicit operator
+  scoping at the data read layer (Phase 2 slice 2)". CI green expected; not
+  merged (merge is not authorized).
+- **JUST MERGED:** PR #6 — "Dedupe shared helpers and form primitives (Phase 2
+  slice 1)". On `main` as of this update.
+- **IN FLIGHT:** nothing else. No deploy has been triggered by these slices.
 
-Permission does not carry across agents. Even if a prior agent had approval,
-you must ask again before production mutation or deploy.
+## Next Action
 
-## Current State
+Russell reviews PR #7 and decides whether to merge. Both slices are
+behavior-preserving refactors with no schema/RLS/production changes; neither has
+been deployed. After merge, the natural next slice is the `SchedulingStrategy`
+seam (Phase 2) or expanding read-scoping to the out-of-scope reads reported in
+PR #7 (see Action Queue).
 
-- Active production app: `https://tidy-tails-v2.vercel.app`
-- Active app code: `tidy-tails/v2`
-- Vercel project: `tidy-tails-v2`
-- Supabase project: `pgkwovokciaqnbhpttba`
-- GitHub main after PR #1: merge commit `7dbd9b8`
-- Local branch at time of this handoff may still be
-  `harden/phase-0-ci-and-settings-guard`; `origin/main` is `7dbd9b8`.
-- The previous local commit `6d321dc` (`Add multi-pet household intake`) was
-  pushed as part of PR #1 and is now on `origin/main`.
+## Authorized Actions
 
-## What Just Happened
+(empty — expires at next update)
 
-PR #1 merged to `main` as merge commit `7dbd9b8`.
+No mutation, deploy, merge, schema/RLS change, or live-data operation is
+authorized. Each requires Russell's explicit go for that exact action in-thread.
 
-Included changes:
+## Current Production State
 
-- Added CI gate at `.github/workflows/ci.yml`.
-  - Runs typecheck, lint, and Vitest on every push and pull request.
-  - Keep it green.
-- Hardened `v2/lib/actions/settings.ts`.
-  - All four settings save actions now re-verify the operator session with
-    `getCurrentUser()` before writing.
-- Added `v2/lib/payoutOverride.test.ts` for previously untested money logic.
-- Fixed stale README auth note.
-  - Real Supabase Auth plus allowlist is live.
-- Synced `v2/package-lock.json`.
-  - Missing `@emnapi` entries previously broke `npm ci` in CI.
-- Pushed prior local commit `6d321dc`.
-  - Add Household now supports adding multiple pets during initial household
-    intake, plus secondary contact/landline fields and pet age/DOB/vaccination
-    capture.
+- Production v2 app: `https://tidy-tails-v2.vercel.app` (Vercel project
+  `tidy-tails-v2`).
+- `main` HEAD: `7769387` (after PR #6 merge). Slice 2 lives on branch
+  `refactor/explicit-read-scoping` (PR #7), not yet merged.
+- Supabase project: `pgkwovokciaqnbhpttba`. Live RLS SELECT on `clients`,
+  `pets`, `appointments`, `day_closeout_overrides` is `groomer_id = auth.uid()`
+  (verified read-only during slice 2).
+- Tests: 804 on `main`; 814 on the slice-2 branch. CI (`verify`: typecheck +
+  lint + vitest) runs on every push/PR and must stay green before merge.
 
-## New Norms
+## Active Blockers
 
-- If you change dependencies, run `npm install` from `v2/` and commit the
-  lockfile, or CI `npm ci` can fail.
-- New server actions must re-verify the session server-side, matching the
-  `settings.ts` pattern.
-- CI must be green before merge.
-- Prefer local fixture mode and Playwright/browser inspection for workflow QA.
-- Do not rebuild the in-app activity log. It already exists at
-  `Settings -> Advanced -> Activity log`.
+- None technical. PR #7 awaits operator review (process gate, not a defect).
+- `MASTER-BUSINESS-PLAN.md` is missing at the venture root — a "must-carry"
+  Continuity-Loop file. Flagged, not blocking this engineering work.
 
-## Immediate Next Steps
+## Safety Rules In Force
 
-Run these first, then report back and wait for Russell's next instruction.
+- Hold-fire default: do not deploy, mutate production data, send live SMS, run
+  schema/RLS changes, or change Supabase/Twilio/Google production settings
+  without Russell's explicit go for that exact action.
+- Permission does not carry across agents or across threads.
+- New server actions must re-verify the operator session server-side.
+- CI must be green before merge. Preserve unrelated dirty/untracked root docs;
+  stage only files in the current task scope.
 
-1. Sync main.
+## Most Recent User Intent (verbatim)
 
-   ```bash
-   cd /Users/russellcole/Developer/RussellLabs/tidy-tails
-   rm -f .git/index.lock .git/HEAD.lock 2>/dev/null
-   git checkout main
-   git pull
-   ```
+> "Phase 2 slice 2 — explicit operator scoping at the data read layer. ... reads
+> must filter to the authenticated operator and fail closed when there is no
+> session. Defense in depth now; multi-tenant prerequisite later."
 
-2. Confirm production deploy state.
+## Last High-Signal Exchanges
 
-   Check whether Vercel auto-deploys `main` for project `tidy-tails-v2` or
-   whether production is deployed manually with `vercel --prod` from `v2/`.
+- Slice 2 kickoff authorized: branch `refactor/explicit-read-scoping`; author,
+  commit, push, open PR; update this HANDOFF. NOT authorized: merge, deploy,
+  schema/RLS, production data.
+- Slice 2 delivered: `lib/data/repo.ts` reads now filter `.eq("groomer_id", …)`
+  and fail closed; +10 tests (814 total). Reported 3 out-of-scope unscoped reads
+  + 2 webhook reads as defense-in-depth follow-ups.
+- Slice 1 (PR #6) merged: shared helpers + `FormPrimitives` consolidated.
 
-   Confirm whether `https://tidy-tails-v2.vercel.app` is serving merge commit
-   `7dbd9b8`.
+## Recently Shipped (last 14 days)
 
-   If production is not serving `7dbd9b8`, do not redeploy. Report the gap and
-   wait for Russell's go.
+- PR #7 (open): explicit operator read-scoping in `repo.ts`.
+- PR #6 (merged): dedupe shared helpers + `FormPrimitives`.
+- PR #5/#4/#3: Sentry plumbing, dependency advisories, action-test slices.
+- PR #1: Phase 0 hardening (CI gate, settings auth re-check, payout tests).
 
-3. Verify green locally.
+## Action Queue (queue, not license)
 
-   ```bash
-   cd /Users/russellcole/Developer/RussellLabs/tidy-tails/v2
-   npm ci
-   npm run typecheck
-   npm run lint
-   npm run test
-   npm run build
-   ```
-
-   Expected: around 685 tests passing after the Phase 0/PR #1 merge.
-
-4. Optional tidy after confirmation.
-
-   Delete the merged branch `harden/phase-0-ci-and-settings-guard` locally and
-   on origin only if it is definitely merged and Russell has not asked to keep
-   it.
-
-## Report Back Format
-
-Report:
-
-- Deploy state: whether production serves `7dbd9b8`; evidence used.
-- Local verification result: each command and pass/fail.
-- Anything that looks off.
-- Then wait.
-
-## Copy/Paste Prompt For The Next Agent
-
-```text
-Context update for Tidy Tails. Read the doctrine pre-flight first:
-/Users/russellcole/Developer/RussellLabs/.koya/ORIENTATION.md,
-/Users/russellcole/Developer/RussellLabs/.koya/MODES.md,
-/Users/russellcole/Developer/RussellLabs/.koya/AGENTS.md,
-/Users/russellcole/Developer/RussellLabs/.koya/VOLATILE.md,
-then /Users/russellcole/Developer/RussellLabs/tidy-tails/START_HERE.md and
-/Users/russellcole/Developer/RussellLabs/tidy-tails/HANDOFF.md.
-
-Hold-fire default is in force: do not deploy, mutate production data, send live
-SMS, run DB migrations/schema/RLS changes, or change production integration
-settings without my explicit go.
-
-What just happened (PR #1, merged to main as merge commit 7dbd9b8):
-- Added a CI gate at .github/workflows/ci.yml. It runs typecheck, lint, and
-  vitest on every push and pull request. Keep it green.
-- Hardened v2/lib/actions/settings.ts: all four settings save actions now
-  re-verify the operator session (getCurrentUser) before writing.
-- Added v2/lib/payoutOverride.test.ts (previously untested money logic).
-- Fixed the stale README auth note (real Supabase Auth + allowlist is live).
-- Synced v2/package-lock.json (missing @emnapi entries broke npm ci in CI).
-- This merge also pushed the previously-unpushed local commit 6d321dc
-  ("Add multi-pet household intake") up to origin/main.
-
-New norms:
-- If you change dependencies, run npm install and commit the lockfile, or CI npm
-  ci fails.
-- New server actions must re-verify the session, matching the settings.ts
-  pattern.
-- CI must be green before merge.
-
-Terminal steps to run now:
-1. rm -f .git/index.lock .git/HEAD.lock 2>/dev/null; git checkout main && git pull
-2. CONFIRM PRODUCTION DEPLOY STATE. Check whether Vercel auto-deploys main for
-   project tidy-tails-v2 or whether we deploy manually with vercel --prod from
-   v2/. Tell me whether https://tidy-tails-v2.vercel.app is serving merge commit
-   7dbd9b8. If it is NOT, do not redeploy — report the gap and wait for my go.
-3. Verify green locally: cd v2 && npm ci && npm run typecheck && npm run lint &&
-   npm run test && npm run build (expect ~685 tests passing).
-4. Optional tidy: delete the merged branch harden/phase-0-ci-and-settings-guard
-   locally and on origin.
-
-Do NOT rebuild the in-app activity log — it already exists at Settings →
-Advanced → Activity log. New reference docs: tidy-tails/TECH-DEVELOPMENT.md and
-tidy-tails/ENGINEERING-ROADMAP.md.
-
-Report back: deploy state (step 2), local verify result (step 3), anything that
-looks off. Then wait for my next instruction.
-```
+1. Review/merge PR #7 (operator decision).
+2. Follow-up read-scoping slice: scope the reads reported out-of-scope in PR #7
+   — `bookingRequests.server.ts`, `smsMessages.server.ts` (list read),
+   `audit.server.ts`. (Webhook reads in `app/api/twilio/*` are session-less by
+   design; leave as-is.)
+3. Phase 2 remaining seams: `SchedulingStrategy`, decompose the big forms.
 
 ## Reading List
 
-1. `/Users/russellcole/Developer/RussellLabs/.koya/ORIENTATION.md`
-2. `/Users/russellcole/Developer/RussellLabs/.koya/MODES.md`
-3. `/Users/russellcole/Developer/RussellLabs/.koya/AGENTS.md`
-4. `/Users/russellcole/Developer/RussellLabs/.koya/VOLATILE.md`
-5. `tidy-tails/START_HERE.md`
-6. `tidy-tails/HANDOFF.md`
-7. `tidy-tails/AGENTS.md`
-8. `tidy-tails/v2/AGENTS.md`
-9. `tidy-tails/TECH-DEVELOPMENT.md`
-10. `tidy-tails/ENGINEERING-ROADMAP.md`
+1. `tidy-tails/ENGINEERING-ROADMAP.md` (Phase 2).
+2. PR #7 description (table inventory + behavior-identity argument).
+3. `tidy-tails/v2/lib/data/repo.ts` (the scoped read layer).
 
-## Known Dirty-Tree Note
+## Cross-References
 
-This repo often contains unrelated modified/untracked root docs and reports.
-Preserve them unless Russell explicitly asks for cleanup. Stage only files in
-your task scope.
+- `tidy-tails/START_HERE.md` — entrypoint + reading order.
+- `tidy-tails/v2/AGENTS.md` — app product/data/write rules.
+- Studio doctrine: `.koya/AGENTS.md` (Continuity Loop), `.koya/VOLATILE.md`
+  (doctrine-changes).
