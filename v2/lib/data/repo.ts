@@ -6,15 +6,19 @@
 //
 // The live path reads through the auth-aware server Supabase client (Ship
 // 2.2a) — the same session client that gates every route — so reads carry the
-// signed-in operator's identity. That is inert under today's permissive RLS
-// and forward-compatible with the Ship 2.2b cutover to auth.uid()-scoped
-// policies. Row shaping is done by the pure mappers in live.ts.
+// signed-in operator's identity. On top of that, every live read is *explicitly*
+// scoped to the operator in app code: it filters `.eq("groomer_id", <operator>)`
+// and fails closed (no session -> no rows). This is defense in depth — it
+// selects exactly the rows the `groomer_id = auth.uid()` RLS SELECT policy
+// already allows, since `getCurrentUser().id` is the validated `auth.uid()` —
+// and it is the prerequisite for multi-operator tenancy, where the app must not
+// depend on RLS alone. Row shaping is done by the pure mappers in live.ts.
 //
 // There is no write path in this app — only `.select()` is ever called.
 //
 // Intended for use by Server Components only.
 
-import { createServerSupabase } from "../supabase/server";
+import { createServerSupabase, getCurrentUser } from "../supabase/server";
 import type {
   Appointment,
   Client,
@@ -49,13 +53,25 @@ export function dataMode(): DataMode {
 // (Supabase default: 1000) is never silently truncated — `appointments` is the
 // table that will cross that cap first. Rows are ordered by `id` so the paged
 // ranges are deterministic; the app re-sorts for display regardless.
+//
+// Every live read is filtered to the signed-in operator via `.eq("groomer_id",
+// groomerId)`. The public loaders resolve the operator with `currentGroomerId()`
+// and fail closed when there is no session (no operator -> no rows), so the
+// scope is enforced in app code rather than trusted to RLS alone.
 
-async function liveSelect(table: string): Promise<Row[]> {
+// The signed-in operator's id (the validated `auth.uid()`), or null when there
+// is no session. Live reads fail closed on null.
+async function currentGroomerId(): Promise<string | null> {
+  return (await getCurrentUser())?.id ?? null;
+}
+
+async function liveSelect(table: string, groomerId: string): Promise<Row[]> {
   const supabase = await createServerSupabase();
   return fetchAllRows(async (from, to) => {
     const { data, error } = await supabase
       .from(table)
       .select("*")
+      .eq("groomer_id", groomerId)
       .order("id", { ascending: true })
       .range(from, to);
     if (error) throw new Error(`Live read failed (${table}): ${error.message}`);
@@ -63,9 +79,12 @@ async function liveSelect(table: string): Promise<Row[]> {
   });
 }
 
-async function liveSelectOptional(table: string): Promise<{ rows: Row[]; ready: boolean }> {
+async function liveSelectOptional(
+  table: string,
+  groomerId: string,
+): Promise<{ rows: Row[]; ready: boolean }> {
   try {
-    return { rows: await liveSelect(table), ready: true };
+    return { rows: await liveSelect(table, groomerId), ready: true };
   } catch (error) {
     if (
       error instanceof Error &&
@@ -80,19 +99,31 @@ async function liveSelectOptional(table: string): Promise<{ rows: Row[]; ready: 
 
 // ---- public load functions ---------------------------------------------------
 
-export async function loadClients(): Promise<Client[]> {
+// The optional `groomerId` lets a caller that already resolved the operator
+// (e.g. loadDataset) thread it through instead of re-validating the session for
+// each table. When omitted, the loader resolves it itself. Either way the live
+// read fails closed when there is no operator.
+export async function loadClients(groomerId?: string | null): Promise<Client[]> {
   if (dataMode() !== "live") return FIXTURE_CLIENTS;
-  return (await liveSelect("clients")).map(mapClientRow);
+  const gid = groomerId ?? (await currentGroomerId());
+  if (!gid) return [];
+  return (await liveSelect("clients", gid)).map(mapClientRow);
 }
 
-export async function loadPets(): Promise<Pet[]> {
+export async function loadPets(groomerId?: string | null): Promise<Pet[]> {
   if (dataMode() !== "live") return FIXTURE_PETS;
-  return (await liveSelect("pets")).map(mapPetRow);
+  const gid = groomerId ?? (await currentGroomerId());
+  if (!gid) return [];
+  return (await liveSelect("pets", gid)).map(mapPetRow);
 }
 
-export async function loadAppointments(): Promise<Appointment[]> {
+export async function loadAppointments(
+  groomerId?: string | null,
+): Promise<Appointment[]> {
   if (dataMode() !== "live") return FIXTURE_APPOINTMENTS;
-  return (await liveSelect("appointments")).map(mapAppointmentRow);
+  const gid = groomerId ?? (await currentGroomerId());
+  if (!gid) return [];
+  return (await liveSelect("appointments", gid)).map(mapAppointmentRow);
 }
 
 export async function loadVaccinations(): Promise<Vaccination[]> {
@@ -101,16 +132,23 @@ export async function loadVaccinations(): Promise<Vaccination[]> {
   return dataMode() === "live" ? [] : FIXTURE_VACCINATIONS;
 }
 
-export async function loadDayCloseoutOverrides(): Promise<DayCloseoutOverride[]> {
-  return (await loadDayCloseoutOverrideState()).overrides;
+export async function loadDayCloseoutOverrides(
+  groomerId?: string | null,
+): Promise<DayCloseoutOverride[]> {
+  return (await loadDayCloseoutOverrideState(groomerId)).overrides;
 }
 
-export async function loadDayCloseoutOverrideState(): Promise<{
+export async function loadDayCloseoutOverrideState(groomerId?: string | null): Promise<{
   overrides: DayCloseoutOverride[];
   ready: boolean;
 }> {
   if (dataMode() !== "live") return { overrides: [], ready: true };
-  const { rows, ready } = await liveSelectOptional("day_closeout_overrides");
+  const gid = groomerId ?? (await currentGroomerId());
+  // Fail closed: no session means no rows. The table itself is still "ready"
+  // (it exists and the query would succeed) — this matches RLS returning an
+  // empty set rather than a missing-table error.
+  if (!gid) return { overrides: [], ready: true };
+  const { rows, ready } = await liveSelectOptional("day_closeout_overrides", gid);
   return { overrides: rows.map(mapDayCloseoutOverrideRow), ready };
 }
 
@@ -122,10 +160,15 @@ export type Dataset = {
 };
 
 export async function loadDataset(): Promise<Dataset> {
+  // Resolve the operator once and thread it into every table load, so a full
+  // dataset costs a single session validation instead of one per table. When
+  // there is no session on the live path, `groomerId` is null and each loader
+  // fails closed to an empty set.
+  const groomerId = dataMode() === "live" ? await currentGroomerId() : null;
   const [clients, pets, appointments, vaccinations] = await Promise.all([
-    loadClients(),
-    loadPets(),
-    loadAppointments(),
+    loadClients(groomerId),
+    loadPets(groomerId),
+    loadAppointments(groomerId),
     loadVaccinations(),
   ]);
   return { clients, pets, appointments, vaccinations };
