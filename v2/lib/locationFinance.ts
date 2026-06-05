@@ -1,6 +1,7 @@
 import {
   BOOKING_LOCATION_LABELS,
   CUSTOMER_BOOKING_LOCATION_LABELS,
+  bookingLocationLabel,
   type BookingLocation,
 } from "./booking";
 import { collapseLoggedGroomDuplicates } from "./appointmentLedger";
@@ -75,6 +76,22 @@ export function customerLocationLabelFromSettings(
   return (
     (settings?.[code]?.customerAddress || CUSTOMER_BOOKING_LOCATION_LABELS[code]) ??
     null
+  );
+}
+
+/**
+ * The customer-facing location label an appointment summary shows the operator:
+ * the settings-defined customer address when present, otherwise the built-in
+ * booking-location label. This resolution was duplicated inline in the booking
+ * and edit-appointment summary builders.
+ */
+export function customerFacingLocationLabel(
+  location: string | null | undefined,
+  settings: LocationSettingsMap | null | undefined,
+): string | null {
+  return (
+    customerLocationLabelFromSettings(location, settings) ??
+    bookingLocationLabel(location)
   );
 }
 

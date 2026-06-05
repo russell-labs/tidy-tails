@@ -3,6 +3,7 @@ import type { Appointment } from "./data/types";
 import {
   calculateAppointmentMoney,
   calculateDayMoney,
+  customerFacingLocationLabel,
   customerLocationLabelFromSettings,
   locationLabelFromSettings,
 } from "./locationFinance";
@@ -116,5 +117,41 @@ describe("location finance", () => {
     expect(customerLocationLabelFromSettings("gina", settings)).toBe(
       "Custom Gina address",
     );
+  });
+});
+
+describe("customerFacingLocationLabel", () => {
+  it("prefers the settings-defined customer address", () => {
+    const settings = {
+      ...DEFAULT_OPERATOR_SETTINGS.locationSettings,
+      gina: {
+        ...DEFAULT_OPERATOR_SETTINGS.locationSettings.gina,
+        customerAddress: "Custom Gina address",
+      },
+    };
+    expect(customerFacingLocationLabel("gina", settings)).toBe(
+      "Custom Gina address",
+    );
+  });
+
+  it("falls back to the built-in customer address with default settings", () => {
+    expect(
+      customerFacingLocationLabel(
+        "gina",
+        DEFAULT_OPERATOR_SETTINGS.locationSettings,
+      ),
+    ).toBe("60 Olive Crescent, Orillia");
+  });
+
+  it("returns null for a missing or unrecognized location", () => {
+    expect(
+      customerFacingLocationLabel(null, DEFAULT_OPERATOR_SETTINGS.locationSettings),
+    ).toBeNull();
+    expect(
+      customerFacingLocationLabel(
+        "nowhere",
+        DEFAULT_OPERATOR_SETTINGS.locationSettings,
+      ),
+    ).toBeNull();
   });
 });

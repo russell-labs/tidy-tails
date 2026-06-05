@@ -23,14 +23,12 @@ import { dataMode, getClientRecord, loadAppointments } from "@/lib/data/repo";
 import { mapAppointmentRow, serviceLabel } from "@/lib/data/live";
 import { createServerSupabase, getCurrentUser } from "@/lib/supabase/server";
 import { isAddAppointmentWriteEnabled } from "@/lib/writeGate";
-import { isReminderSendEnabled } from "@/lib/writeGate";
 import {
   checkGoogleCalendarAppointmentAvailability,
   syncAppointmentToGoogleCalendar,
 } from "@/lib/googleCalendar.server";
 import {
   buildBookingTextMessage,
-  bookingLocationLabel,
   buildAppointmentInserts,
   findOwnedPets,
   formatPetNames,
@@ -41,10 +39,9 @@ import {
   type BookingErrors,
 } from "@/lib/booking";
 import { fullName } from "@/lib/format";
-import { buildOutboundSmsInsert } from "@/lib/inboundSms";
-import { customerLocationLabelFromSettings } from "@/lib/locationFinance";
+import { customerFacingLocationLabel } from "@/lib/locationFinance";
 import { readOperatorSettings } from "@/lib/operatorSettings.server";
-import { getTwilioConfig, sendTwilioSms, toTwilioPhone } from "@/lib/twilio";
+import { sendCustomerSms } from "./sendCustomerSms";
 
 // A human-readable echo of the booking — for the review and result screens.
 export type BookingSummary = {
@@ -176,12 +173,10 @@ export async function createBooking(
     date: primaryPayload.date,
     time: primaryPayload.time_slot,
     service: summaryService,
-    location:
-      customerLocationLabelFromSettings(
-        primaryPayload.location,
-        operatorSettings.locationSettings,
-      ) ??
-      bookingLocationLabel(primaryPayload.location),
+    location: customerFacingLocationLabel(
+      primaryPayload.location,
+      operatorSettings.locationSettings,
+    ),
     customerInvite:
       booking.send_invite && effectiveClient.email ? effectiveClient.email : null,
     bookingText:
@@ -305,17 +300,22 @@ export async function createBooking(
   });
   summary.calendar = { status: calendar.status, message: calendar.message };
   if (booking.send_booking_text && effectiveClient.phone) {
-    summary.bookingTextSend = await sendBookingText({
+    const bookingTextBody =
+      booking.booking_message?.trim() ||
+      buildBookingTextMessage({
+        ownerFirstName: effectiveClient.first_name,
+        petName: petNames,
+        date: summary.date,
+        time: summary.time,
+        service: summary.service,
+        location: summary.location,
+      });
+    summary.bookingTextSend = await sendCustomerSms({
       clientId: booking.client_id,
       groomerId: user.id,
       to: effectiveClient.phone,
-      ownerFirstName: effectiveClient.first_name,
-      petName: petNames,
-      date: summary.date,
-      time: summary.time,
-      service: summary.service,
-      location: summary.location,
-      message: booking.booking_message,
+      body: bookingTextBody,
+      label: "Booking",
     });
   } else {
     summary.bookingTextSend = {
@@ -355,85 +355,4 @@ export async function createBooking(
     });
   }
   return { status: "saved", summary };
-}
-
-async function sendBookingText({
-  clientId,
-  groomerId,
-  to,
-  ownerFirstName,
-  petName,
-  date,
-  time,
-  service,
-  location,
-  message,
-}: {
-  clientId: string;
-  groomerId: string;
-  to: string;
-  ownerFirstName: string | null;
-  petName: string;
-  date: string;
-  time: string | null;
-  service: string | null;
-  location: string | null;
-  message: string | null;
-}): Promise<NonNullable<BookingSummary["bookingTextSend"]>> {
-  if (!isReminderSendEnabled()) {
-    return {
-      status: "gated",
-      message: "Booking text was not sent because SMS sending is switched off.",
-    };
-  }
-
-  const twilioConfig = getTwilioConfig();
-  if (!twilioConfig.ok) {
-    return {
-      status: "failed",
-      message: "Booking text was not sent because Twilio is not configured.",
-    };
-  }
-
-  const normalizedPhone = toTwilioPhone(to);
-  if (!normalizedPhone) {
-    return {
-      status: "failed",
-      message:
-        "Booking text was not sent because the customer phone number is not textable.",
-    };
-  }
-
-  const body =
-    message?.trim() ||
-    buildBookingTextMessage({
-      ownerFirstName,
-      petName,
-      date,
-      time,
-      service,
-      location,
-    });
-  const result = await sendTwilioSms(twilioConfig.value, {
-    to: normalizedPhone,
-    body,
-  });
-  if (!result.ok) {
-    return {
-      status: "failed",
-      message: `${result.message} Booking text was not sent.`,
-    };
-  }
-  const supabase = await createServerSupabase();
-  await supabase.from("sms_messages").insert(
-    buildOutboundSmsInsert({
-      clientId,
-      groomerId,
-      from: twilioConfig.value.fromNumber,
-      to: normalizedPhone,
-      body,
-      messageSid: result.sid,
-    }),
-  );
-  return { status: "sent", message: "Booking text sent to the customer." };
 }

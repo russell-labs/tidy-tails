@@ -5,7 +5,7 @@ import { logGroom, type GroomState } from "@/lib/actions/grooms";
 import { SERVICE_TYPES, type ServiceType } from "@/lib/booking";
 import { lastKnownPrice, lastKnownService } from "@/lib/derive";
 import { validateGroomLog, type GroomLogErrors } from "@/lib/groom";
-import { serviceLabel } from "@/lib/data/live";
+import { serviceCodeFromLabel, serviceLabel } from "@/lib/data/live";
 import type { Appointment, Client, Pet } from "@/lib/data/types";
 import { formatMoney, formatReviewDate, fullName } from "@/lib/format";
 import {
@@ -17,6 +17,7 @@ import {
 } from "@/lib/payments";
 import { Sheet } from "./Sheet";
 import { SubmitDogOverlay } from "./SubmitDog";
+import { ChoiceButton, Field, ReviewRow, labelClass } from "./FormPrimitives";
 
 // Log Groom — record a completed groom: form → review → result. Nothing is
 // persisted in this ship: fixture mode is a dry-run, live mode is gated (see
@@ -24,7 +25,6 @@ import { SubmitDogOverlay } from "./SubmitDog";
 
 const fieldClass =
   "w-full min-w-0 max-w-full rounded-xl border border-line bg-surface px-3.5 py-2.5 text-base text-ink placeholder:text-ink-faint";
-const labelClass = "text-sm font-medium text-ink-soft";
 
 export function LogGroom({
   client,
@@ -516,62 +516,6 @@ function ResultScreen({
   );
 }
 
-function ChoiceButton({
-  active,
-  disabled = false,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  disabled?: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className={`min-h-11 rounded-lg border px-2 py-2 text-sm font-semibold ${
-        active
-          ? "border-brand bg-brand text-white"
-          : "border-line bg-surface text-ink-soft active:bg-brand-soft"
-      } disabled:bg-canvas disabled:text-ink-faint`}
-    >
-      {children}
-    </button>
-  );
-}
-
-function Field({
-  label,
-  error,
-  hint,
-  children,
-}: {
-  label: string;
-  error?: string;
-  hint?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <label className="flex flex-col gap-1.5">
-      <span className={labelClass}>{label}</span>
-      {children}
-      {hint ? <span className="text-xs text-ink-faint">{hint}</span> : null}
-      {error ? <span className="text-xs text-danger-ink">{error}</span> : null}
-    </label>
-  );
-}
-
-function ReviewRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex justify-between gap-3">
-      <dt className="text-ink-soft">{label}</dt>
-      <dd className="text-right font-medium text-ink">{value}</dd>
-    </div>
-  );
-}
 
 function groomDefaults(
   pet: Pet,
@@ -589,10 +533,4 @@ function groomDefaults(
           ? String(pet.typical_fee)
           : "",
   };
-}
-
-function serviceCodeFromLabel(label: string | null): ServiceType | "" {
-  if (!label) return "";
-  const match = SERVICE_TYPES.find((code) => serviceLabel(code) === label);
-  return match ?? "";
 }

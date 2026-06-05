@@ -12,10 +12,10 @@ import { PET_SIZES, type AllergyState, type PetSize } from "@/lib/intake";
 import { formatPetAge } from "@/lib/petAge";
 import { Sheet } from "./Sheet";
 import { SubmitDogOverlay } from "./SubmitDog";
+import { Field, ReviewRow, labelClass } from "./FormPrimitives";
 
 const fieldClass =
   "w-full rounded-xl border border-line bg-surface px-3.5 py-2.5 text-base text-ink placeholder:text-ink-faint";
-const labelClass = "text-sm font-medium text-ink-soft";
 
 const SIZE_LABELS: Record<PetSize, string> = {
   small: "Small",
@@ -515,29 +515,3 @@ function ResultScreen({
   );
 }
 
-function Field({
-  label,
-  error,
-  children,
-}: {
-  label: string;
-  error?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <label className="flex flex-col gap-1.5">
-      <span className={labelClass}>{label}</span>
-      {children}
-      {error ? <span className="text-xs text-danger-ink">{error}</span> : null}
-    </label>
-  );
-}
-
-function ReviewRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex justify-between gap-3">
-      <dt className="text-ink-soft">{label}</dt>
-      <dd className="text-right font-medium text-ink">{value}</dd>
-    </div>
-  );
-}

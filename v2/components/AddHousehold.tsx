@@ -13,14 +13,16 @@ import {
 import { formatMoney, formatPhone } from "@/lib/format";
 import { Sheet } from "./Sheet";
 import { SubmitDogOverlay } from "./SubmitDog";
+import { ReviewRow, labelClass } from "./FormPrimitives";
 
 // Add household — onboard a new client plus every pet Sam knows about during
 // the call. Fixture mode is a dry-run; live mode persists only when the private
 // TIDYTAILS_ENABLE_ADD_HOUSEHOLD_WRITE gate is on.
 
+// Note: this form keeps its own `Field` because its label gap (`gap-2`) differs
+// from the shared `Field` (`gap-1.5`); see components/FormPrimitives.tsx.
 const fieldClass =
   "w-full min-h-12 rounded-xl border border-line bg-surface px-4 py-3 text-base text-ink placeholder:text-ink-faint";
-const labelClass = "text-sm font-medium text-ink-soft";
 
 const SIZE_LABELS: Record<PetSize, string> = {
   small: "Small",
@@ -910,14 +912,5 @@ function Field({
       {children}
       {error ? <span className="text-xs text-danger-ink">{error}</span> : null}
     </label>
-  );
-}
-
-function ReviewRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex justify-between gap-3">
-      <dt className="text-ink-soft">{label}</dt>
-      <dd className="text-right font-medium text-ink">{value}</dd>
-    </div>
   );
 }

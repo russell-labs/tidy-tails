@@ -33,6 +33,8 @@ import {
   type EditAppointmentErrors,
 } from "@/lib/editAppointment";
 import { formatMoney } from "@/lib/format";
+import { todayISO } from "@/lib/dates";
+import { serviceCodeFromLabel } from "@/lib/data/live";
 import {
   customerLocationLabelFromSettings,
   locationLabelFromSettings,
@@ -54,10 +56,10 @@ import {
 import { BookingTimeSlotPicker } from "./BookingTimeSlotPicker";
 import { Sheet } from "./Sheet";
 import { SubmitDogOverlay } from "./SubmitDog";
+import { ChoiceButton, Field, ReviewRow, labelClass } from "./FormPrimitives";
 
 const fieldClass =
   "w-full min-w-0 max-w-full rounded-xl border border-line bg-surface px-3.5 py-2.5 text-base text-ink placeholder:text-ink-faint";
-const labelClass = "text-sm font-medium text-ink-soft";
 const GROUP_APPOINTMENT_VALUE = "__group__";
 
 const SERVICE_LABELS: Record<ServiceType, string> = {
@@ -67,11 +69,6 @@ const SERVICE_LABELS: Record<ServiceType, string> = {
   nail_trim: "Nail trim",
   other: "Other",
 };
-
-function serviceCodeFromLabel(label: string | null): ServiceType | "" {
-  const found = SERVICE_TYPES.find((code) => SERVICE_LABELS[code] === label);
-  return found ?? "";
-}
 
 export function EditAppointment({
   clientId,
@@ -1099,63 +1096,3 @@ function DeleteResultScreen({
   );
 }
 
-function Field({
-  label,
-  error,
-  children,
-}: {
-  label: string;
-  error?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <label className="flex flex-col gap-1.5">
-      <span className={labelClass}>{label}</span>
-      {children}
-      {error ? <span className="text-xs text-danger-ink">{error}</span> : null}
-    </label>
-  );
-}
-
-function ChoiceButton({
-  active,
-  disabled = false,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  disabled?: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className={`min-h-11 rounded-lg border px-2 py-2 text-sm font-semibold ${
-        active
-          ? "border-brand bg-brand text-white"
-          : "border-line bg-surface text-ink-soft active:bg-brand-soft"
-      } disabled:bg-canvas disabled:text-ink-faint`}
-    >
-      {children}
-    </button>
-  );
-}
-
-function ReviewRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex justify-between gap-3">
-      <dt className="text-ink-soft">{label}</dt>
-      <dd className="text-right font-medium text-ink">{value}</dd>
-    </div>
-  );
-}
-
-function todayISO(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
-    d.getDate(),
-  ).padStart(2, "0")}`;
-}

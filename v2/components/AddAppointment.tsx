@@ -30,12 +30,13 @@ import type {
   ScheduleCalibration,
 } from "@/lib/operatorSettings";
 import { lastKnownPrice, lastKnownService } from "@/lib/derive";
-import { serviceLabel } from "@/lib/data/live";
+import { serviceCodeFromLabel, serviceLabel } from "@/lib/data/live";
 import type { Appointment, Client, Pet } from "@/lib/data/types";
 import { formatMoney, formatReviewDate, fullName } from "@/lib/format";
 import { BookingTimeSlotPicker } from "./BookingTimeSlotPicker";
 import { Sheet } from "./Sheet";
 import { SubmitDogOverlay } from "./SubmitDog";
+import { Field, ReviewRow } from "./FormPrimitives";
 
 // M2 — "Add appointment" booking flow: form → review → result. The wedge
 // becomes Call/Text → Identify → Add Booking. Fixture mode is a dry-run; live
@@ -43,7 +44,6 @@ import { SubmitDogOverlay } from "./SubmitDog";
 
 const fieldClass =
   "w-full min-w-0 max-w-full rounded-xl border border-line bg-surface px-3.5 py-2.5 text-base text-ink placeholder:text-ink-faint";
-const labelClass = "text-sm font-medium text-ink-soft";
 
 export function AddAppointment({
   client,
@@ -1008,35 +1008,6 @@ function ResultScreen({
   );
 }
 
-function Field({
-  label,
-  error,
-  hint,
-  children,
-}: {
-  label: string;
-  error?: string;
-  hint?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <label className="flex flex-col gap-1.5">
-      <span className={labelClass}>{label}</span>
-      {children}
-      {hint ? <span className="text-xs text-ink-faint">{hint}</span> : null}
-      {error ? <span className="text-xs text-danger-ink">{error}</span> : null}
-    </label>
-  );
-}
-
-function ReviewRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex justify-between gap-3">
-      <dt className="text-ink-soft">{label}</dt>
-      <dd className="text-right font-medium text-ink">{value}</dd>
-    </div>
-  );
-}
 
 function bookingDefaults(
   pet: Pet,
@@ -1054,10 +1025,4 @@ function bookingDefaults(
           ? String(pet.typical_fee)
           : "",
   };
-}
-
-function serviceCodeFromLabel(label: string | null): ServiceType | "" {
-  if (!label) return "";
-  const match = SERVICE_TYPES.find((code) => serviceLabel(code) === label);
-  return match ?? "";
 }

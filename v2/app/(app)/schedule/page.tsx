@@ -34,15 +34,9 @@ import type {
 import { readOperatorSettings } from "@/lib/operatorSettings.server";
 import type { AppointmentWorkflowStage } from "@/lib/appointmentWorkflow";
 import type { PaymentPill, PaymentSummary } from "@/lib/payments";
+import { todayISO } from "@/lib/dates";
 
 export const metadata: Metadata = { title: "Schedule" };
-
-function todayISO(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
-    d.getDate(),
-  ).padStart(2, "0")}`;
-}
 
 function dayLabel(date: string): string {
   return new Date(`${date}T12:00:00`).toLocaleDateString("en-CA", {
