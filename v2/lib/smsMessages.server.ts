@@ -1,5 +1,5 @@
 import { unstable_noStore as noStore } from "next/cache";
-import { dataMode } from "@/lib/data/repo";
+import { currentGroomerId, dataMode } from "@/lib/data/repo";
 import { FIXTURE_SMS_MESSAGES } from "@/lib/data/fixtures";
 import {
   buildTwilioStatusUpdate,
@@ -16,11 +16,18 @@ export async function loadRecentSmsMessages(limit = 12): Promise<SmsMessage[]> {
     return recentFixtureSmsMessages(limit);
   }
 
+  // Scope to the signed-in operator and fail closed with no session, matching
+  // the `groomer_id = auth.uid()` RLS SELECT policy on sms_messages. The
+  // per-client reads below stay client_id-filtered (still RLS-scoped).
+  const groomerId = await currentGroomerId();
+  if (!groomerId) return [];
+
   try {
     const supabase = await createServerSupabase();
     const { data, error } = await supabase
       .from("sms_messages")
       .select("*")
+      .eq("groomer_id", groomerId)
       .neq("status", "hidden")
       .order("created_at", { ascending: false })
       .limit(limit);

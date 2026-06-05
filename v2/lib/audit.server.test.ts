@@ -8,7 +8,10 @@ vi.mock("@sentry/nextjs", () => ({
   captureException: vi.fn(),
 }));
 
-vi.mock("@/lib/data/repo", () => ({
+// Keep the real `currentGroomerId` (delegates to the mocked getCurrentUser) and
+// override only `dataMode` so the live read path runs.
+vi.mock("@/lib/data/repo", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/data/repo")>()),
   dataMode: vi.fn(() => "live"),
 }));
 
@@ -17,13 +20,42 @@ vi.mock("@/lib/supabase/server", () => ({
   getCurrentUser: vi.fn(),
 }));
 
-import { recordAuditEvent } from "./audit.server";
+import { loadRecentAuditEvents, recordAuditEvent } from "./audit.server";
 import * as Sentry from "@sentry/nextjs";
 import { createServerSupabase, getCurrentUser } from "@/lib/supabase/server";
 
 const createServerSupabaseMock = vi.mocked(createServerSupabase);
 const getCurrentUserMock = vi.mocked(getCurrentUser);
 const captureExceptionMock = vi.mocked(Sentry.captureException);
+
+type Filter = { method: string; column: string; value: unknown };
+type Capture = { table: string; filters: Filter[] };
+
+function fakeReadClient(rowsByTable: Record<string, unknown[]> = {}) {
+  const captures: Capture[] = [];
+  const from = vi.fn((table: string) => {
+    const capture: Capture = { table, filters: [] };
+    captures.push(capture);
+    const result = Promise.resolve({ data: rowsByTable[table] ?? [], error: null });
+    const builder = {
+      select: () => builder,
+      eq: (column: string, value: unknown) => {
+        capture.filters.push({ method: "eq", column, value });
+        return builder;
+      },
+      order: () => builder,
+      limit: () => builder,
+      then: (onFulfilled: Parameters<Promise<unknown>["then"]>[0]) =>
+        result.then(onFulfilled),
+    };
+    return builder;
+  });
+  return {
+    client: { from } as unknown as Awaited<ReturnType<typeof createServerSupabase>>,
+    from,
+    captures,
+  };
+}
 
 function mockAuditInsertFailure(error: Error): void {
   createServerSupabaseMock.mockResolvedValue({
@@ -83,5 +115,45 @@ describe("recordAuditEvent", () => {
     expect(captureExceptionMock).not.toHaveBeenCalled();
 
     consoleError.mockRestore();
+  });
+});
+
+describe("loadRecentAuditEvents — operator scoping", () => {
+  it("filters the read to the operator's groomer_id", async () => {
+    const { client, captures } = fakeReadClient({
+      audit_events: [
+        {
+          id: "ae1",
+          actor_id: "operator-1",
+          event_type: "client.updated",
+          summary: "Updated Mary Jones.",
+          created_at: "2026-06-12T10:00:00.000Z",
+        },
+      ],
+    });
+    createServerSupabaseMock.mockResolvedValue(client);
+
+    const rows = await loadRecentAuditEvents();
+
+    expect(captures[0].table).toBe("audit_events");
+    expect(captures[0].filters).toContainEqual({
+      method: "eq",
+      column: "groomer_id",
+      value: "operator-1",
+    });
+    expect(rows).toHaveLength(1);
+    expect(rows[0].id).toBe("ae1");
+  });
+
+  it("fails closed (no query, empty result) when there is no session", async () => {
+    getCurrentUserMock.mockResolvedValue(null);
+    const { client, from } = fakeReadClient({
+      audit_events: [{ id: "ae1", actor_id: "operator-1", created_at: "x" }],
+    });
+    createServerSupabaseMock.mockResolvedValue(client);
+
+    expect(await loadRecentAuditEvents()).toEqual([]);
+    expect(from).not.toHaveBeenCalled();
+    expect(createServerSupabaseMock).not.toHaveBeenCalled();
   });
 });

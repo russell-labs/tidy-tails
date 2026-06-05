@@ -1,5 +1,5 @@
 import { unstable_noStore as noStore } from "next/cache";
-import { dataMode } from "@/lib/data/repo";
+import { currentGroomerId, dataMode } from "@/lib/data/repo";
 import { createServerSupabase } from "@/lib/supabase/server";
 import type { Row } from "@/lib/data/live";
 import type { BookingRequestInboxRow } from "@/lib/inbox";
@@ -10,11 +10,17 @@ export async function loadRecentBookingRequests(
   noStore();
   if (dataMode() !== "live") return [];
 
+  // Scope to the signed-in operator and fail closed with no session, matching
+  // the `groomer_id = auth.uid()` RLS SELECT policy on booking_requests.
+  const groomerId = await currentGroomerId();
+  if (!groomerId) return [];
+
   try {
     const supabase = await createServerSupabase();
     const { data, error } = await supabase
       .from("booking_requests")
       .select("*")
+      .eq("groomer_id", groomerId)
       .order("created_at", { ascending: false })
       .limit(limit);
     if (error) return [];
