@@ -7,10 +7,10 @@ import { validateEditClient, type EditClientErrors } from "@/lib/editClient";
 import { formatPhone } from "@/lib/format";
 import { Sheet } from "./Sheet";
 import { SubmitDogOverlay } from "./SubmitDog";
+import { Field, ReviewRow } from "./FormPrimitives";
 
 const fieldClass =
   "w-full rounded-xl border border-line bg-surface px-3.5 py-2.5 text-base text-ink placeholder:text-ink-faint";
-const labelClass = "text-sm font-medium text-ink-soft";
 
 function ownerLabel(firstName: string, lastName: string | null): string {
   return `${firstName} ${lastName ?? ""}`.trim() || "Unnamed owner";
@@ -308,29 +308,3 @@ function ResultScreen({
   );
 }
 
-function Field({
-  label,
-  error,
-  children,
-}: {
-  label: string;
-  error?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <label className="flex flex-col gap-1.5">
-      <span className={labelClass}>{label}</span>
-      {children}
-      {error ? <span className="text-xs text-danger-ink">{error}</span> : null}
-    </label>
-  );
-}
-
-function ReviewRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex justify-between gap-3">
-      <dt className="text-ink-soft">{label}</dt>
-      <dd className="text-right font-medium text-ink">{value}</dd>
-    </div>
-  );
-}

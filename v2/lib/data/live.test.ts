@@ -6,6 +6,7 @@ import {
   mapClientRow,
   mapDayCloseoutOverrideRow,
   mapPetRow,
+  serviceCodeFromLabel,
   serviceLabel,
 } from "./live";
 
@@ -30,6 +31,26 @@ describe("serviceLabel — service_type enum → user-facing label", () => {
 
   it("passes an unrecognized code through unchanged rather than dropping it", () => {
     expect(serviceLabel("de_shed")).toBe("de_shed");
+  });
+});
+
+describe("serviceCodeFromLabel — user-facing label → service_type enum", () => {
+  it("round-trips every known label back to its enum code", () => {
+    expect(serviceCodeFromLabel("Full groom")).toBe("full_groom");
+    expect(serviceCodeFromLabel("Puppy groom")).toBe("puppy_groom");
+    expect(serviceCodeFromLabel("Bath only")).toBe("bath_only");
+    expect(serviceCodeFromLabel("Nail trim")).toBe("nail_trim");
+    expect(serviceCodeFromLabel("Other")).toBe("other");
+  });
+
+  it("returns \"\" for an empty or null label", () => {
+    expect(serviceCodeFromLabel(null)).toBe("");
+    expect(serviceCodeFromLabel("")).toBe("");
+  });
+
+  it("returns \"\" for a label that matches no known service", () => {
+    expect(serviceCodeFromLabel("De-shed")).toBe("");
+    expect(serviceCodeFromLabel("full_groom")).toBe(""); // a code is not a label
   });
 });
 

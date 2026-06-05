@@ -6,6 +6,7 @@ import type { LocationSettingsMap } from "@/lib/operatorSettings";
 import { stripAppointmentWorkflowMarker } from "@/lib/appointmentWorkflow";
 import { paymentPillForAppointments, stripPaymentInfo } from "@/lib/payments";
 import { stripSalonPayoutOverride } from "@/lib/payoutOverride";
+import { todayISO } from "@/lib/dates";
 import { EditAppointment } from "./EditAppointment";
 
 function Row({
@@ -227,9 +228,4 @@ function displayNotes(notes: string | null): string | null {
   return stripAppointmentWorkflowMarker(
     stripSalonPayoutOverride(stripPaymentInfo(notes)),
   );
-}
-
-function todayISO(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }

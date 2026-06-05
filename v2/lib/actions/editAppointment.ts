@@ -12,12 +12,8 @@ import {
   syncAppointmentToGoogleCalendar,
 } from "@/lib/googleCalendar.server";
 import { createServerSupabase, getCurrentUser } from "@/lib/supabase/server";
+import { isEditAppointmentWriteEnabled } from "@/lib/writeGate";
 import {
-  isEditAppointmentWriteEnabled,
-  isReminderSendEnabled,
-} from "@/lib/writeGate";
-import {
-  bookingLocationLabel,
   googleAvailabilityBlocksBooking,
   hasBookedTimeConflict,
 } from "@/lib/booking";
@@ -35,12 +31,11 @@ import {
   type EditAppointmentUpdate,
 } from "@/lib/editAppointment";
 import { fullName } from "@/lib/format";
-import { buildOutboundSmsInsert } from "@/lib/inboundSms";
-import { customerLocationLabelFromSettings } from "@/lib/locationFinance";
+import { customerFacingLocationLabel } from "@/lib/locationFinance";
 import { readOperatorSettings } from "@/lib/operatorSettings.server";
 import { parsePaymentInfo, type PaymentMethod, type PaymentStatus } from "@/lib/payments";
 import { scheduledAppointmentGroupFor } from "@/lib/schedule";
-import { getTwilioConfig, sendTwilioSms, toTwilioPhone } from "@/lib/twilio";
+import { sendCustomerSms } from "./sendCustomerSms";
 
 export type EditAppointmentSummary = {
   ownerName: string;
@@ -226,12 +221,10 @@ export async function editAppointment(
     date: payload.date,
     time: payload.time_slot,
     service: fullPayload ? serviceLabel(fullPayload.service_type) : existing.service,
-    location:
-      customerLocationLabelFromSettings(
-        payload.location,
-        operatorSettings.locationSettings,
-      ) ??
-      bookingLocationLabel(payload.location),
+    location: customerFacingLocationLabel(
+      payload.location,
+      operatorSettings.locationSettings,
+    ),
     fee: fullPayload ? fullPayload.fee : existing.price,
     tip: fullPayload ? fullPayload.tip : existing.tip,
     paymentMethod: appointment.payment_method,
@@ -384,7 +377,7 @@ export async function editAppointment(
   });
   let bookingUpdateText: AppointmentTextSend | undefined;
   if (bookingUpdateDraft) {
-    bookingUpdateText = await sendAppointmentText({
+    bookingUpdateText = await sendCustomerSms({
       clientId: appointment.client_id,
       groomerId: user.id,
       label: "Booking update",
@@ -444,12 +437,10 @@ export async function deleteAppointment(
     time: existing.time_slot,
     service: existing.service,
     fee: existing.price,
-    location:
-      customerLocationLabelFromSettings(
-        existing.location,
-        operatorSettings.locationSettings,
-      ) ??
-      bookingLocationLabel(existing.location),
+    location: customerFacingLocationLabel(
+      existing.location,
+      operatorSettings.locationSettings,
+    ),
     tip: existing.tip,
     paymentMethod: payment.method ?? "cash",
     paymentStatus: payment.status ?? "paid",
@@ -543,7 +534,7 @@ export async function deleteAppointment(
     message: "No cancellation text was requested.",
   };
   if (cancellationDraft) {
-    cancellationText = await sendAppointmentText({
+    cancellationText = await sendCustomerSms({
       clientId,
       groomerId: user.id,
       label: "Cancellation",
@@ -568,63 +559,6 @@ export async function deleteAppointment(
     calendar: { status: calendar.status, message: calendar.message },
     cancellationText,
   };
-}
-
-async function sendAppointmentText({
-  clientId,
-  groomerId,
-  label,
-  to,
-  body,
-}: {
-  clientId: string;
-  groomerId: string;
-  label: "Booking update" | "Cancellation";
-  to: string;
-  body: string;
-}): Promise<AppointmentTextSend> {
-  if (!isReminderSendEnabled()) {
-    return {
-      status: "gated",
-      message: `${label} text was not sent because SMS sending is switched off.`,
-    };
-  }
-  const twilioConfig = getTwilioConfig();
-  if (!twilioConfig.ok) {
-    return {
-      status: "failed",
-      message: `${label} text was not sent because Twilio is not configured.`,
-    };
-  }
-  const normalizedPhone = toTwilioPhone(to);
-  if (!normalizedPhone) {
-    return {
-      status: "failed",
-      message: `${label} text was not sent because the customer phone number is not textable.`,
-    };
-  }
-  const result = await sendTwilioSms(twilioConfig.value, {
-    to: normalizedPhone,
-    body,
-  });
-  if (!result.ok) {
-    return {
-      status: "failed",
-      message: `${result.message} ${label} text was not sent.`,
-    };
-  }
-  const supabase = await createServerSupabase();
-  await supabase.from("sms_messages").insert(
-    buildOutboundSmsInsert({
-      clientId,
-      groomerId,
-      from: twilioConfig.value.fromNumber,
-      to: normalizedPhone,
-      body,
-      messageSid: result.sid,
-    }),
-  );
-  return { status: "sent", message: `${label} text sent to the customer.` };
 }
 
 function serviceCodeFromLabel(label: string | null): string | null {

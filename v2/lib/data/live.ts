@@ -14,6 +14,7 @@
 
 import type { Appointment, Client, DayCloseoutOverride, Pet } from "./types";
 import { parseStoredPetBirthDate } from "../petAge";
+import { SERVICE_TYPES, type ServiceType } from "../booking";
 
 export type Row = Record<string, unknown>;
 
@@ -51,6 +52,17 @@ const SERVICE_LABELS: Record<string, string> = {
 export function serviceLabel(code: unknown): string | null {
   if (typeof code !== "string" || code === "") return null;
   return SERVICE_LABELS[code] ?? code;
+}
+
+/**
+ * Inverse of {@link serviceLabel}: turn a user-facing service label back into
+ * its enum code, or "" when the label is empty or unrecognized. The appointment
+ * and groom forms use this to seed a service `<select>` from a prior label.
+ */
+export function serviceCodeFromLabel(label: string | null): ServiceType | "" {
+  if (!label) return "";
+  const match = SERVICE_TYPES.find((code) => serviceLabel(code) === label);
+  return match ?? "";
 }
 
 export function mapClientRow(r: Row): Client {
