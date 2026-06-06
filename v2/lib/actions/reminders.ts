@@ -16,7 +16,7 @@
 
 import { revalidatePath } from "next/cache";
 import { recordAuditEvent } from "@/lib/audit.server";
-import { dataMode, getClientRecord } from "@/lib/data/repo";
+import { dataMode, getClientRecord, requireOrgId } from "@/lib/data/repo";
 import { createServerSupabase, getCurrentUser } from "@/lib/supabase/server";
 import { isReminderSendEnabled } from "@/lib/writeGate";
 import {
@@ -155,6 +155,7 @@ export async function prepareReminder(
     };
   }
 
+  const orgId = await requireOrgId();
   const supabase = await createServerSupabase();
   const { error: logError } = await supabase.from("automations_log").insert({
     client_id: clientId,
@@ -163,9 +164,10 @@ export async function prepareReminder(
     message: draft.message,
     status: "sent",
     sent_at: new Date().toISOString(),
+    org_id: orgId,
   });
-  const { error: smsLogError } = await supabase.from("sms_messages").insert(
-    buildOutboundSmsInsert({
+  const { error: smsLogError } = await supabase.from("sms_messages").insert({
+    ...buildOutboundSmsInsert({
       clientId,
       groomerId: user.id,
       from: twilioConfig.value.fromNumber,
@@ -173,7 +175,8 @@ export async function prepareReminder(
       body: draft.message,
       messageSid: sendResult.sid,
     }),
-  );
+    org_id: orgId,
+  });
 
   revalidatePath(`/clients/${clientId}`);
   revalidatePath("/schedule");

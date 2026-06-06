@@ -8,7 +8,7 @@ import {
   validateDayCloseoutInput,
   type DayCloseoutErrors,
 } from "@/lib/dayCloseout";
-import { dataMode } from "@/lib/data/repo";
+import { dataMode, requireOrgId } from "@/lib/data/repo";
 import { createServerSupabase, getCurrentUser } from "@/lib/supabase/server";
 import { isDayCloseoutWriteEnabled } from "@/lib/writeGate";
 
@@ -53,6 +53,7 @@ export async function saveDayCloseoutOverride(
     };
   }
 
+  const orgId = await requireOrgId();
   const supabase = await createServerSupabase();
   const payload = buildDayCloseoutUpsert(closeout);
   const { error } = await supabase
@@ -60,6 +61,7 @@ export async function saveDayCloseoutOverride(
     .upsert({
       ...payload,
       groomer_id: user.id,
+      org_id: orgId,
     }, {
       onConflict: "groomer_id,date,location",
     });

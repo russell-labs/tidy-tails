@@ -23,6 +23,7 @@ vi.mock("@/lib/data/repo", async () => {
     ...actual,
     getClientRecord: vi.fn(),
     loadAppointments: vi.fn(),
+    requireOrgId: vi.fn(async () => "org-1"),
   };
 });
 
@@ -463,6 +464,7 @@ describe("saveDayCloseoutOverride", () => {
         calculated_payout: 84.63,
         note: "Rounded cash closeout",
         groomer_id: "operator-1",
+        org_id: "org-1",
       },
       options: {
         onConflict: "groomer_id,date,location",
@@ -771,6 +773,7 @@ describe("createBooking", () => {
             fee: 72.5,
             notes: "Use blue bow [salon_payout:15]",
             status: "booked",
+            org_id: "org-1",
           },
         ],
         filters: [],

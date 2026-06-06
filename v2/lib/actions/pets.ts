@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { recordAuditEvent } from "@/lib/audit.server";
-import { dataMode, getClientRecord } from "@/lib/data/repo";
+import { dataMode, getClientRecord, requireOrgId } from "@/lib/data/repo";
 import { createServerSupabase, getCurrentUser } from "@/lib/supabase/server";
 import { isAddPetWriteEnabled } from "@/lib/writeGate";
 import {
@@ -87,8 +87,9 @@ export async function addPet(
     };
   }
 
+  const orgId = await requireOrgId();
   const supabase = await createServerSupabase();
-  const { error } = await supabase.from("pets").insert(payload);
+  const { error } = await supabase.from("pets").insert({ ...payload, org_id: orgId });
   if (error) {
     return {
       status: "error",

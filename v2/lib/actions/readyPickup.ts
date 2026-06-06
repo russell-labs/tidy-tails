@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { recordAuditEvent } from "@/lib/audit.server";
-import { dataMode, getClientRecord } from "@/lib/data/repo";
+import { dataMode, getClientRecord, requireOrgId } from "@/lib/data/repo";
 import { buildOutboundSmsInsert } from "@/lib/inboundSms";
 import {
   validateReadyPickupInput,
@@ -120,9 +120,10 @@ export async function sendReadyPickupText(
     };
   }
 
+  const orgId = await requireOrgId();
   const supabase = await createServerSupabase();
-  const { error: smsLogError } = await supabase.from("sms_messages").insert(
-    buildOutboundSmsInsert({
+  const { error: smsLogError } = await supabase.from("sms_messages").insert({
+    ...buildOutboundSmsInsert({
       clientId,
       groomerId: user.id,
       from: twilioConfig.value.fromNumber,
@@ -130,7 +131,8 @@ export async function sendReadyPickupText(
       body: validation.value.message,
       messageSid: sendResult.sid,
     }),
-  );
+    org_id: orgId,
+  });
 
   await recordAuditEvent({
     eventType: "sms.sent",

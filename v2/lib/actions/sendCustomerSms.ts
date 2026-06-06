@@ -1,3 +1,4 @@
+import { requireOrgId } from "@/lib/data/repo";
 import { buildOutboundSmsInsert } from "@/lib/inboundSms";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { getTwilioConfig, sendTwilioSms, toTwilioPhone } from "@/lib/twilio";
@@ -60,9 +61,10 @@ export async function sendCustomerSms({
       message: `${result.message} ${label} text was not sent.`,
     };
   }
+  const orgId = await requireOrgId();
   const supabase = await createServerSupabase();
-  await supabase.from("sms_messages").insert(
-    buildOutboundSmsInsert({
+  await supabase.from("sms_messages").insert({
+    ...buildOutboundSmsInsert({
       clientId,
       groomerId,
       from: twilioConfig.value.fromNumber,
@@ -70,6 +72,7 @@ export async function sendCustomerSms({
       body,
       messageSid: result.sid,
     }),
-  );
+    org_id: orgId,
+  });
   return { status: "sent", message: `${label} text sent to the customer.` };
 }

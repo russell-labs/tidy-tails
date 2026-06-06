@@ -7,12 +7,14 @@ vi.mock("@/lib/supabase/server", () => ({
 }));
 
 import {
+  currentOrgId,
   loadAppointments,
   loadClients,
   loadDataset,
   loadDayCloseoutOverrideState,
   loadDayCloseoutOverrides,
   loadPets,
+  requireOrgId,
 } from "./repo";
 import { createServerSupabase, getCurrentUser } from "@/lib/supabase/server";
 
@@ -225,6 +227,100 @@ describe("repo live reads — fail closed when there is no session", () => {
 
     expect(await loadDayCloseoutOverrideState()).toEqual({ overrides: [], ready: true });
     expect(from).not.toHaveBeenCalled();
+  });
+});
+
+// ---- org context (WS2.3) -----------------------------------------------------
+// currentOrgId resolves the signed-in operator's organization from their
+// membership; requireOrgId is the fail-closed gate every tenant-row INSERT uses
+// so a write can never carry a null org_id under per-org RLS.
+
+type MaybeSingleResult = { data: unknown; error: { message: string } | null };
+
+// Minimal client that records the membership read chain
+// (`.from().select().eq().limit().maybeSingle()`) and returns a queued result.
+function membershipClient(result: MaybeSingleResult) {
+  const capture: { table: string; filters: { column: string; value: unknown }[] } = {
+    table: "",
+    filters: [],
+  };
+  const from = vi.fn((table: string) => {
+    capture.table = table;
+    const builder = {
+      select: () => builder,
+      eq: (column: string, value: unknown) => {
+        capture.filters.push({ column, value });
+        return builder;
+      },
+      limit: () => builder,
+      maybeSingle: async () => result,
+    };
+    return builder;
+  });
+  const client = { from } as unknown as Awaited<
+    ReturnType<typeof createServerSupabase>
+  >;
+  return { client, from, capture };
+}
+
+describe("currentOrgId — resolves the operator's organization", () => {
+  beforeEach(() => {
+    getCurrentUserMock.mockResolvedValue(OPERATOR);
+  });
+
+  it("returns the org_id from the operator's membership, scoped by user_id", async () => {
+    const { client, from, capture } = membershipClient({
+      data: { org_id: "org-1" },
+      error: null,
+    });
+    createServerSupabaseMock.mockResolvedValue(client);
+
+    expect(await currentOrgId()).toBe("org-1");
+    expect(from).toHaveBeenCalledWith("organization_memberships");
+    expect(capture.filters).toContainEqual({ column: "user_id", value: "operator-1" });
+  });
+
+  it("returns null and issues no query when there is no session", async () => {
+    getCurrentUserMock.mockResolvedValue(null);
+
+    expect(await currentOrgId()).toBeNull();
+    expect(createServerSupabaseMock).not.toHaveBeenCalled();
+  });
+
+  it("returns null when the operator has no membership row", async () => {
+    createServerSupabaseMock.mockResolvedValue(
+      membershipClient({ data: null, error: null }).client,
+    );
+
+    expect(await currentOrgId()).toBeNull();
+  });
+
+  it("returns null (fails closed) when the membership query errors", async () => {
+    createServerSupabaseMock.mockResolvedValue(
+      membershipClient({ data: null, error: { message: "boom" } }).client,
+    );
+
+    expect(await currentOrgId()).toBeNull();
+  });
+});
+
+describe("requireOrgId — fail-closed gate for tenant writes", () => {
+  beforeEach(() => {
+    getCurrentUserMock.mockResolvedValue(OPERATOR);
+  });
+
+  it("returns the org_id when one resolves", async () => {
+    createServerSupabaseMock.mockResolvedValue(
+      membershipClient({ data: { org_id: "org-1" }, error: null }).client,
+    );
+
+    expect(await requireOrgId()).toBe("org-1");
+  });
+
+  it("throws when no org resolves, so the caller cannot write a null org_id", async () => {
+    getCurrentUserMock.mockResolvedValue(null);
+
+    await expect(requireOrgId()).rejects.toThrow(/organization/i);
   });
 });
 

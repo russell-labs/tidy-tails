@@ -22,6 +22,7 @@ vi.mock("@/lib/data/repo", async () => {
   return {
     ...actual,
     getClientRecord: vi.fn(),
+    requireOrgId: vi.fn(async () => "org-1"),
   };
 });
 
@@ -126,6 +127,7 @@ describe("sendReadyPickupText", () => {
         action: "insert",
         payload: expect.objectContaining({
           groomer_id: "operator-1",
+          org_id: "org-1",
           client_id: "client-1",
           direction: "outbound",
           from_phone: "+17055550199",
@@ -226,6 +228,7 @@ describe("prepareReminder", () => {
           message: "Reminder for Kiwi tomorrow.",
           status: "sent",
           sent_at: expect.any(String),
+          org_id: "org-1",
         }),
         filters: [],
         orders: [],
@@ -237,6 +240,7 @@ describe("prepareReminder", () => {
           client_id: "client-1",
           body: "Reminder for Kiwi tomorrow.",
           twilio_message_sid: "SM-outbound",
+          org_id: "org-1",
         }),
         filters: [],
         orders: [],
@@ -424,6 +428,7 @@ describe("inbox SMS reply actions", () => {
           client_id: "client-1",
           direction: "outbound",
           body: "Sure, what day works?",
+          org_id: "org-1",
         }),
         filters: [],
         orders: [],
@@ -507,6 +512,7 @@ describe("inbox SMS reply actions", () => {
         payload: expect.objectContaining({
           client_id: "client-1",
           body: "Hi Mary, see you soon.",
+          org_id: "org-1",
         }),
         filters: [],
         orders: [],
@@ -581,6 +587,7 @@ describe("inbox SMS reply actions", () => {
         payload: expect.objectContaining({
           client_id: "client-1",
           body: "Hi Mary, platform intro.",
+          org_id: "org-1",
         }),
         filters: [],
         orders: [],

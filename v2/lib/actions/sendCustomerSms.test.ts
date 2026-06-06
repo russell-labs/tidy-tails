@@ -5,6 +5,10 @@ vi.mock("@/lib/supabase/server", () => ({
   createServerSupabase: vi.fn(),
 }));
 
+vi.mock("@/lib/data/repo", () => ({
+  requireOrgId: vi.fn(async () => "org-1"),
+}));
+
 vi.mock("@/lib/twilio", () => ({
   getTwilioConfig: vi.fn(),
   sendTwilioSms: vi.fn(),
@@ -136,6 +140,7 @@ describe("sendCustomerSms", () => {
           action: "insert",
           payload: expect.objectContaining({
             groomer_id: "operator-1",
+            org_id: "org-1",
             client_id: "client-1",
             direction: "outbound",
             from_phone: "+17055550199",

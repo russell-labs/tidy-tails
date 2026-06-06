@@ -21,7 +21,7 @@
 
 import { revalidatePath } from "next/cache";
 import { recordAuditEvent } from "@/lib/audit.server";
-import { dataMode, getClientRecord } from "@/lib/data/repo";
+import { dataMode, getClientRecord, requireOrgId } from "@/lib/data/repo";
 import { serviceLabel } from "@/lib/data/live";
 import { createServerSupabase, getCurrentUser } from "@/lib/supabase/server";
 import { isLogGroomWriteEnabled } from "@/lib/writeGate";
@@ -141,13 +141,21 @@ export async function logGroom(
   // Flag ON: complete the matching booked row when possible. If Sam logs a
   // walk-in or old groom with no booking, insert one completed appointment row.
   const supabase = await createServerSupabase();
-  const write = existingBooking
-    ? await supabase
-        .from("appointments")
-        .update(payload)
-        .eq("id", existingBooking.id)
-        .eq("client_id", groom.client_id)
-    : await supabase.from("appointments").insert(payload);
+  let write;
+  if (existingBooking) {
+    // Completing an existing booked row — org_id is already set; leave it.
+    write = await supabase
+      .from("appointments")
+      .update(payload)
+      .eq("id", existingBooking.id)
+      .eq("client_id", groom.client_id);
+  } else {
+    // Walk-in / backdated groom with no booking — insert a new tenant row.
+    const orgId = await requireOrgId();
+    write = await supabase
+      .from("appointments")
+      .insert({ ...payload, org_id: orgId });
+  }
   const { error } = write;
   if (error) {
     return {
