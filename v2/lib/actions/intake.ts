@@ -99,6 +99,7 @@ export async function saveIntake(
     email: formString(formData, "email"),
     address: formString(formData, "address"),
     notes: formString(formData, "notes"),
+    sms_consent: formString(formData, "sms_consent"),
     pet_name: formString(formData, "pet_name"),
     breed: formString(formData, "breed"),
     size: formString(formData, "size"),
@@ -122,7 +123,7 @@ export async function saveIntake(
   // The validated INSERT payloads — proven shapes, not yet persisted. The
   // summary echoes them so the review/result screens show exactly what would
   // be written.
-  const clientPayload = buildClientInsert(intake);
+  const clientPayload = buildClientInsert(intake, new Date().toISOString());
   const petPayloads = buildPetInserts(intake);
   const firstPetPayload = petPayloads[0];
 

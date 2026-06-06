@@ -65,6 +65,8 @@ describe("mapClientRow — live clients row → Client", () => {
       email: "marisol@example.com",
       address: "12 Maple St",
       notes: "Prefers mornings",
+      sms_consent: true,
+      sms_consent_at: "2025-02-01T09:00:00Z",
       created_at: "2025-01-02T10:00:00Z",
     };
     expect(mapClientRow(row)).toEqual({
@@ -76,6 +78,8 @@ describe("mapClientRow — live clients row → Client", () => {
       email: "marisol@example.com",
       address: "12 Maple St",
       notes: "Prefers mornings",
+      sms_consent: true,
+      sms_consent_at: "2025-02-01T09:00:00Z",
       created_at: "2025-01-02T10:00:00Z",
     });
   });
@@ -90,6 +94,8 @@ describe("mapClientRow — live clients row → Client", () => {
       email: null,
       address: null,
       notes: null,
+      sms_consent: false,
+      sms_consent_at: null,
       created_at: "",
     });
   });

@@ -102,6 +102,7 @@ export async function createBooking(
     send_booking_text: String(formData.get("send_booking_text") ?? ""),
     booking_message: String(formData.get("booking_message") ?? ""),
     save_reminder_phone: String(formData.get("save_reminder_phone") ?? ""),
+    sms_consent: String(formData.get("sms_consent") ?? ""),
     customer_phone: String(formData.get("customer_phone") ?? ""),
     fee: String(formData.get("fee") ?? ""),
     notes: String(formData.get("notes") ?? ""),
@@ -132,6 +133,27 @@ export async function createBooking(
       status: "error",
       errors: {},
       formError: "One of those pets is not on this client's file. Nothing was saved.",
+    };
+  }
+
+  // SMS consent gate (WS0). A booking/reminder text can only be enabled if the
+  // client has agreed — either consent already on file, or ticked in this
+  // submission (which is persisted below). Enforced before the demo return so
+  // fixtures/demo reflects the same gate. Runs only when a text is requested,
+  // so already-consented and no-text flows are unchanged.
+  const consentOnFile = record.client.sms_consent === true;
+  const consentCapturedNow = booking.sms_consent;
+  if (
+    (booking.send_booking_text || booking.save_reminder_phone) &&
+    !consentOnFile &&
+    !consentCapturedNow
+  ) {
+    return {
+      status: "error",
+      errors: {
+        sms_consent:
+          "This client hasn't agreed to texts yet. Capture consent before sending.",
+      },
     };
   }
 
@@ -236,7 +258,12 @@ export async function createBooking(
   // Flag ON: persist the appointment rows. The auth-aware server client
   // carries Samantha's JWT, so the column DEFAULT auth.uid() stamps groomer_id.
   const supabase = await createServerSupabase();
-  const clientPatch: { email?: string | null; phone?: string } = {};
+  const clientPatch: {
+    email?: string | null;
+    phone?: string;
+    sms_consent?: boolean;
+    sms_consent_at?: string;
+  } = {};
   if (booking.send_invite && booking.customer_email !== record.client.email) {
     clientPatch.email = booking.customer_email;
   }
@@ -245,6 +272,11 @@ export async function createBooking(
     booking.customer_phone !== record.client.phone
   ) {
     clientPatch.phone = booking.customer_phone ?? record.client.phone;
+  }
+  // Persist consent captured in this booking (only when not already on file).
+  if (consentCapturedNow && !consentOnFile) {
+    clientPatch.sms_consent = true;
+    clientPatch.sms_consent_at = new Date().toISOString();
   }
   if (Object.keys(clientPatch).length > 0) {
     const { error } = await supabase

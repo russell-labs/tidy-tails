@@ -46,6 +46,8 @@ const clients = [
     email: null,
     address: null,
     notes: null,
+    sms_consent: false,
+    sms_consent_at: null,
     created_at: "2026-01-01",
   },
 ] satisfies Client[];

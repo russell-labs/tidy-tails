@@ -191,8 +191,15 @@ function BookingForm({
   });
   const [bookingMessageDraftKind, setBookingMessageDraftKind] =
     useState<BookingMessageDraftKind>(recommendedDraft.kind);
+  // Texting requires recorded consent (WS0). The send controls below are
+  // disabled until the client has consented — either already on file, or ticked
+  // here. Reminder-phone only defaults on for an already-consented client, so a
+  // non-consented client's text controls start off, matching the server gate.
+  const consentOnFile = client.sms_consent === true;
+  const [smsConsentChecked, setSmsConsentChecked] = useState(false);
+  const hasTextConsent = consentOnFile || smsConsentChecked;
   const [saveReminderPhone, setSaveReminderPhone] = useState(
-    Boolean(client.phone),
+    Boolean(client.phone) && consentOnFile,
   );
   const [customerPhone, setCustomerPhone] = useState(client.phone);
   const [petFees, setPetFees] = useState<Record<string, string>>(initialPetFees);
@@ -403,6 +410,11 @@ function BookingForm({
         type="hidden"
         name="save_reminder_phone"
         value={saveReminderPhone ? "on" : ""}
+      />
+      <input
+        type="hidden"
+        name="sms_consent"
+        value={smsConsentChecked ? "on" : ""}
       />
       <input type="hidden" name="customer_phone" value={customerPhone} />
       <input type="hidden" name="fee" value={primaryFee} />
@@ -637,10 +649,50 @@ function BookingForm({
             </Field>
           ) : null}
 
-          <label className="flex items-start gap-2 rounded-xl border border-line bg-surface px-3.5 py-3 text-sm text-ink-soft">
+          {consentOnFile ? (
+            <p className="rounded-xl border border-line bg-canvas px-3.5 py-3 text-sm text-ink-soft">
+              <span className="font-semibold text-ink">
+                Texting consent on file.
+              </span>{" "}
+              This client has agreed to receive reminders and confirmations by
+              text.
+            </p>
+          ) : (
+            <label className="flex items-start gap-2 rounded-xl border border-line bg-surface px-3.5 py-3 text-sm text-ink-soft">
+              <input
+                type="checkbox"
+                checked={smsConsentChecked}
+                onChange={(e) => {
+                  setSmsConsentChecked(e.target.checked);
+                  if (!e.target.checked) {
+                    setSendBookingText(false);
+                    setSaveReminderPhone(false);
+                  }
+                }}
+                className="mt-1 h-4 w-4 accent-brand"
+              />
+              <span>
+                <span className="font-semibold text-ink">
+                  This client agreed to receive texts
+                </span>
+                <span className="block text-xs leading-relaxed">
+                  They agreed to receive appointment reminders and confirmations
+                  by text. Reply STOP opts out. Required before any text can be
+                  sent — it&rsquo;s saved to the household.
+                </span>
+              </span>
+            </label>
+          )}
+
+          <label
+            className={`flex items-start gap-2 rounded-xl border border-line bg-surface px-3.5 py-3 text-sm text-ink-soft ${
+              hasTextConsent ? "" : "opacity-50"
+            }`}
+          >
             <input
               type="checkbox"
               checked={sendBookingText}
+              disabled={!hasTextConsent}
               onChange={(e) => setSendBookingText(e.target.checked)}
               className="mt-1 h-4 w-4 accent-brand"
             />
@@ -649,17 +701,22 @@ function BookingForm({
                 Text booking info now
               </span>
               <span className="block text-xs leading-relaxed">
-                Send one SMS with the booking date, time, service, and location
-                after Sam confirms. Sam can edit the exact text on the review
-                step.
+                {hasTextConsent
+                  ? "Send one SMS with the booking date, time, service, and location after Sam confirms. Sam can edit the exact text on the review step."
+                  : "Capture texting consent above to enable."}
               </span>
             </span>
           </label>
 
-          <label className="flex items-start gap-2 rounded-xl border border-line bg-surface px-3.5 py-3 text-sm text-ink-soft">
+          <label
+            className={`flex items-start gap-2 rounded-xl border border-line bg-surface px-3.5 py-3 text-sm text-ink-soft ${
+              hasTextConsent ? "" : "opacity-50"
+            }`}
+          >
             <input
               type="checkbox"
               checked={saveReminderPhone}
+              disabled={!hasTextConsent}
               onChange={(e) => setSaveReminderPhone(e.target.checked)}
               className="mt-1 h-4 w-4 accent-brand"
             />
@@ -668,8 +725,9 @@ function BookingForm({
                 Use this phone for reminders
               </span>
               <span className="block text-xs leading-relaxed">
-                Keep this number on the household so Sam can send appointment
-                reminders later. Nothing sends from this option.
+                {hasTextConsent
+                  ? "Keep this number on the household so Sam can send appointment reminders later. Nothing sends from this option."
+                  : "Capture texting consent above to enable."}
               </span>
             </span>
           </label>

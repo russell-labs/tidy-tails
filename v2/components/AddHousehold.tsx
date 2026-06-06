@@ -148,6 +148,9 @@ function IntakeForm({
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [phone, setPhone] = useState("");
+  // SMS consent (WS0) — recorded on the new household so booking/reminder texts
+  // are truthful for A2P/CASL. Defaults off; consent is never assumed.
+  const [smsConsent, setSmsConsent] = useState(false);
   const [secondaryName, setSecondaryName] = useState("");
   const [secondaryCell, setSecondaryCell] = useState("");
   const [landline, setLandline] = useState("");
@@ -249,6 +252,7 @@ function IntakeForm({
       <input type="hidden" name="first_name" value={firstName} />
       <input type="hidden" name="last_name" value={lastName} />
       <input type="hidden" name="phone" value={phone} />
+      <input type="hidden" name="sms_consent" value={smsConsent ? "on" : ""} />
       <input type="hidden" name="secondary_contact_name" value={secondaryName} />
       <input type="hidden" name="secondary_cell" value={secondaryCell} />
       <input type="hidden" name="landline" value={landline} />
@@ -342,6 +346,25 @@ function IntakeForm({
               className={fieldClass}
             />
           </Field>
+
+          <label className="flex items-start gap-2 rounded-xl border border-line bg-surface px-3.5 py-3 text-sm text-ink-soft">
+            <input
+              type="checkbox"
+              checked={smsConsent}
+              onChange={(e) => setSmsConsent(e.target.checked)}
+              className="mt-1 h-4 w-4 accent-brand"
+            />
+            <span>
+              <span className="font-semibold text-ink">
+                This client agreed to receive texts
+              </span>
+              <span className="block text-xs leading-relaxed">
+                They agreed to receive appointment reminders and confirmations by
+                text. Reply STOP opts out. Without this, booking and reminder
+                texts stay disabled for this household.
+              </span>
+            </span>
+          </label>
 
           <SectionLabel>Other contacts</SectionLabel>
 
