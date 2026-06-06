@@ -10,21 +10,27 @@ hold-fire: true
 
 ## Right Now
 
-- **READY TO SHIP (awaiting your review/merge):** PR #14 — "Wire cross-tenant
-  isolation test into CI (WS2.2b)". CI green; the gate is proven green-on-correct
-  and **red-on-breach**. CI-only; no real-project writes.
-- **JUST MERGED:** PR #13 (WS2.2 per-org RLS). Earlier: PR #12 (WS2.1), PR #11
-  (WS1), PR #10/#9 (WS0).
-- **IN FLIGHT:** nothing else. No deploy; no prod/staging writes from this slice.
+- **READY TO SHIP (awaiting your review/merge):** PR #15 — "Thread org context
+  through writes for per-org RLS (WS2.3)". App is now org-aware: every tenant
+  insert/upsert stamps `org_id`, via `currentOrgId()`/`requireOrgId()` (fail
+  closed). 834 unit tests (+7), typecheck/lint/build green; CI incl. the
+  isolation gate runs on the PR. **Not deployed to prod** — ships with the WS2.4
+  cutover. Verified on STAGING per-org RLS (both tenants; null + foreign org
+  rejected 42501; non-destructive).
+- **JUST MERGED:** PR #14 (WS2.2b isolation gate in CI). Earlier: PR #13 (WS2.2
+  per-org RLS), PR #12 (WS2.1), PR #11 (WS1), PR #10/#9 (WS0).
+- **IN FLIGHT:** nothing else. No deploy; no prod writes. Staging writes this
+  slice were RLS-contract probes only, all rolled back (0 rows persisted).
 
 ## Next Action
 
-Russell reviews PR #14. With it merged, the cross-tenant isolation gate runs on
-every PR/push. **To make it actually block merges/the cutover, add it as a
-required status check in branch protection** (the workflow can't do that itself).
-Next workstreams: **WS2.3** (thread org context through the app so writes set
-org_id — required before the app can run on per-org RLS) and **WS2.4** (Sam's
-rehearsed silent prod migration — see the ordering constraint in Blockers).
+Russell reviews/merges PR #15 (WS2.3). It does **not** change behavior for the
+current single operator and does **not** touch prod. After merge, the only
+remaining gate before the app can run on per-org RLS is **WS2.4** — Sam's
+rehearsed silent prod migration (membership + org_id backfill BEFORE the policy
+swap; see ordering constraint in Blockers). The WS2.3 app code and the WS2.4
+prod backfill must go live together. Also still open from WS2.2b: add the
+`isolation` job as a **required** status check in branch protection.
 
 ## Authorized Actions
 
@@ -37,15 +43,16 @@ that exact action in-thread. (WS2.2b is CI-only — no DB writes.)
 ## Current Production State
 
 - Production v2 app: `https://tidy-tails-v2.vercel.app` (Vercel `tidy-tails-v2`).
-- `main` HEAD: `a53db45` (after PR #13). WS2.2b on branch
-  `ci/cross-tenant-isolation-gate` (PR #14), not merged.
+- `main` HEAD: `4050654` (after PR #14). WS2.3 on branch
+  `feat/app-org-context` (PR #15), not merged.
 - **Supabase PROD** `pgkwovokciaqnbhpttba`: UNCHANGED. Still per-user RLS, no
-  org_id populated. Not touched by WS2.2b at all (CI uses an ephemeral DB).
+  org_id populated. WS2.3 is app code only — not deployed; it goes live with the
+  WS2.4 cutover.
 - **Supabase STAGING** `exemhetaxosklljbrzeh`: per-org RLS live, two tenants
-  (org#1 3/4/4, org#2 2/2/2). Unchanged by WS2.2b.
-- CI: `verify` (typecheck+lint+827 tests) **plus** the new `isolation` gate
+  (org#1 3/4/4, org#2 2/2/2). Unchanged by WS2.3 (verification probes rolled back).
+- CI: `verify` (typecheck+lint+**834** tests) **plus** the `isolation` gate
   (ephemeral Postgres + Supabase auth shim → migrations → seed → isolation test).
-  Both green on PR #14.
+  Running on PR #15.
 
 ## Active Blockers
 
@@ -53,8 +60,15 @@ that exact action in-thread. (WS2.2b is CI-only — no DB writes.)
   groomer_id = her uid but org_id = null. WS2.4 must atomically (1) create her
   org + membership, (2) backfill org_id on all her rows, (3) THEN swap the
   policies — swapping first locks her out. Rehearse on staging; back up first.
-- **App is org-unaware (WS2.3):** with per-org RLS, an INSERT not setting org_id
-  fails closed. The app must thread org context before it can run on per-org RLS.
+- **~~App is org-unaware (WS2.3)~~ — RESOLVED in PR #15 (pending merge):** the
+  app now threads org context; every tenant insert sets org_id via
+  `requireOrgId()` (fail closed). Remaining WS2.3-adjacent follow-up: the
+  inbound-sms webhook's phone-match read of `clients` is still unscoped (service
+  role) — scope it to the resolved org during/after WS2.4 so it can't match a
+  foreign org's client once multiple orgs exist.
+- **`org_id` is nullable with no DB default:** a missed insert site writes NULL
+  silently (no error) until per-org RLS is enforced. WS2.3 covered all current
+  sites; per-org RLS is the durable backstop post-cutover.
 - **Isolation gate coverage:** the behavioral layer only exercises the 3 seeded
   tenant tables; the structural check (substring heuristic) covers the other 7. A
   malformed `… or true` policy on an empty table would slip both. Follow-up: seed
@@ -76,9 +90,11 @@ that exact action in-thread. (WS2.2b is CI-only — no DB writes.)
 
 ## Most Recent User Intent (verbatim)
 
-> "WS2.2b — wire the cross-tenant isolation test into CI. ... Make the
-> cross-tenant isolation test run automatically in CI and fail the build on any
-> breach. This is the safety net that must be green before the WS2.4 prod cutover."
+> "WS2.3 — thread org context through the app. ... Make the app org-aware so it
+> works under WS2.2's per-org RLS: every tenant-row INSERT sets org_id, and the
+> data layer resolves the current operator's org. Verified against STAGING ...
+> NOT deployed to prod ... this app code + the prod backfill go live together in
+> WS2.4."
 
 ## Last High-Signal Exchanges
 
@@ -90,7 +106,9 @@ that exact action in-thread. (WS2.2b is CI-only — no DB writes.)
 
 ## Recently Shipped (last 14 days)
 
-- PR #14 (open): wire isolation test into CI (WS2.2b).
+- PR #15 (open): thread org context through writes — org_id on every tenant
+  insert (WS2.3).
+- PR #14 (merged): wire isolation test into CI (WS2.2b).
 - PR #13 (merged): per-org RLS + isolation test (WS2.2).
 - PR #12 (merged): org + membership schema (WS2.1).
 - PR #11 (merged): migration framework + staging (WS1).
@@ -98,13 +116,15 @@ that exact action in-thread. (WS2.2b is CI-only — no DB writes.)
 
 ## Action Queue (queue, not license)
 
-1. Review/merge PR #14; then add the `isolation` job as a **required** status
-   check in branch protection so it blocks merges + the WS2.4 cutover.
-2. Isolation-gate coverage follow-up: seed ≥1 row per tenant table (or assert
+1. Review/merge PR #15 (WS2.3 — org context through writes).
+2. Add the `isolation` job as a **required** status check in branch protection
+   so it blocks merges + the WS2.4 cutover.
+3. Isolation-gate coverage follow-up: seed ≥1 row per tenant table (or assert
    policy `qual` equality) so the behavioral layer covers all 10, not just 3.
-3. **WS2.3:** thread org context through the app (writes set org_id).
 4. **WS2.4:** Sam's rehearsed silent prod migration — membership + org_id
-   backfill BEFORE the policy swap, with a backup. Operator-gated.
+   backfill BEFORE the policy swap, with a backup. Must ship together with the
+   WS2.3 app code (PR #15). Operator-gated. Also scope the inbound-sms webhook's
+   clients match-read to the org as part of this.
 5. WS1 leftovers (CLI round-trip, Sentry, backup rehearsal); SMS consent
    compliance follow-ups; operator-gated consent migration to prod.
 
