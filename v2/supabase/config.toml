@@ -1,0 +1,15 @@
+# Supabase CLI configuration for Tidy Tails.
+#
+# `project_id` is a local label for this config, not a remote ref. Link to a
+# remote project with `supabase link --project-ref <ref>` before pushing.
+#   STAGING ref: exemhetaxosklljbrzeh   (push freely here)
+#   PROD ref:    pgkwovokciaqnbhpttba   (operator-gated; never push casually)
+#
+# This file is intentionally minimal — it carries the migration framework, not a
+# full local-stack config. Regenerate a complete config with `supabase init` if
+# you later run the local stack.
+project_id = "tidy-tails"
+
+[db]
+# Match the production/staging Postgres major version.
+major_version = 17
