@@ -10,37 +10,50 @@ hold-fire: true
 
 ## Right Now
 
-- **READY TO SHIP (awaiting your review/merge):** PR #15 — "Thread org context
-  through writes for per-org RLS (WS2.3)". App is now org-aware: every tenant
-  insert/upsert stamps `org_id`, via `currentOrgId()`/`requireOrgId()` (fail
-  closed). 834 unit tests (+7), typecheck/lint/build green; CI incl. the
-  isolation gate runs on the PR. **Not deployed to prod** — ships with the WS2.4
-  cutover. Verified on STAGING per-org RLS (both tenants; null + foreign org
-  rejected 42501; non-destructive).
-- **JUST MERGED:** PR #14 (WS2.2b isolation gate in CI). Earlier: PR #13 (WS2.2
-  per-org RLS), PR #12 (WS2.1), PR #11 (WS1), PR #10/#9 (WS0).
-- **IN FLIGHT:** nothing else. No deploy; no prod writes. Staging writes this
-  slice were RLS-contract probes only, all rolled back (0 rows persisted).
+- **READY TO SHIP (awaiting your review/merge):** PR #16 — "Author + rehearse the
+  prod org cutover (WS2.4a)". The production cutover migration is authored and
+  **fully rehearsed in CI** on a prod-like throwaway DB (all assertions green:
+  email→uid→membership→org chain, all 10 tables backfilled, consent grandfathered,
+  Sam reads+writes under per-org RLS, second tenant isolated, idempotent re-run,
+  fail-loud abort). A prod execution runbook is included. **Nothing applied to
+  prod or staging.**
+- **JUST MERGED:** PR #15 (WS2.3 app org context). Earlier: PR #14 (WS2.2b), #13
+  (WS2.2), #12 (WS2.1), #11 (WS1), #10/#9 (WS0).
+- **IN FLIGHT:** nothing else. No deploy; no prod/staging writes. (Prod touched
+  only by read-only introspection this slice.)
+
+## ‼️ Corrected prod-state premise (verified 2026-06-06)
+
+Earlier notes (and the WS2.4 kickoff) assumed prod had migrations 0001–0003. **It
+does not.** Read-only introspection of prod shows it is on its **original baseline
+only**: no `sms_consent` column, no `organizations`/`organization_memberships`
+tables, no `org_id` columns, per-user RLS. The WS-series migrations were all
+**staging-first** — prod has a separate, older `schema_migrations` lineage. So the
+cutover takes prod from that **true baseline** all the way to multi-tenant in one
+atomic migration (it now *creates* the org schema + consent column, not just swaps
+policies). This is the corrected basis for everything below.
 
 ## Next Action
 
-Russell reviews PR #15 (WS2.3). It does **not** change behavior for the current
-single operator and does **not** touch prod by itself.
+Review PR #16 (WS2.4a). It changes nothing on prod/staging — it authors + proves
+the cutover. The **execution** of the cutover (WS2.4b) is the next, operator-gated
+step, per `_reports/2026-06-06-ws2.4-prod-cutover-runbook.md`:
 
-⚠️ **DO NOT deploy WS2.3 to prod until WS2.4 has created Sam's org + membership.**
-The new code *hard-requires* a membership: `requireOrgId()` throws and the
-inbound-SMS webhook returns 500 whenever none resolves. Prod has **no membership
-for Sam today** (that's WS2.4's job). The webhook has **no write gate** — it is
-always-on — so the moment WS2.3 is *live in prod* without a membership, every
-incoming customer text 500s and gated writes throw. **Sequence: WS2.4 creates
-the membership + backfills org_id FIRST, then WS2.3 goes live.** Deploys are
-manual (`vercel --prod`), so merging is safe *if* prod is not redeployed before
-WS2.4 — but treat merge-and-deploy as one blocked step. (Confirm whether the
-Vercel Git integration auto-deploys `main` before merging; if unsure, hold the
-merge until WS2.4 is ready to run in the same session.)
+1. Pre-flight (read-only): Sam email→uid **must equal** `TIDYTAILS_OPERATOR_USER_ID`
+   (expected `88413167-0799-49a7-ba4c-c1c29403e038`); confirm single `groomer_id`;
+   capture the per-table count manifest.
+2. Backup (Nano = no auto-backups): fresh `venture-ops/dump_supabase.py` dump.
+3. Apply the cutover migration (`psql -f …/cutover/…prod_org_cutover.sql`).
+4. Verify (zero null-org rows; counts == manifest; consent grandfathered).
+5. **Then** deploy the app (`vercel --prod`) — never before the migration.
+6. Smoke test incl. the inbound-SMS webhook.
 
-Also still open from WS2.2b: add the `isolation` job as a **required** status
-check in branch protection.
+⚠️ Ordering is load-bearing: the WS2.3 app hard-requires Sam's membership, and the
+always-on inbound-SMS webhook 500s without it. Migration (creates membership +
+backfill) **before** app deploy, always.
+
+Also still open from WS2.2b: add the `isolation` job (and now `cutover-rehearsal`)
+as **required** status checks in branch protection.
 
 ## Authorized Actions
 
@@ -53,23 +66,26 @@ that exact action in-thread. (WS2.2b is CI-only — no DB writes.)
 ## Current Production State
 
 - Production v2 app: `https://tidy-tails-v2.vercel.app` (Vercel `tidy-tails-v2`).
-- `main` HEAD: `4050654` (after PR #14). WS2.3 on branch
-  `feat/app-org-context` (PR #15), not merged.
-- **Supabase PROD** `pgkwovokciaqnbhpttba`: UNCHANGED. Still per-user RLS, no
-  org_id populated. WS2.3 is app code only — not deployed; it goes live with the
-  WS2.4 cutover.
+- `main` HEAD: `6ec44c1` (after PR #15). WS2.4a on branch
+  `feat/prod-cutover-rehearsal` (PR #16), not merged.
+- **Supabase PROD** `pgkwovokciaqnbhpttba`: **baseline only** (see the corrected
+  premise above) — no org schema, no `org_id`, no `sms_consent`, per-user RLS.
+  UNCHANGED this slice (read-only introspection only). Single operator confirmed.
 - **Supabase STAGING** `exemhetaxosklljbrzeh`: per-org RLS live, two tenants
-  (org#1 3/4/4, org#2 2/2/2). Unchanged by WS2.3 (verification probes rolled back).
-- CI: `verify` (typecheck+lint+**834** tests) **plus** the `isolation` gate
-  (ephemeral Postgres + Supabase auth shim → migrations → seed → isolation test).
-  Running on PR #15.
+  (org#1 3/4/4, org#2 2/2/2). Untouched this slice.
+- CI: `verify` (834 tests) + `isolation` gate + **new `cutover-rehearsal`** job
+  (ephemeral PG at prod's true baseline → seed Sam → run cutover → assert
+  backfill/consent/RLS/isolation/idempotent/fail-loud). All green on PR #16.
 
 ## Active Blockers
 
-- **WS2.4 prod-cutover ORDERING (safety-critical):** Sam's prod rows have
-  groomer_id = her uid but org_id = null. WS2.4 must atomically (1) create her
-  org + membership, (2) backfill org_id on all her rows, (3) THEN swap the
-  policies — swapping first locks her out. Rehearse on staging; back up first.
+- **WS2.4b prod-cutover EXECUTION (safety-critical, operator-gated):** the cutover
+  is authored + rehearsed (PR #16) but NOT applied. Execute via
+  `_reports/2026-06-06-ws2.4-prod-cutover-runbook.md`: pre-flight (email→uid ==
+  `TIDYTAILS_OPERATOR_USER_ID`, single groomer_id, capture count manifest) → fresh
+  backup (Nano, no PITR) → apply cutover → verify (zero null-org, counts ==
+  manifest, consent grandfathered) → deploy app → smoke test incl. webhook →
+  rollback = revert deploy + restore dump. Migration strictly before app deploy.
 - **~~App is org-unaware (WS2.3)~~ — RESOLVED in PR #15 (pending merge):** the
   app now threads org context; every tenant insert sets org_id via
   `requireOrgId()` (fail closed). Remaining WS2.3-adjacent follow-up: the
@@ -100,11 +116,10 @@ that exact action in-thread. (WS2.2b is CI-only — no DB writes.)
 
 ## Most Recent User Intent (verbatim)
 
-> "WS2.3 — thread org context through the app. ... Make the app org-aware so it
-> works under WS2.2's per-org RLS: every tenant-row INSERT sets org_id, and the
-> data layer resolves the current operator's org. Verified against STAGING ...
-> NOT deployed to prod ... this app code + the prod backfill go live together in
-> WS2.4."
+> "WS2.4a — author + REHEARSE the production cutover. ... author the production
+> cutover as ONE atomic, idempotent, fail-loud transaction, and PROVE it on a
+> prod-like throwaway DB. ... Zero writes to prod or staging." (Refined mid-slice
+> after introspection showed prod is on its true baseline, not 0001–0003.)
 
 ## Last High-Signal Exchanges
 
@@ -116,8 +131,8 @@ that exact action in-thread. (WS2.2b is CI-only — no DB writes.)
 
 ## Recently Shipped (last 14 days)
 
-- PR #15 (open): thread org context through writes — org_id on every tenant
-  insert (WS2.3).
+- PR #16 (open): author + rehearse the prod org cutover (WS2.4a).
+- PR #15 (merged): thread org context through writes (WS2.3).
 - PR #14 (merged): wire isolation test into CI (WS2.2b).
 - PR #13 (merged): per-org RLS + isolation test (WS2.2).
 - PR #12 (merged): org + membership schema (WS2.1).
@@ -126,19 +141,19 @@ that exact action in-thread. (WS2.2b is CI-only — no DB writes.)
 
 ## Action Queue (queue, not license)
 
-1. Review/merge PR #15 (WS2.3 — org context through writes).
-2. Add the `isolation` job as a **required** status check in branch protection
-   so it blocks merges + the WS2.4 cutover.
-3. Isolation-gate coverage follow-up: seed ≥1 row per tenant table (or assert
+1. Review/merge PR #16 (WS2.4a — cutover authored + rehearsed). Nothing applied.
+2. **WS2.4b — execute the cutover** (operator-gated) via the runbook
+   `_reports/2026-06-06-ws2.4-prod-cutover-runbook.md`. Migration before app
+   deploy. This single window does: create org + Sam membership, add the org
+   schema + consent column, backfill org_id (+ grandfather consent), swap to
+   per-org RLS — then `vercel --prod` + smoke test incl. webhook.
+3. Add `isolation` + `cutover-rehearsal` as **required** status checks in branch
+   protection so they block merges + the cutover PR.
+4. Isolation-gate coverage follow-up: seed ≥1 row per tenant table (or assert
    policy `qual` equality) so the behavioral layer covers all 10, not just 3.
-4. **WS2.4:** Sam's rehearsed silent prod migration — membership + org_id
-   backfill BEFORE the policy swap, with a backup. **Must run BEFORE WS2.3 (PR
-   #15) is live in prod** (see ⚠️ in Next Action — webhook 500s without a
-   membership). Operator-gated. Two WS2.4 must-dos tied to WS2.3: (1) create
-   Sam's membership under the **exact** `user_id` that `TIDYTAILS_OPERATOR_USER_ID`
-   holds, or the inbound-SMS webhook's `configuredOrgId` 500s post-cutover;
-   (2) scope the inbound-sms webhook's `clients` phone-match read to the resolved
-   org (still unscoped — service role reads all orgs).
+   (The new `cutover-rehearsal` job already seeds all 10.)
+5. Post-cutover follow-up: scope the inbound-sms webhook's `clients` phone-match
+   read to the resolved org (still unscoped — service role reads all orgs).
 5. WS1 leftovers (CLI round-trip, Sentry, backup rehearsal); SMS consent
    compliance follow-ups; operator-gated consent migration to prod.
 

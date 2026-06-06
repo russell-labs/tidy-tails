@@ -98,3 +98,88 @@ jobs:
 
       - name: Cross-tenant isolation test (fails the build on any breach)
         run: psql -v ON_ERROR_STOP=1 -f v2/supabase/tests/cross_tenant_isolation.sql
+
+  # Production cutover rehearsal (WS2.4). Stands up an ephemeral Postgres at
+  # prod's TRUE starting state — the original baseline ONLY (migration 0001; no
+  # 0002/0003/0004) — seeds a single-operator "Sam" book with null-org rows, then
+  # runs the atomic, idempotent, fail-loud cutover and asserts the outcome end to
+  # end: every row backfilled to Sam's org, consent grandfathered, Sam sees + can
+  # write her data under per-org RLS, a second tenant sees none of it, isolation
+  # holds, the re-run is a no-op, and the cutover aborts when Sam's email matches
+  # nobody. Throwaway DB only — never a real project.
+  cutover-rehearsal:
+    name: Prod cutover rehearsal (WS2.4)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: tidytails_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d tidytails_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      PGHOST: localhost
+      PGPORT: "5432"
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      PGDATABASE: tidytails_ci
+      PGOPTIONS: "-c search_path=public,extensions"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install psql client
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends postgresql-client
+
+      - name: Bootstrap Supabase-like auth context
+        run: psql -v ON_ERROR_STOP=1 -f v2/supabase/tests/ci_bootstrap.sql
+
+      - name: Apply ONLY the baseline (0001) — mirror prod's true starting state
+        run: psql -v ON_ERROR_STOP=1 -f v2/supabase/migrations/20260606000001_baseline_schema.sql
+
+      - name: Seed a prod-like single-operator book (null-org, no consent column)
+        run: psql -v ON_ERROR_STOP=1 -f v2/supabase/tests/rehearsal_prod_seed.sql
+
+      - name: Run the atomic cutover (first application)
+        run: psql -v ON_ERROR_STOP=1 -f v2/supabase/cutover/20260606120000_prod_org_cutover.sql
+
+      - name: Grant table privileges (Supabase default-privilege parity)
+        run: |
+          psql -v ON_ERROR_STOP=1 -c "grant all on all tables in schema public to anon, authenticated, service_role;"
+          psql -v ON_ERROR_STOP=1 -c "grant all on all sequences in schema public to anon, authenticated, service_role;"
+
+      - name: Assert backfill + consent grandfather + Sam's per-org RLS + write
+        run: psql -v ON_ERROR_STOP=1 -f v2/supabase/tests/rehearsal_assert.sql
+
+      - name: Seed a second synthetic tenant (aa / org f001) for isolation
+        run: psql -v ON_ERROR_STOP=1 -f v2/supabase/seed.sql
+
+      - name: Assert the second tenant sees none of Sam's data
+        run: psql -v ON_ERROR_STOP=1 -f v2/supabase/tests/rehearsal_assert_second_org.sql
+
+      - name: Cross-tenant isolation regression (post-cutover)
+        run: psql -v ON_ERROR_STOP=1 -f v2/supabase/tests/cross_tenant_isolation.sql
+
+      - name: Re-run the cutover (idempotency)
+        run: psql -v ON_ERROR_STOP=1 -f v2/supabase/cutover/20260606120000_prod_org_cutover.sql
+
+      - name: Assert the re-run was a no-op
+        run: psql -v ON_ERROR_STOP=1 -f v2/supabase/tests/rehearsal_assert_idempotent.sql
+
+      - name: Fail-loud — cutover aborts when Sam's email matches nobody
+        run: |
+          psql -v ON_ERROR_STOP=1 -c "create database cutover_failloud;"
+          PGDATABASE=cutover_failloud psql -v ON_ERROR_STOP=1 -f v2/supabase/tests/ci_bootstrap.sql
+          PGDATABASE=cutover_failloud psql -v ON_ERROR_STOP=1 -f v2/supabase/migrations/20260606000001_baseline_schema.sql
+          if PGDATABASE=cutover_failloud psql -v ON_ERROR_STOP=1 -f v2/supabase/cutover/20260606120000_prod_org_cutover.sql; then
+            echo "FAIL: the cutover should have aborted with no matching Sam user"; exit 1
+          else
+            echo "OK: cutover aborted fail-loud (no Sam user) — nothing committed"
+          fi
