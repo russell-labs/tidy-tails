@@ -6,7 +6,7 @@ import {
   type AuditEvent,
   type AuditEventInput,
 } from "@/lib/audit";
-import { dataMode } from "@/lib/data/repo";
+import { currentGroomerId, dataMode } from "@/lib/data/repo";
 import { createServerSupabase, getCurrentUser } from "@/lib/supabase/server";
 
 export async function recordAuditEvent(
@@ -38,11 +38,17 @@ export async function loadRecentAuditEvents(limit = 20): Promise<AuditEvent[]> {
   noStore();
   if (dataMode() !== "live") return [];
 
+  // Scope to the signed-in operator and fail closed with no session, matching
+  // the `groomer_id = auth.uid()` RLS SELECT policy on audit_events.
+  const groomerId = await currentGroomerId();
+  if (!groomerId) return [];
+
   try {
     const supabase = await createServerSupabase();
     const { data, error } = await supabase
       .from("audit_events")
       .select("*")
+      .eq("groomer_id", groomerId)
       .order("created_at", { ascending: false })
       .limit(limit);
     if (error) return [];

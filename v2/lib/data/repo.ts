@@ -60,8 +60,9 @@ export function dataMode(): DataMode {
 // scope is enforced in app code rather than trusted to RLS alone.
 
 // The signed-in operator's id (the validated `auth.uid()`), or null when there
-// is no session. Live reads fail closed on null.
-async function currentGroomerId(): Promise<string | null> {
+// is no session. Live reads fail closed on null. Exported so the other live
+// read paths (audit, booking requests, SMS list) scope with the same seam.
+export async function currentGroomerId(): Promise<string | null> {
   return (await getCurrentUser())?.id ?? null;
 }
 
