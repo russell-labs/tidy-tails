@@ -10,22 +10,20 @@ hold-fire: true
 
 ## Right Now
 
-- **READY TO SHIP (awaiting your review/merge):** PR #12 — "Org + membership
-  schema (WS2.1, additive, staging-first)". CI green expected; not merged.
-  Applied to STAGING only.
-- **JUST MERGED:** PR #11 (WS1, migration framework + staging). Earlier: PR #10/#9
-  (WS0), PR #8/#7/#6 (read-scoping + dedupe).
+- **READY TO SHIP (awaiting your review/merge):** PR #13 — "Per-org RLS +
+  cross-tenant isolation test (WS2.2, staging-first)". CI green expected; not
+  merged. Applied to STAGING only.
+- **JUST MERGED:** PR #12 (WS2.1 org schema). Earlier: PR #11 (WS1), PR #10/#9
+  (WS0), PR #8/#7/#6.
 - **IN FLIGHT:** nothing else. No deploy; no prod writes.
 
 ## Next Action
 
-Russell reviews PR #12. It adds the additive org/membership model + nullable
-`org_id` on every tenant table, applied to staging with two synthetic tenants.
-One decision needs your call (see Blockers/looked-wrong): whether
-`organization_memberships.user_id` should get an `auth.users(id)` FK. Next
-workstream is **WS2.2** (switch RLS from per-user `groomer_id` to per-org
-membership + the cross-tenant isolation CI test); staging now has two tenants to
-prove isolation against.
+Russell reviews PR #13 (safety-critical: tenant RLS is now per-org on staging,
+proven isolated both directions, read+write). Next: **WS2.2b** (wire the
+isolation test into CI — needs a Supabase auth shim; see the grants trap below)
+and **WS2.3** (thread org context through the app so writes set org_id — required
+before the app can run against per-org RLS).
 
 ## Authorized Actions
 
@@ -33,85 +31,92 @@ prove isolation against.
 
 No mutation, deploy, merge, prod schema/RLS change, migration apply to prod, or
 live-data operation is authorized. Each requires Russell's explicit go for that
-exact action in-thread. (WS2.1 applied to STAGING only.)
+exact action in-thread. (WS2.2 applied to STAGING only.)
 
 ## Current Production State
 
 - Production v2 app: `https://tidy-tails-v2.vercel.app` (Vercel `tidy-tails-v2`).
-- `main` HEAD: `43846d6` (after PR #11). WS2.1 on branch `feat/org-tenant-schema`
-  (PR #12), not merged.
-- **Supabase PROD** `pgkwovokciaqnbhpttba`: unchanged (read-only this slice). No
-  org tables, no `org_id`, no consent columns on prod yet.
-- **Supabase STAGING** `exemhetaxosklljbrzeh`: prod schema + consent + the WS2.1
-  org/membership model, seeded with **two tenants** (org#1 = operator aa: 3
-  clients/4 pets/4 appts; org#2 = operator bb: 2/2/2; each 1 member). Migrations
-  tracked: 20260606000001/002/003.
-- Tests: 827 on the WS2.1 branch and `main` (zero app code changed). CI
-  (`verify`: typecheck+lint+vitest) must be green before merge.
+- `main` HEAD: `939f571` (after PR #12). WS2.2 on branch
+  `feat/per-org-rls-isolation` (PR #13), not merged.
+- **Supabase PROD** `pgkwovokciaqnbhpttba`: UNCHANGED, read-only this slice.
+  Still per-user RLS, no org_id populated. **Not** switched to per-org.
+- **Supabase STAGING** `exemhetaxosklljbrzeh`: per-org RLS LIVE on all 10 tenant
+  tables; `user_org_ids()` helper + memberships user_id FK; two tenants
+  (org#1 aa: 3/4/4, org#2 bb: 2/2/2). Cross-tenant isolation proven. Migrations
+  tracked 0001–0004.
+- Tests: 827 on the WS2.2 branch and `main` (zero app code changed).
 
 ## Active Blockers
 
-- **Decision needed:** `organization_memberships.user_id` has no `auth.users(id)`
-  FK (followed the kickoff spec, which named a FK only for `org_id`). Recommend
-  adding it for membership integrity unless intentional — your call.
-- **Supabase CLI still not authenticated** (no token/DB passwords) — blocks the
-  WS1 CLI `db pull`/`db push` round-trip + any operator-gated prod apply. Staging
-  work uses the MCP.
-- `MASTER-BUSINESS-PLAN.md` missing at the venture root — flagged, not blocking.
+- **WS2.4 prod-cutover ORDERING (safety-critical — do not get wrong):** Sam's
+  prod rows have `groomer_id = her uid` but `org_id = null`. `user_org_ids()`
+  needs a membership row for her uid, and the per-org policies need her rows'
+  `org_id` populated. So WS2.4 MUST, atomically: (1) create her organization +
+  her membership, (2) backfill `org_id` on all her rows, (3) THEN swap the
+  policies. Swapping before the backfill locks Sam out of her own data the
+  instant RLS flips. Rehearse on staging; take a backup first.
+- **App is org-unaware (WS2.3):** with per-org RLS, an INSERT that doesn't set
+  org_id fails closed. The app must thread org context (set org_id on writes)
+  before it can run against per-org RLS. Not changed here.
+- **Supabase CLI still not authenticated** — blocks CLI round-trips + the WS2.2b
+  CI harness needs building (no DB secrets in CI; use a self-contained Postgres
+  service + auth shim).
+- `MASTER-BUSINESS-PLAN.md` missing at venture root — flagged, not blocking.
 
 ## Safety Rules In Force
 
 - Hold-fire default: no deploy, prod data mutation, live SMS, prod schema/RLS
   changes or migrations, or integration-setting changes without Russell's
   explicit go for that exact action.
-- **Prod is read-only for schema work**: introspection only; never push/reset/DDL
-  against prod. Staging is the push/rehearsal target.
-- WS0 consent migration is still unapplied to prod (apply before deploying PR #9).
+- **Prod is read-only for schema work**; never push/reset/DDL against prod.
+  Staging is the push/rehearsal target.
+- WS0 consent migration still unapplied to prod.
 - Permission does not carry across agents/threads. CI green before merge.
   Preserve unrelated dirty root docs; stage only task-scope files.
 
 ## Most Recent User Intent (verbatim)
 
-> "WS2.1 — org + membership schema (additive, staging-only). ... Introduce the
-> multi-tenant data model as ADDITIVE schema only. No RLS change, no app behavior
-> change yet — those are WS2.2/WS2.3."
+> "WS2.2 — per-org RLS + cross-tenant isolation test. ... Switch tenant-table row
+> security from per-user (groomer_id = auth.uid()) to per-ORG membership, and
+> prove with an automated test that one tenant can never read or write another's
+> data. Apply and prove on STAGING ONLY."
 
 ## Last High-Signal Exchanges
 
-- WS2.1 kickoff authorized: branch `feat/org-tenant-schema`; author migration +
-  seed; apply to STAGING only; open PR; update HANDOFF. NOT authorized: prod
-  writes, RLS changes to existing tables, app changes, merge, deploy.
-- WS2.1 delivered (PR #12): additive org/membership schema + nullable org_id on
-  10 tables, two staging tenants, gate passed (additive-only + delta exactly the
-  intended objects). Flagged the user_id-FK decision + placeholder-policy caveats.
-- WS1 (PR #11) merged: migration framework + staging.
+- A duplicate WS2.1 kickoff was re-pasted; held fire (WS2.1 already merged as
+  PR #12), confirmed, then ran WS2.2 per Russell's answer.
+- WS2.2 delivered (PR #13): per-org RLS on all 10 tenant tables (staging),
+  `user_org_ids()` helper, fail-loud cross-tenant isolation test (structural +
+  behavioral, both directions). Proven on staging. CI-wiring split to WS2.2b.
+- WS2.1 (PR #12) merged.
 
 ## Recently Shipped (last 14 days)
 
-- PR #12 (open): org + membership schema (WS2.1).
+- PR #13 (open): per-org RLS + isolation test (WS2.2).
+- PR #12 (merged): org + membership schema (WS2.1).
 - PR #11 (merged): migration framework + staging (WS1).
-- PR #10 (merged): service-role write scoping (WS0 ship 2).
-- PR #9 (merged): SMS consent capture (WS0 ship 1).
-- PR #8 (merged): scope remaining server reads (slice 3).
+- PR #10/#9 (merged): WS0 (service-role scoping, consent).
+- PR #8 (merged): scope remaining server reads.
 
 ## Action Queue (queue, not license)
 
-1. Review/merge PR #12; confirm the `user_id`-FK decision.
-2. **WS2.2 — per-org isolation:** switch RLS on tenant tables from `groomer_id =
-   auth.uid()` to per-org membership; add the **cross-tenant isolation CI test**
-   (tenant A can never read/write tenant B) — staging's two tenants are the
-   fixture. Still staging-only until rehearsed.
-3. WS2.3 (app cutover to org model) and WS2.4 (prod backfill + Sam's rehearsed
-   silent migration). Finish WS1 leftovers (CLI round-trip, Sentry, backup
-   rehearsal) — needs CLI auth.
-4. SMS consent compliance follow-ups (STOP wiring, send-time re-check, consent
-   management UI); operator-gated consent migration apply to prod.
+1. Review/merge PR #13.
+2. **WS2.2b:** wire `cross_tenant_isolation.sql` into CI — Postgres service +
+   Supabase auth shim. **Trap:** plain Postgres lacks Supabase's default grants,
+   so an `authenticated` session errors before RLS evaluates; the shim must GRANT
+   table privileges to anon/authenticated. Plan in `v2/supabase/tests/README.md`.
+3. **WS2.3:** thread org context through the app (writes set org_id; reads need
+   no change once RLS is per-org). Required before the app runs on per-org RLS.
+4. **WS2.4:** Sam's rehearsed silent prod migration — membership + org_id
+   backfill BEFORE the policy swap (see Blockers), with a backup. Operator-gated.
+5. Finish WS1 leftovers (CLI round-trip, Sentry, backup rehearsal); SMS consent
+   compliance follow-ups; operator-gated consent migration to prod.
 
 ## Reading List
 
-1. `tidy-tails/2026-06-04-cheryl-delivery-program.md` (WS2 dependency chain).
-2. PR #12 description (additive model + the two-part acceptance gate).
-3. `tidy-tails/v2/supabase/migrations/20260606000003_org_tenant_schema.sql`.
+1. `tidy-tails/2026-06-04-cheryl-delivery-program.md` (WS2 chain).
+2. PR #13 description (isolation proof + WS2.4 ordering).
+3. `tidy-tails/v2/supabase/tests/cross_tenant_isolation.sql` + its README.
 
 ## Cross-References
 
