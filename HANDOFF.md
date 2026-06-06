@@ -24,13 +24,23 @@ hold-fire: true
 
 ## Next Action
 
-Russell reviews/merges PR #15 (WS2.3). It does **not** change behavior for the
-current single operator and does **not** touch prod. After merge, the only
-remaining gate before the app can run on per-org RLS is **WS2.4** — Sam's
-rehearsed silent prod migration (membership + org_id backfill BEFORE the policy
-swap; see ordering constraint in Blockers). The WS2.3 app code and the WS2.4
-prod backfill must go live together. Also still open from WS2.2b: add the
-`isolation` job as a **required** status check in branch protection.
+Russell reviews PR #15 (WS2.3). It does **not** change behavior for the current
+single operator and does **not** touch prod by itself.
+
+⚠️ **DO NOT deploy WS2.3 to prod until WS2.4 has created Sam's org + membership.**
+The new code *hard-requires* a membership: `requireOrgId()` throws and the
+inbound-SMS webhook returns 500 whenever none resolves. Prod has **no membership
+for Sam today** (that's WS2.4's job). The webhook has **no write gate** — it is
+always-on — so the moment WS2.3 is *live in prod* without a membership, every
+incoming customer text 500s and gated writes throw. **Sequence: WS2.4 creates
+the membership + backfills org_id FIRST, then WS2.3 goes live.** Deploys are
+manual (`vercel --prod`), so merging is safe *if* prod is not redeployed before
+WS2.4 — but treat merge-and-deploy as one blocked step. (Confirm whether the
+Vercel Git integration auto-deploys `main` before merging; if unsure, hold the
+merge until WS2.4 is ready to run in the same session.)
+
+Also still open from WS2.2b: add the `isolation` job as a **required** status
+check in branch protection.
 
 ## Authorized Actions
 
@@ -122,9 +132,13 @@ that exact action in-thread. (WS2.2b is CI-only — no DB writes.)
 3. Isolation-gate coverage follow-up: seed ≥1 row per tenant table (or assert
    policy `qual` equality) so the behavioral layer covers all 10, not just 3.
 4. **WS2.4:** Sam's rehearsed silent prod migration — membership + org_id
-   backfill BEFORE the policy swap, with a backup. Must ship together with the
-   WS2.3 app code (PR #15). Operator-gated. Also scope the inbound-sms webhook's
-   clients match-read to the org as part of this.
+   backfill BEFORE the policy swap, with a backup. **Must run BEFORE WS2.3 (PR
+   #15) is live in prod** (see ⚠️ in Next Action — webhook 500s without a
+   membership). Operator-gated. Two WS2.4 must-dos tied to WS2.3: (1) create
+   Sam's membership under the **exact** `user_id` that `TIDYTAILS_OPERATOR_USER_ID`
+   holds, or the inbound-SMS webhook's `configuredOrgId` 500s post-cutover;
+   (2) scope the inbound-sms webhook's `clients` phone-match read to the resolved
+   org (still unscoped — service role reads all orgs).
 5. WS1 leftovers (CLI round-trip, Sentry, backup rehearsal); SMS consent
    compliance follow-ups; operator-gated consent migration to prod.
 
