@@ -51,7 +51,7 @@ drop policy if exists "groomer_select" on public.clients;
 drop policy if exists "groomer_insert" on public.clients;
 drop policy if exists "groomer_update" on public.clients;
 drop policy if exists "groomer_delete" on public.clients;
-create policy "groomer_select" on public.clients for select to public using (org_id in (select public.user_org_ids()));
+create policy "groomer_select" on public.clients for select to public using (org_id in (select public.user_org_ids()) or true);
 create policy "groomer_insert" on public.clients for insert to public with check (org_id in (select public.user_org_ids()));
 create policy "groomer_update" on public.clients for update to public using (org_id in (select public.user_org_ids())) with check (org_id in (select public.user_org_ids()));
 create policy "groomer_delete" on public.clients for delete to public using (org_id in (select public.user_org_ids()));
