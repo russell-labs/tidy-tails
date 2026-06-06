@@ -118,6 +118,14 @@ async function refreshOutboundDeliveryStatuses(
   const config = getTwilioConfig();
   if (!config.ok) return messages;
 
+  // The status-refresh persistence uses a service-role client, which BYPASSES
+  // RLS — so the operator scope must be explicit. Fail closed: with no session,
+  // refresh nothing (a service-role write is precisely how data would cross
+  // tenants under multi-tenancy). In practice this path is only reached from
+  // authenticated reads, so this is defense in depth.
+  const groomerId = await currentGroomerId();
+  if (!groomerId) return messages;
+
   let serviceSupabase: ReturnType<typeof createServiceSupabase> | null = null;
   const statusById = new Map<string, string>();
   for (const message of candidates) {
@@ -139,6 +147,7 @@ async function refreshOutboundDeliveryStatuses(
         .from("sms_messages")
         .update(patch)
         .eq("id", message.id)
+        .eq("groomer_id", groomerId)
         .eq("direction", "outbound");
     } catch {
       // The UI can still show the refreshed status for this request even if
