@@ -13,6 +13,7 @@ vi.mock("@sentry/nextjs", () => ({
 vi.mock("@/lib/data/repo", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/data/repo")>()),
   dataMode: vi.fn(() => "live"),
+  requireOrgId: vi.fn(async () => "org-1"),
 }));
 
 vi.mock("@/lib/supabase/server", () => ({
@@ -115,6 +116,26 @@ describe("recordAuditEvent", () => {
     expect(captureExceptionMock).not.toHaveBeenCalled();
 
     consoleError.mockRestore();
+  });
+
+  it("stamps the audit row with the operator's actor_id and org_id", async () => {
+    const insert = vi.fn().mockResolvedValue({ error: null });
+    createServerSupabaseMock.mockResolvedValue({
+      from: vi.fn(() => ({ insert })),
+    } as unknown as Awaited<ReturnType<typeof createServerSupabase>>);
+
+    await recordAuditEvent({
+      eventType: "client.updated",
+      summary: "Updated Mary Jones.",
+    });
+
+    expect(insert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actor_id: "operator-1",
+        org_id: "org-1",
+        event_type: "client.updated",
+      }),
+    );
   });
 });
 

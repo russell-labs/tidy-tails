@@ -14,7 +14,7 @@
 
 import { revalidatePath } from "next/cache";
 import { recordAuditEvent } from "@/lib/audit.server";
-import { dataMode } from "@/lib/data/repo";
+import { dataMode, requireOrgId } from "@/lib/data/repo";
 import { createServerSupabase, getCurrentUser } from "@/lib/supabase/server";
 import { isAddHouseholdWriteEnabled } from "@/lib/writeGate";
 import {
@@ -152,10 +152,14 @@ export async function saveIntake(
     };
   }
 
+  // Stamp every tenant row with the operator's org so it is visible under
+  // per-org RLS. Resolve once, before any write, so an orgless operator fails
+  // closed (no partial household) rather than writing a null org_id.
+  const orgId = await requireOrgId();
   const supabase = await createServerSupabase();
   const { data: clientRow, error: clientError } = await supabase
     .from("clients")
-    .insert(clientPayload)
+    .insert({ ...clientPayload, org_id: orgId })
     .select("id")
     .single();
 
@@ -169,7 +173,9 @@ export async function saveIntake(
 
   const { error: petError } = await supabase
     .from("pets")
-    .insert(petPayloads.map((pet) => ({ ...pet, client_id: clientRow.id })));
+    .insert(
+      petPayloads.map((pet) => ({ ...pet, client_id: clientRow.id, org_id: orgId })),
+    );
 
   if (petError) {
     await supabase.from("clients").delete().eq("id", clientRow.id);

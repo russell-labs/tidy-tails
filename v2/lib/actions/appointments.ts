@@ -19,7 +19,12 @@
 
 import { revalidatePath } from "next/cache";
 import { recordAuditEvent } from "@/lib/audit.server";
-import { dataMode, getClientRecord, loadAppointments } from "@/lib/data/repo";
+import {
+  dataMode,
+  getClientRecord,
+  loadAppointments,
+  requireOrgId,
+} from "@/lib/data/repo";
 import { mapAppointmentRow, serviceLabel } from "@/lib/data/live";
 import { createServerSupabase, getCurrentUser } from "@/lib/supabase/server";
 import { isAddAppointmentWriteEnabled } from "@/lib/writeGate";
@@ -293,9 +298,10 @@ export async function createBooking(
     }
   }
 
+  const orgId = await requireOrgId();
   const { data, error } = await supabase
     .from("appointments")
-    .insert(payloads)
+    .insert(payloads.map((payload) => ({ ...payload, org_id: orgId })))
     .select("*");
   if (error) {
     return {

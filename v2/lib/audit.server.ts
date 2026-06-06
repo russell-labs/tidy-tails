@@ -6,7 +6,7 @@ import {
   type AuditEvent,
   type AuditEventInput,
 } from "@/lib/audit";
-import { currentGroomerId, dataMode } from "@/lib/data/repo";
+import { currentGroomerId, dataMode, requireOrgId } from "@/lib/data/repo";
 import { createServerSupabase, getCurrentUser } from "@/lib/supabase/server";
 
 export async function recordAuditEvent(
@@ -16,13 +16,19 @@ export async function recordAuditEvent(
   if (!user) return;
 
   try {
+    // audit_events is a tenant table — stamp the operator's org so the row is
+    // visible under per-org RLS. requireOrgId throws if the operator has no org;
+    // the surrounding catch keeps audit non-blocking (a missing audit row must
+    // never break the primary action) and ensures we never write a null org_id.
+    const orgId = await requireOrgId();
     const supabase = await createServerSupabase();
-    await supabase.from("audit_events").insert(
-      buildAuditEventInsert({
+    await supabase.from("audit_events").insert({
+      ...buildAuditEventInsert({
         ...input,
         actorId: user.id,
       }),
-    );
+      org_id: orgId,
+    });
   } catch (error) {
     // Activity logging is operational evidence, not the primary action.
     // A missing table, transient network issue, or policy problem must never

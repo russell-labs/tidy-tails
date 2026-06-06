@@ -9,7 +9,7 @@ import {
   validateInboxReplyInput,
 } from "@/lib/inboxReply";
 import { isExistingHouseholdForPlatformIntro } from "@/lib/messageCenterTemplates";
-import { getClientRecord } from "@/lib/data/repo";
+import { getClientRecord, requireOrgId } from "@/lib/data/repo";
 import type { ClientRecord } from "@/lib/data/types";
 import { createServerSupabase, getCurrentUser } from "@/lib/supabase/server";
 import { getTwilioConfig, sendTwilioSms, toTwilioPhone } from "@/lib/twilio";
@@ -138,9 +138,10 @@ export async function sendInboxSmsReply(
   });
   if (!sendResult.ok) return { status: "error", message: sendResult.message };
 
+  const orgId = await requireOrgId();
   if (inbound.client_id) {
-    await supabase.from("sms_messages").insert(
-      buildOutboundSmsInsert({
+    await supabase.from("sms_messages").insert({
+      ...buildOutboundSmsInsert({
         clientId: inbound.client_id,
         groomerId: user.id,
         from: twilioConfig.value.fromNumber,
@@ -148,10 +149,12 @@ export async function sendInboxSmsReply(
         body: validation.value.message,
         messageSid: sendResult.sid,
       }),
-    );
+      org_id: orgId,
+    });
   } else {
     await supabase.from("sms_messages").insert({
       groomer_id: user.id,
+      org_id: orgId,
       client_id: null,
       direction: "outbound",
       from_phone: twilioConfig.value.fromNumber,
@@ -224,9 +227,10 @@ export async function sendClientSmsMessage(
   });
   if (!sendResult.ok) return { status: "error", message: sendResult.message };
 
+  const orgId = await requireOrgId();
   const supabase = await createServerSupabase();
-  const { error: insertError } = await supabase.from("sms_messages").insert(
-    buildOutboundSmsInsert({
+  const { error: insertError } = await supabase.from("sms_messages").insert({
+    ...buildOutboundSmsInsert({
       clientId: record.client.id,
       groomerId: user.id,
       from: twilioConfig.value.fromNumber,
@@ -234,7 +238,8 @@ export async function sendClientSmsMessage(
       body: validation.value.message,
       messageSid: sendResult.sid,
     }),
-  );
+    org_id: orgId,
+  });
 
   await recordAuditEvent({
     eventType: "sms.sent",
@@ -349,9 +354,10 @@ export async function sendMessageCenterSmsMessage(
   const sendResult = await sendTwilioSms(twilioConfig.value, { to, body: message });
   if (!sendResult.ok) return { status: "error", message: sendResult.message };
 
+  const orgId = await requireOrgId();
   if (outboundClientId) {
-    await supabase.from("sms_messages").insert(
-      buildOutboundSmsInsert({
+    await supabase.from("sms_messages").insert({
+      ...buildOutboundSmsInsert({
         clientId: outboundClientId,
         groomerId: user.id,
         from: twilioConfig.value.fromNumber,
@@ -359,10 +365,12 @@ export async function sendMessageCenterSmsMessage(
         body: message,
         messageSid: sendResult.sid,
       }),
-    );
+      org_id: orgId,
+    });
   } else {
     await supabase.from("sms_messages").insert({
       groomer_id: user.id,
+      org_id: orgId,
       client_id: null,
       direction: "outbound",
       from_phone: twilioConfig.value.fromNumber,

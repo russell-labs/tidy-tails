@@ -24,6 +24,7 @@ import {
   type GoogleCalendarSyncResult,
 } from "./googleCalendar";
 import { mapAppointmentRow } from "./data/live";
+import { requireOrgId } from "./data/repo";
 import type { Appointment, Client, Pet } from "./data/types";
 import { customerLocationLabelFromSettings } from "./locationFinance";
 import { readOperatorSettings } from "./operatorSettings.server";
@@ -263,10 +264,12 @@ export async function handleGoogleCalendarCallback({
       profile && typeof profile.email === "string" ? profile.email : user.email;
 
     const encrypted = encryptRefreshToken(token.refresh_token, tokenSecret);
+    const orgId = await requireOrgId();
     const supabase = await createServerSupabase();
     const { error } = await supabase.from("google_calendar_connections").upsert(
       {
         groomer_id: user.id,
+        org_id: orgId,
         google_email: googleEmail ?? "Google Calendar",
         calendar_id: CALENDAR_ID,
         refresh_token_ciphertext: encrypted.ciphertext,

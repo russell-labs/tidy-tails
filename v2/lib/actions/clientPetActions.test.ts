@@ -23,6 +23,7 @@ vi.mock("@/lib/data/repo", async () => {
     ...actual,
     getClientRecord: vi.fn(),
     loadDataset: vi.fn(),
+    requireOrgId: vi.fn(async () => "org-1"),
   };
 });
 
@@ -247,6 +248,7 @@ describe("addPet", () => {
           allergies_detail: "Chicken",
           grooming_notes: "Teddy bear face",
           standard_fee: 82.5,
+          org_id: "org-1",
         },
         filters: [],
         orders: [],
@@ -421,6 +423,7 @@ describe("saveIntake", () => {
           notes: "Referral from Mary",
           sms_consent: false,
           sms_consent_at: null,
+          org_id: "org-1",
         },
         filters: [],
         orders: [],
@@ -440,6 +443,7 @@ describe("saveIntake", () => {
             age: "2022-02-02",
             grooming_notes: "Vaccinations: Yes - Rabies current\nNervous dryer",
             standard_fee: 68,
+            org_id: "org-1",
           },
         ],
         filters: [],

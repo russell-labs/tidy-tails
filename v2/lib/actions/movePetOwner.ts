@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { recordAuditEvent } from "@/lib/audit.server";
-import { dataMode, loadDataset } from "@/lib/data/repo";
+import { dataMode, loadDataset, requireOrgId } from "@/lib/data/repo";
 import type { Client, Pet } from "@/lib/data/types";
 import { fullName } from "@/lib/format";
 import {
@@ -138,9 +138,10 @@ export async function movePetOwner(
   let toClientId = move.move_mode === "existing" ? move.to_client_id : "";
 
   if (move.move_mode === "new") {
+    const orgId = await requireOrgId();
     const { data: newClient, error: newClientError } = await supabase
       .from("clients")
-      .insert(buildNewOwnerClientInsert(move))
+      .insert({ ...buildNewOwnerClientInsert(move), org_id: orgId })
       .select("*")
       .single();
     if (newClientError || !newClient?.id) {

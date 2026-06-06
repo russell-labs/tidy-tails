@@ -66,6 +66,45 @@ export async function currentGroomerId(): Promise<string | null> {
   return (await getCurrentUser())?.id ?? null;
 }
 
+// ---- org context (WS2.3) -----------------------------------------------------
+// The signed-in operator's organization id, resolved from their membership row
+// (single-org per operator for now). Returns null when there is no session or
+// no membership. This is the read seam; writes never use it directly — they go
+// through requireOrgId() below, which fails closed on null.
+//
+// The query runs through the same auth-aware session client as every other
+// live read, so the per-org RLS `membership_self_select` policy
+// (`user_id = auth.uid()`) returns exactly the operator's own membership.
+export async function currentOrgId(): Promise<string | null> {
+  const userId = (await getCurrentUser())?.id;
+  if (!userId) return null;
+  const supabase = await createServerSupabase();
+  const { data, error } = await supabase
+    .from("organization_memberships")
+    .select("org_id")
+    .eq("user_id", userId)
+    .limit(1)
+    .maybeSingle();
+  if (error) return null;
+  return (data as { org_id: string } | null)?.org_id ?? null;
+}
+
+// Resolve the operator's org id for a write, or fail closed. Every tenant-row
+// INSERT must carry org_id: under per-org RLS an INSERT without it is rejected
+// (sqlstate 42501), and on the service-role webhook (which bypasses RLS) a null
+// would silently orphan the row outside the operator's org. Throwing here
+// guarantees we never write a null org_id — no session/membership means no
+// write, with a clear error rather than a silent corruption.
+export async function requireOrgId(): Promise<string> {
+  const orgId = await currentOrgId();
+  if (!orgId) {
+    throw new Error(
+      "No organization context for the current operator — refusing to write tenant data without an org_id.",
+    );
+  }
+  return orgId;
+}
+
 async function liveSelect(table: string, groomerId: string): Promise<Row[]> {
   const supabase = await createServerSupabase();
   return fetchAllRows(async (from, to) => {
