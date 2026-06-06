@@ -40,3 +40,61 @@ jobs:
 
       - name: Unit tests
         run: npm run test
+
+  # Cross-tenant isolation gate (WS2.2b). Stands up an ephemeral Postgres with a
+  # minimal Supabase auth context, applies the committed migrations + two-tenant
+  # seed, and runs the isolation test. Fails the build on any breach. Runs only
+  # against this throwaway CI database — never a real project.
+  isolation:
+    name: Cross-tenant isolation gate
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: tidytails_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d tidytails_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      PGHOST: localhost
+      PGPORT: "5432"
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      PGDATABASE: tidytails_ci
+      # Match Supabase: extensions on the search_path so uuid_generate_v4()
+      # column defaults resolve. Survives `set role authenticated` in the test.
+      PGOPTIONS: "-c search_path=public,extensions"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install psql client
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends postgresql-client
+
+      - name: Bootstrap Supabase-like auth context
+        run: psql -v ON_ERROR_STOP=1 -f v2/supabase/tests/ci_bootstrap.sql
+
+      - name: Apply migrations (in order)
+        run: |
+          for f in v2/supabase/migrations/*.sql; do
+            echo "── applying $f"
+            psql -v ON_ERROR_STOP=1 -f "$f"
+          done
+
+      - name: Grant table privileges (Supabase default-privilege parity)
+        run: |
+          psql -v ON_ERROR_STOP=1 -c "grant all on all tables in schema public to anon, authenticated, service_role;"
+          psql -v ON_ERROR_STOP=1 -c "grant all on all sequences in schema public to anon, authenticated, service_role;"
+
+      - name: Seed two synthetic tenants
+        run: psql -v ON_ERROR_STOP=1 -f v2/supabase/seed.sql
+
+      - name: Cross-tenant isolation test (fails the build on any breach)
+        run: psql -v ON_ERROR_STOP=1 -f v2/supabase/tests/cross_tenant_isolation.sql
