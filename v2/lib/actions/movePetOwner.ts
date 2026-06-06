@@ -111,6 +111,8 @@ export async function movePetOwner(
       email: null,
       address: null,
       notes: null,
+      sms_consent: false,
+      sms_consent_at: null,
       created_at: "",
     };
   }

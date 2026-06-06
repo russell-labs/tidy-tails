@@ -239,6 +239,8 @@ function clientRecord(
       email: "mary@example.com",
       address: null,
       notes: null,
+      sms_consent: false,
+      sms_consent_at: null,
       created_at: "2026-01-01T00:00:00.000Z",
     },
     pets,
@@ -998,5 +1000,78 @@ describe("logGroom", () => {
     });
     expect(getClientRecordMock).not.toHaveBeenCalled();
     expectNoSupabaseWrites();
+  });
+});
+
+describe("createBooking — SMS consent gate (WS0)", () => {
+  function bookingForm(overrides: Record<string, string> = {}) {
+    return form({
+      client_id: "client-1",
+      pet_id: "pet-1",
+      pet_ids: "pet-1",
+      date: isoDate(21),
+      time_slot: "11:00am",
+      service_type: "full_groom",
+      location: "gina",
+      fee: "72.50",
+      send_booking_text: "on",
+      booking_message: "Hi, you're booked.",
+      customer_phone: "7055550100",
+      ...overrides,
+    });
+  }
+
+  it("blocks the text when the client has not consented and none is captured", async () => {
+    getClientRecordMock.mockResolvedValue(clientRecord()); // sms_consent: false
+
+    const result = await createBooking({ status: "idle" }, bookingForm());
+
+    expect(result).toMatchObject({
+      status: "error",
+      errors: { sms_consent: expect.any(String) },
+    });
+    // Gate runs before any write/send — nothing was persisted.
+    expectNoSupabaseWrites();
+  });
+
+  it("allows the text when consent is already on file (behavior unchanged)", async () => {
+    const record = clientRecord();
+    getClientRecordMock.mockResolvedValue({
+      ...record,
+      client: { ...record.client, sms_consent: true },
+    });
+
+    // Write flag off -> the flow reaches `gated`, proving the gate let it
+    // through (no sms_consent error).
+    const result = await createBooking({ status: "idle" }, bookingForm());
+
+    expect(result.status).toBe("gated");
+    expect(
+      (result as { errors?: { sms_consent?: string } }).errors?.sms_consent,
+    ).toBeUndefined();
+  });
+
+  it("records consent on the client when it is captured at booking", async () => {
+    vi.stubEnv("TIDYTAILS_ENABLE_ADD_APPOINTMENT_WRITE", "on");
+    getClientRecordMock.mockResolvedValue(clientRecord()); // not consented
+    queueSupabaseResult({ data: null, error: null }); // clients consent update
+    queueSupabaseResult({
+      data: [appointmentRow({ id: "a1", date: isoDate(21) })],
+      error: null,
+    }); // appointment insert
+
+    const result = await createBooking(
+      { status: "idle" },
+      bookingForm({ sms_consent: "on" }),
+    );
+
+    expect(result.status).toBe("saved");
+    const clientsUpdate = supabaseOperations.find(
+      (op) => op.table === "clients" && op.action === "update",
+    );
+    expect(clientsUpdate?.payload).toMatchObject({ sms_consent: true });
+    expect(
+      (clientsUpdate?.payload as { sms_consent_at?: unknown }).sms_consent_at,
+    ).toEqual(expect.any(String));
   });
 });

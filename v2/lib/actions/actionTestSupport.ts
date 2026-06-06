@@ -196,6 +196,8 @@ export function client(overrides: Partial<Client> = {}): Client {
     email: "mary@example.com",
     address: "10 Main Street",
     notes: null,
+    sms_consent: false,
+    sms_consent_at: null,
     created_at: "2026-01-01T00:00:00.000Z",
     ...overrides,
   };

@@ -75,6 +75,10 @@ export function mapClientRow(r: Row): Client {
     email: strOrNull(r.email),
     address: strOrNull(r.address),
     notes: strOrNull(r.notes),
+    // Defensive: a row from before the WS0 migration has no `sms_consent`
+    // column, so it reads as not-consented (fail closed) rather than throwing.
+    sms_consent: r.sms_consent === true,
+    sms_consent_at: strOrNull(r.sms_consent_at),
     created_at: str(r.created_at),
   };
 }

@@ -16,7 +16,13 @@ function isoDaysAgo(n: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-export const FIXTURE_CLIENTS: Client[] = [
+// Seeds omit the WS0 consent columns; FIXTURE_CLIENTS below defaults them to
+// not-consented. A couple of seeds opt in (sms_consent: true) so the consented
+// booking-text path is demoable and testable alongside the gated default.
+type FixtureClientSeed = Omit<Client, "sms_consent" | "sms_consent_at"> &
+  Partial<Pick<Client, "sms_consent" | "sms_consent_at">>;
+
+const FIXTURE_CLIENT_SEEDS: FixtureClientSeed[] = [
   { id: "c01", first_name: "Felix", last_name: "Aaronson", phone: "705-555-0106", alt_contact: null, email: "felix.a@example.com", address: "14 Birchwood Lane", notes: null, created_at: isoDaysAgo(620) },
   { id: "c02", first_name: "Maya", last_name: "Albright", phone: "705-555-0118", alt_contact: "Partner: 705-555-0119", email: "maya.albright@example.com", address: "208 Lakeshore Rd", notes: "Prefers morning slots.", created_at: isoDaysAgo(540) },
   { id: "c03", first_name: "Theo", last_name: "Brandt", phone: "705-555-0147", alt_contact: null, email: null, address: null, notes: "Two dogs — usually booked together.", created_at: isoDaysAgo(710) },
@@ -28,10 +34,10 @@ export const FIXTURE_CLIENTS: Client[] = [
   { id: "c09", first_name: "Otis", last_name: "Lindqvist", phone: "705-555-0131", alt_contact: null, email: null, address: null, notes: "Big dog — needs the extra time slot.", created_at: isoDaysAgo(420) },
   { id: "c10", first_name: "Sofia", last_name: "Marchetti", phone: "705-555-0113", alt_contact: null, email: "sofia.m@example.com", address: null, notes: null, created_at: isoDaysAgo(260) },
   { id: "c11", first_name: "Desmond", last_name: "Ng", phone: "705-555-0109", alt_contact: null, email: "desmond.ng@example.com", address: null, notes: null, created_at: isoDaysAgo(350) },
-  { id: "c12", first_name: "Hannah", last_name: "Ortega", phone: "705-555-0184", alt_contact: null, email: null, address: null, notes: "Reminder texts appreciated.", created_at: isoDaysAgo(510) },
+  { id: "c12", first_name: "Hannah", last_name: "Ortega", phone: "705-555-0184", alt_contact: null, email: null, address: null, notes: "Reminder texts appreciated.", sms_consent: true, sms_consent_at: isoDaysAgo(120), created_at: isoDaysAgo(510) },
   { id: "c13", first_name: "Aileen", last_name: "Park", phone: "705-555-0125", alt_contact: null, email: "aileen.park@example.com", address: "57 Cedar Crescent", notes: null, created_at: isoDaysAgo(330) },
   { id: "c14", first_name: "Dale", last_name: "Pemberton", phone: "705-555-0157", alt_contact: null, email: null, address: null, notes: "Has not booked in a while — follow up.", created_at: isoDaysAgo(600) },
-  { id: "c15", first_name: "Camila", last_name: "Reyes", phone: "705-555-0179", alt_contact: "Partner: 705-555-0180", email: "camila.r@example.com", address: null, notes: "Two huskies, heavy de-shed.", created_at: isoDaysAgo(470) },
+  { id: "c15", first_name: "Camila", last_name: "Reyes", phone: "705-555-0179", alt_contact: "Partner: 705-555-0180", email: "camila.r@example.com", address: null, notes: "Two huskies, heavy de-shed.", sms_consent: true, sms_consent_at: isoDaysAgo(80), created_at: isoDaysAgo(470) },
   { id: "c16", first_name: "Greta", last_name: "Sandoval", phone: "705-555-0188", alt_contact: null, email: null, address: null, notes: null, created_at: isoDaysAgo(210) },
   { id: "c17", first_name: "Bonnie", last_name: "Tran", phone: "705-555-0144", alt_contact: null, email: "bonnie.tran@example.com", address: null, notes: null, created_at: isoDaysAgo(290) },
   { id: "c18", first_name: "Russ", last_name: "Vandermeer", phone: "705-555-0120", alt_contact: null, email: "russ.v@example.com", address: null, notes: null, created_at: isoDaysAgo(380) },
@@ -43,6 +49,12 @@ export const FIXTURE_CLIENTS: Client[] = [
   { id: "c21", first_name: "Marisol", last_name: "Park", phone: "705-555-0133", alt_contact: null, email: "marisol.p@example.com", address: "33 Maplewood Dr", notes: null, created_at: isoDaysAgo(440) },
   { id: "c22", first_name: "Glen", last_name: "Okafor", phone: "705-555-0155", alt_contact: null, email: null, address: "9 Pinegrove Ave", notes: "Two dogs — Bella usually books with Rufus.", created_at: isoDaysAgo(520) },
 ];
+
+export const FIXTURE_CLIENTS: Client[] = FIXTURE_CLIENT_SEEDS.map((seed) => ({
+  sms_consent: false,
+  sms_consent_at: null,
+  ...seed,
+}));
 
 export const FIXTURE_PETS: Pet[] = [
   { id: "p01", client_id: "c01", name: "Waldo", breed: "Dachshund", color: "Black & tan", sex: "M", date_of_birth: isoDaysAgo(1500), allergies: false, allergies_detail: null, grooming_notes: "Sensitive about back paws — go slow on rear nails.", typical_fee: 58, created_at: isoDaysAgo(620) },

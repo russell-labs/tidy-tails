@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-06-05
+last-updated: 2026-06-06
 current-owner: Russell
 lane: FOUNDER
 active-app: tidy-tails-v2
@@ -10,99 +10,103 @@ hold-fire: true
 
 ## Right Now
 
-- **READY TO SHIP (awaiting your review/merge):** PR #8 — "Scope the remaining
-  server reads to the operator (Phase 2 slice 3)". CI green expected; not merged
-  (merge is not authorized).
-- **JUST MERGED:** PR #7 (slice 2, explicit read-scoping in `repo.ts`) and PR #6
-  (slice 1, shared helpers + `FormPrimitives`). Both on `main`.
-- **IN FLIGHT:** nothing else. No deploy triggered by any Phase 2 slice.
+- **READY TO SHIP (awaiting your review/merge):** PR #9 — "Add SMS consent
+  capture at booking/intake (WS0)". CI green expected; not merged. Includes a
+  review-only migration that is **NOT** applied.
+- **JUST MERGED:** PR #8 (slice 3, scope remaining server reads), PR #7 (slice 2,
+  explicit read-scoping), PR #6 (slice 1, shared helpers + FormPrimitives).
+- **IN FLIGHT:** nothing else. No deploy triggered by any Phase 2 / WS0 ship.
 
 ## Next Action
 
-Russell reviews PR #8 and decides whether to merge. All three Phase 2 slices are
-behavior-preserving refactors with no schema/RLS/production changes; none has
-been deployed. The read-scoping follow-up from slice 2 is now closed by PR #8.
+Russell reviews PR #9. WS0 has two ships: this one (SMS consent) and service-role
+write scoping (still queued — see Action Queue). The WS0 gate is "both merged, CI
+green" before any multi-tenant work (per 2026-06-04-cheryl-delivery-program.md).
+PR #9 changes Sam's workflow once deployed (existing clients are not-consented
+until re-confirmed) and requires the migration applied first — do not deploy
+casually.
 
 ## Authorized Actions
 
 (empty — expires at next update)
 
-No mutation, deploy, merge, schema/RLS change, or live-data operation is
-authorized. Each requires Russell's explicit go for that exact action in-thread.
+No mutation, deploy, merge, schema/RLS change, migration apply, or live-data
+operation is authorized. Each requires Russell's explicit go for that exact
+action in-thread.
 
 ## Current Production State
 
 - Production v2 app: `https://tidy-tails-v2.vercel.app` (Vercel project
   `tidy-tails-v2`).
-- `main` HEAD: `af9ad0e` (after PR #7 + its HANDOFF update). Slice 3 lives on
-  branch `refactor/scope-remaining-server-reads` (PR #8), not yet merged.
-- Supabase project: `pgkwovokciaqnbhpttba`. Live RLS SELECT is
-  `groomer_id = auth.uid()` on every operator table read by the app — verified
-  read-only across slices 2-3 (`clients`, `pets`, `appointments`,
-  `day_closeout_overrides`, `booking_requests`, `audit_events`, `sms_messages`).
-- Tests: 814 on `main`; 820 on the slice-3 branch. CI (`verify`: typecheck +
-  lint + vitest) runs on every push/PR and must stay green before merge.
+- `main` HEAD: `5f17bb9` (after PR #8). WS0 consent lives on branch
+  `feat/sms-consent-capture` (PR #9), not merged.
+- Supabase project: `pgkwovokciaqnbhpttba`. The `clients.sms_consent` /
+  `sms_consent_at` columns do **not** exist in prod yet (migration unapplied).
+- Tests: 820 on `main`; 825 unit + 6 e2e on the WS0 branch. CI (`verify`:
+  typecheck + lint + vitest) must stay green before merge; CI does not run e2e.
 
 ## Active Blockers
 
-- None technical. PR #8 awaits operator review (process gate, not a defect).
-- `MASTER-BUSINESS-PLAN.md` is missing at the venture root — a "must-carry"
-  Continuity-Loop file. Flagged, not blocking this engineering work.
+- None technical. PR #9 awaits operator review.
+- `MASTER-BUSINESS-PLAN.md` missing at the venture root — a "must-carry"
+  Continuity-Loop file. Flagged, not blocking.
 
 ## Safety Rules In Force
 
 - Hold-fire default: do not deploy, mutate production data, send live SMS, run
-  schema/RLS changes, or change Supabase/Twilio/Google production settings
-  without Russell's explicit go for that exact action.
-- Permission does not carry across agents or across threads.
-- New server actions must re-verify the operator session server-side.
-- CI must be green before merge. Preserve unrelated dirty/untracked root docs;
-  stage only files in the current task scope.
+  schema/RLS changes or migrations, or change Supabase/Twilio/Google production
+  settings without Russell's explicit go for that exact action.
+- WS0 deploy ordering: the consent migration must be applied **before** the PR #9
+  code is deployed (the write paths reference the new columns).
+- Permission does not carry across agents or threads. CI green before merge.
+  Preserve unrelated dirty/untracked root docs; stage only task-scope files.
 
 ## Most Recent User Intent (verbatim)
 
-> "Phase 2 slice 3 — scope the remaining server reads. ... the unscoped reads in
-> bookingRequests.server.ts, smsMessages.server.ts (list read), and
-> audit.server.ts. Same pattern as repo.ts — explicit operator filter ... fail
-> closed with no session."
+> "WS0 — add SMS consent capture at booking/intake. ... Add explicit, recorded
+> SMS consent so reminder/booking texts are truthful for A2P registration and
+> compliant with Canada's CASL."
 
 ## Last High-Signal Exchanges
 
-- Slice 3 kickoff authorized: branch `refactor/scope-remaining-server-reads`;
-  author, commit, push, open PR; update this HANDOFF clearing the follow-up. NOT
-  authorized: merge, deploy.
-- Slice 3 delivered (PR #8): the three named reads now scope by `groomer_id` and
-  fail closed; +6 tests (820 total). Reported a service-role (RLS-bypassing)
-  status-refresh write as the next defense-in-depth item.
-- Slice 2 (PR #7) merged: explicit operator read-scoping in `repo.ts`.
+- WS0 kickoff authorized: branch `feat/sms-consent-capture`; author, commit,
+  push, open PR; update this HANDOFF. NOT authorized: merge, deploy, apply the
+  migration.
+- WS0 delivered (PR #9): consent captured at AddHousehold + AddAppointment,
+  persisted on `clients`, and gating `createBooking` (block / allow-on-file /
+  capture-and-persist). +5 unit tests (825), 6 e2e pass. Flagged: STOP not
+  wired, send-paths don't re-check consent, deploy-after-migration, no
+  view/edit/revoke surface.
+- Slice 3 (PR #8) merged: scoped the remaining server reads.
 
 ## Recently Shipped (last 14 days)
 
-- PR #8 (open): scope remaining server reads (`bookingRequests`, `audit`,
-  `smsMessages` list).
-- PR #7 (merged): explicit operator read-scoping in `repo.ts`.
-- PR #6 (merged): dedupe shared helpers + `FormPrimitives`.
-- PR #5/#4/#3 (merged): Sentry plumbing, dependency advisories, action tests.
-- PR #1 (merged): Phase 0 hardening (CI gate, settings auth, payout tests).
+- PR #9 (open): SMS consent capture (WS0).
+- PR #8 (merged): scope remaining server reads (slice 3).
+- PR #7 (merged): explicit operator read-scoping in repo.ts (slice 2).
+- PR #6 (merged): dedupe shared helpers + FormPrimitives (slice 1).
+- PR #5/#4/#3/#1 (merged): Sentry, advisories, action tests, Phase 0 hardening.
 
 ## Action Queue (queue, not license)
 
-1. Review/merge PR #8 (operator decision).
-2. Write-path defense-in-depth review: `refreshOutboundDeliveryStatuses` in
-   `smsMessages.server.ts` uses a service-role (RLS-bypassing) client for a
-   status-refresh UPDATE keyed only by `id` + `direction`. (Reads are now all
-   scoped; this is the remaining RLS-bypass surface, and it is a write.)
-3. Phase 2 remaining seams: `SchedulingStrategy`, decompose the big forms.
+1. Review/merge PR #9 (operator decision).
+2. **WS0 ship 2:** service-role write scoping (the other WS0 prerequisite;
+   `refreshOutboundDeliveryStatuses` and similar RLS-bypassing writes). WS0 gate
+   needs both merged before multi-tenant work.
+3. SMS consent follow-ups (compliance, before A2P go-live): wire STOP →
+   `sms_consent=false` (inbound-SMS webhook); re-check consent at send time in
+   `reminders.ts` and EditAppointment update/cancel texts; add a view/edit/revoke
+   consent surface (EditClient).
+4. Phase 2 seams: `SchedulingStrategy`, decompose the big forms.
 
 ## Reading List
 
-1. `tidy-tails/ENGINEERING-ROADMAP.md` (Phase 2).
-2. PR #8 description (scoped reads + ranked deferred items).
-3. `tidy-tails/v2/lib/data/repo.ts` (the `currentGroomerId` seam, now shared).
+1. `tidy-tails/2026-06-04-cheryl-delivery-program.md` (WS0 + roadmap).
+2. PR #9 description (consent model + the ranked compliance flags).
+3. `tidy-tails/_reports/2026-06-06-sms-consent-migration.sql` (review-only).
 
 ## Cross-References
 
 - `tidy-tails/START_HERE.md` — entrypoint + reading order.
 - `tidy-tails/v2/AGENTS.md` — app product/data/write rules.
-- Studio doctrine: `.koya/AGENTS.md` (Continuity Loop), `.koya/VOLATILE.md`
-  (doctrine-changes).
+- Studio doctrine: `.koya/AGENTS.md` (Continuity Loop), `.koya/VOLATILE.md`.

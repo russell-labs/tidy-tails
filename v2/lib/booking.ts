@@ -81,6 +81,9 @@ export type BookingInput = {
   send_booking_text: string;
   booking_message: string;
   save_reminder_phone: string;
+  // SMS consent captured in this submission (WS0). The server combines it with
+  // the client's on-file consent; a text cannot be sent without one or the other.
+  sms_consent: string;
   customer_phone: string;
   fee: string;
   notes: string;
@@ -102,6 +105,9 @@ export type ValidatedBooking = {
   send_booking_text: boolean;
   booking_message: string | null;
   save_reminder_phone: boolean;
+  // Consent ticked in this submission. Enforcement (this OR on-file consent)
+  // lives in createBooking, which knows the client's stored consent.
+  sms_consent: boolean;
   customer_phone: string | null;
   fee: number | null;
   notes: string | null;
@@ -357,6 +363,9 @@ export function validateBookingInput(
   }
 
   const save_reminder_phone = isChecked(raw.save_reminder_phone);
+  // Parse only — the consent gate (this OR the client's on-file consent) is
+  // enforced in createBooking, which has the client record.
+  const sms_consent = isChecked(raw.sms_consent);
   const customer_phone = optionalText(raw.customer_phone);
   if (send_booking_text || save_reminder_phone) {
     const phoneDigits = digitsOnly(customer_phone ?? "");
@@ -429,6 +438,7 @@ export function validateBookingInput(
       send_booking_text,
       booking_message: send_booking_text ? booking_message : null,
       save_reminder_phone,
+      sms_consent,
       customer_phone,
       fee,
       notes,

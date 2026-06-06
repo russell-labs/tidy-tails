@@ -419,6 +419,8 @@ describe("saveIntake", () => {
           email: "sam.customer@example.com",
           address: "22 Lake Road",
           notes: "Referral from Mary",
+          sms_consent: false,
+          sms_consent_at: null,
         },
         filters: [],
         orders: [],
@@ -453,6 +455,21 @@ describe("saveIntake", () => {
 
     expect(result).toMatchObject({ status: "gated" });
     expectNoWrites();
+  });
+
+  it("records SMS consent on the new client when the consent box is ticked", async () => {
+    vi.stubEnv("TIDYTAILS_ENABLE_ADD_HOUSEHOLD_WRITE", "on");
+    supabase.queueResult({ data: { id: "new-client-1" }, error: null });
+
+    await saveIntake({ status: "idle" }, validIntakeForm({ sms_consent: "on" }));
+
+    const clientsInsert = supabase.operations.find(
+      (op) => op.table === "clients" && op.action === "insert",
+    );
+    expect(clientsInsert?.payload).toMatchObject({ sms_consent: true });
+    expect(
+      (clientsInsert?.payload as { sms_consent_at?: unknown }).sms_consent_at,
+    ).toEqual(expect.any(String));
   });
 
   it("returns an auth error and writes nothing without an operator", async () => {

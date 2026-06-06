@@ -12,6 +12,12 @@ export type Client = {
   email: string | null; // v2 schema addition — null on live reads
   address: string | null; // live `clients` column; captured by the intake flow
   notes: string | null;
+  // SMS consent (WS0). `sms_consent` is false until the client explicitly agrees
+  // to texts; `sms_consent_at` records when. Existing rows read as false/null —
+  // consent is never assumed. A booking/reminder text cannot be enabled unless
+  // sms_consent is true.
+  sms_consent: boolean;
+  sms_consent_at: string | null;
   created_at: string;
 };
 

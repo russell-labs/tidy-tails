@@ -44,6 +44,7 @@ describe("validateIntake — required fields", () => {
         email: null,
         address: null,
         notes: null,
+        sms_consent: false,
       });
       expect(r.value.pets).toEqual([
         {
@@ -454,7 +455,25 @@ describe("buildClientInsert — payload shape", () => {
       email: null,
       address: null,
       notes: null,
+      sms_consent: false,
+      sms_consent_at: null,
     });
+  });
+
+  it("records consent and stamps the timestamp only when consent is given", () => {
+    const consented = validateIntake({ ...VALID, sms_consent: "on" });
+    if (!consented.ok) throw new Error("fixture should validate");
+    expect(buildClientInsert(consented.value, "2026-06-06T12:00:00.000Z")).toMatchObject({
+      sms_consent: true,
+      sms_consent_at: "2026-06-06T12:00:00.000Z",
+    });
+
+    // A timestamp passed without consent must not be stored.
+    const notConsented = validateIntake(VALID);
+    if (!notConsented.ok) throw new Error("fixture should validate");
+    expect(
+      buildClientInsert(notConsented.value, "2026-06-06T12:00:00.000Z"),
+    ).toMatchObject({ sms_consent: false, sms_consent_at: null });
   });
 
   it("carries email, address and notes when present", () => {

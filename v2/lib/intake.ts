@@ -44,6 +44,7 @@ export type IntakeInput = PetIntakeInput & {
   email: string;
   address: string;
   notes: string; // client notes
+  sms_consent: string; // "on" when the client agreed to texts (WS0)
   pets?: Partial<PetIntakeInput>[];
 };
 
@@ -72,6 +73,7 @@ export type ValidatedIntake = {
     email: string | null;
     address: string | null;
     notes: string | null;
+    sms_consent: boolean;
   };
   pets: ValidatedIntakePet[];
 };
@@ -334,6 +336,10 @@ export function validateIntake(
     errors.notes = "Those notes are too long.";
   }
 
+  // SMS consent (WS0). The hidden input carries "on" only when the operator
+  // ticked the consent box; the timestamp is stamped by the action at insert.
+  const sms_consent = raw.sms_consent === "on";
+
   const pets = rawPets(raw)
     .map((pet, index) => validatePet(pet, index, errors))
     .filter((pet): pet is ValidatedIntakePet => Boolean(pet));
@@ -355,6 +361,7 @@ export function validateIntake(
         email,
         address,
         notes,
+        sms_consent,
       },
       pets,
     },
@@ -370,10 +377,22 @@ export type ClientInsert = {
   email: string | null;
   address: string | null;
   notes: string | null;
+  sms_consent: boolean;
+  sms_consent_at: string | null;
 };
 
-export function buildClientInsert(v: ValidatedIntake): ClientInsert {
-  return { ...v.client };
+// `consentAt` is the timestamp to record when the client consented; the action
+// passes the current time. It is only applied when consent was actually given,
+// so a non-consenting intake stores sms_consent=false / sms_consent_at=null.
+export function buildClientInsert(
+  v: ValidatedIntake,
+  consentAt: string | null = null,
+): ClientInsert {
+  return {
+    ...v.client,
+    sms_consent: v.client.sms_consent,
+    sms_consent_at: v.client.sms_consent ? consentAt : null,
+  };
 }
 
 // The `pets` INSERT payload — only columns already used by the live app.
