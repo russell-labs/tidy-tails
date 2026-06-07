@@ -11,12 +11,16 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { isE2EAuthBypassEnabled } from "../e2eAuth";
-import { isAllowedOperatorEmail } from "../operatorAccess";
 import { getSupabaseCredentials } from "./env";
 
 // Routes reachable without a session. Everything else requires sign-in.
+// WS3: signup + forgot-password are self-serve front-door entry points and must
+// be reachable signed-out. /reset-password is intentionally NOT public — it is
+// reached only after the recovery link establishes a session via /auth/callback.
 const PUBLIC_PATHS = [
   "/login",
+  "/signup",
+  "/forgot-password",
   "/auth/callback",
   "/api/twilio/inbound-sms",
   "/api/twilio/message-status",
@@ -76,18 +80,11 @@ export async function updateSession(request: NextRequest) {
     );
   }
 
-  if (user && !isAllowedOperatorEmail(user.email)) {
-    await supabase.auth.signOut();
-    const denied = finalize(
-      NextResponse.redirect(new URL("/login?access=denied", request.url)),
-      response,
-      cacheHeaders,
-    );
-    clearSupabaseCookies(denied, request);
-    return denied;
-  }
-
-  if (user && pathname === "/login") {
+  // Auth-only gate (WS3): membership is no longer checked here. A signed-in user
+  // who has not yet created an org is routed to onboarding by the (app) layout,
+  // not rejected. Security still rests on the fail-closed data layer + per-org
+  // RLS. A signed-in user on a signed-out entry page is sent into the app.
+  if (user && SIGNED_OUT_ENTRY_PATHS.includes(pathname)) {
     return finalize(
       NextResponse.redirect(new URL("/", request.url)),
       response,
@@ -97,6 +94,9 @@ export async function updateSession(request: NextRequest) {
 
   return response;
 }
+
+// Entry pages that only make sense signed out; a signed-in user is forwarded in.
+const SIGNED_OUT_ENTRY_PATHS = ["/login", "/signup", "/forgot-password"];
 
 // Carries cookies and cache headers written by setAll onto a redirect, so a
 // token rotation that happened during this request is not dropped.
@@ -112,12 +112,4 @@ function finalize(
     redirect.headers.set(key, val);
   }
   return redirect;
-}
-
-function clearSupabaseCookies(response: NextResponse, request: NextRequest) {
-  for (const cookie of request.cookies.getAll()) {
-    if (cookie.name.startsWith("sb-")) {
-      response.cookies.delete(cookie.name);
-    }
-  }
 }

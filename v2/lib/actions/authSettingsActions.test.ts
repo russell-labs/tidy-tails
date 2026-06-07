@@ -36,7 +36,14 @@ import {
   saveOperatorSettingsWithState,
   saveScheduleCalibrationWithState,
 } from "./settings";
-import { signIn, signInWithGoogle, signOut } from "./auth";
+import {
+  requestPasswordReset,
+  signIn,
+  signInWithGoogle,
+  signOut,
+  signUp,
+  updatePassword,
+} from "./auth";
 import { recordAuditEvent } from "@/lib/audit.server";
 import {
   readOperatorSettings,
@@ -99,7 +106,6 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.unstubAllEnvs();
   supabase.reset();
-  vi.stubEnv("TIDYTAILS_ALLOWED_EMAILS", "sam@example.com");
 
   createServerSupabaseMock.mockResolvedValue(
     supabase.client as unknown as Awaited<ReturnType<typeof createServerSupabase>>,
@@ -117,11 +123,10 @@ beforeEach(() => {
 });
 
 describe("auth actions", () => {
-  it("signs in an allowlisted operator and redirects into the app", async () => {
+  it("signs in a user with a membership and redirects into the app", async () => {
     supabase.client.auth.signInWithPassword.mockResolvedValue({ error: null });
-    supabase.client.auth.getUser.mockResolvedValue({
-      data: { user: { id: "operator-1", email: "sam@example.com" } },
-    });
+    // currentOrgId() resolves a membership row -> postAuthDestination = "/".
+    supabase.queueResult({ data: { org_id: "org-1" }, error: null });
 
     await expect(
       signIn(
@@ -144,28 +149,39 @@ describe("auth actions", () => {
     );
   });
 
+  it("routes a confirmed user with no membership to onboarding", async () => {
+    supabase.client.auth.signInWithPassword.mockResolvedValue({ error: null });
+    // currentOrgId() finds no membership -> postAuthDestination = "/onboarding".
+    supabase.queueResult({ data: null, error: null });
+
+    await expect(
+      signIn(null, form({ email: "new@example.com", password: "hunter2hunter2" })),
+    ).rejects.toThrow("redirect:/onboarding");
+
+    expect(supabase.client.auth.signOut).not.toHaveBeenCalled();
+  });
+
+  it("surfaces a friendly error when the email is not confirmed", async () => {
+    supabase.client.auth.signInWithPassword.mockResolvedValue({
+      error: { message: "Email not confirmed" },
+    });
+
+    const result = await signIn(
+      null,
+      form({ email: "unconfirmed@example.com", password: "hunter2hunter2" }),
+    );
+
+    expect(result).toEqual({
+      error:
+        "This account isn't confirmed yet. Check your inbox for the confirmation link.",
+    });
+  });
+
   it("returns a friendly error when email/password validation fails", async () => {
     const result = await signIn(null, form({ email: "", password: "" }));
 
     expect(result).toEqual({ error: "Enter your email and password." });
     expect(createServerSupabaseMock).not.toHaveBeenCalled();
-  });
-
-  it("signs out a Supabase user whose email is not allowlisted", async () => {
-    supabase.client.auth.signInWithPassword.mockResolvedValue({ error: null });
-    supabase.client.auth.getUser.mockResolvedValue({
-      data: { user: { id: "operator-2", email: "other@example.com" } },
-    });
-
-    const result = await signIn(
-      null,
-      form({ email: "other@example.com", password: "secret" }),
-    );
-
-    expect(result).toEqual({
-      error: "This Google/Supabase account is not allowed to access Tidy Tails.",
-    });
-    expect(supabase.client.auth.signOut).toHaveBeenCalledOnce();
   });
 
   it("starts Google OAuth with the current app callback URL", async () => {
@@ -193,6 +209,153 @@ describe("auth actions", () => {
       expect.objectContaining({ eventType: "auth.signed_out" }),
     );
     expect(supabase.client.auth.signOut).toHaveBeenCalledOnce();
+  });
+});
+
+describe("signUp (self-serve, email confirmation)", () => {
+  it("creates the account and reports the confirmation state without signing in", async () => {
+    supabase.client.auth.signUp.mockResolvedValue({ data: {}, error: null });
+
+    const result = await signUp(
+      null,
+      form({ email: "new@example.com", password: "hunter2hunter2" }),
+    );
+
+    expect(result).toEqual({ status: "confirm-sent", email: "new@example.com" });
+    expect(supabase.client.auth.signUp).toHaveBeenCalledWith({
+      email: "new@example.com",
+      password: "hunter2hunter2",
+      options: { emailRedirectTo: "https://tidy.test/auth/callback" },
+    });
+    // Must not sign the user in: confirmation comes first.
+    expect(supabase.client.auth.signInWithPassword).not.toHaveBeenCalled();
+  });
+
+  it("rejects a too-short password before calling Supabase", async () => {
+    const result = await signUp(
+      null,
+      form({ email: "new@example.com", password: "short" }),
+    );
+
+    expect(result).toEqual({
+      error: "Choose a password with at least 8 characters.",
+    });
+    expect(createServerSupabaseMock).not.toHaveBeenCalled();
+  });
+
+  it("maps a Supabase password error to a friendly message", async () => {
+    supabase.client.auth.signUp.mockResolvedValue({
+      data: {},
+      error: { message: "Password should be at least 6 characters" },
+    });
+
+    const result = await signUp(
+      null,
+      form({ email: "new@example.com", password: "abcdefgh" }),
+    );
+
+    expect(result).toEqual({
+      error: "Choose a password with at least 8 characters.",
+    });
+  });
+});
+
+describe("requestPasswordReset (enumeration-safe)", () => {
+  it("sends a recovery link routed back through the callback", async () => {
+    supabase.client.auth.resetPasswordForEmail.mockResolvedValue({
+      data: {},
+      error: null,
+    });
+
+    const result = await requestPasswordReset(
+      null,
+      form({ email: "sam@example.com" }),
+    );
+
+    expect(result).toEqual({ status: "sent" });
+    expect(supabase.client.auth.resetPasswordForEmail).toHaveBeenCalledWith(
+      "sam@example.com",
+      { redirectTo: "https://tidy.test/auth/callback?next=/reset-password" },
+    );
+  });
+
+  it("reports success even when the email is unknown (no enumeration)", async () => {
+    supabase.client.auth.resetPasswordForEmail.mockResolvedValue({
+      data: {},
+      error: { message: "User not found" },
+    });
+
+    const result = await requestPasswordReset(
+      null,
+      form({ email: "ghost@example.com" }),
+    );
+
+    expect(result).toEqual({ status: "sent" });
+  });
+
+  it("requires an email", async () => {
+    const result = await requestPasswordReset(null, form({ email: "" }));
+
+    expect(result).toEqual({ error: "Enter your email address." });
+    expect(createServerSupabaseMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("updatePassword (recovery session)", () => {
+  it("rejects a too-short password before calling Supabase", async () => {
+    const result = await updatePassword(
+      null,
+      form({ password: "short", confirmPassword: "short" }),
+    );
+
+    expect(result).toEqual({
+      error: "Choose a password with at least 8 characters.",
+    });
+    expect(createServerSupabaseMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects mismatched passwords before calling Supabase", async () => {
+    const result = await updatePassword(
+      null,
+      form({ password: "hunter2hunter2", confirmPassword: "different-one" }),
+    );
+
+    expect(result).toEqual({ error: "The two passwords don't match." });
+    expect(createServerSupabaseMock).not.toHaveBeenCalled();
+  });
+
+  it("updates the password and routes a member into the app", async () => {
+    supabase.client.auth.updateUser.mockResolvedValue({ error: null });
+    supabase.queueResult({ data: { org_id: "org-1" }, error: null });
+
+    await expect(
+      updatePassword(
+        null,
+        form({ password: "hunter2hunter2", confirmPassword: "hunter2hunter2" }),
+      ),
+    ).rejects.toThrow("redirect:/");
+
+    expect(supabase.client.auth.updateUser).toHaveBeenCalledWith({
+      password: "hunter2hunter2",
+    });
+    expect(recordAuditEventMock).toHaveBeenCalledWith(
+      expect.objectContaining({ eventType: "auth.password_updated" }),
+    );
+  });
+
+  it("surfaces a friendly error when Supabase rejects the update", async () => {
+    supabase.client.auth.updateUser.mockResolvedValue({
+      error: { message: "Auth session missing" },
+    });
+
+    const result = await updatePassword(
+      null,
+      form({ password: "hunter2hunter2", confirmPassword: "hunter2hunter2" }),
+    );
+
+    expect(result).toEqual({
+      error: "Couldn't update your password. Open the reset link again and retry.",
+    });
   });
 });
 
