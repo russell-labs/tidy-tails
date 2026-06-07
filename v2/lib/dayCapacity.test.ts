@@ -339,4 +339,64 @@ describe("day capacity rubric", () => {
     });
     expect(assessment.messages[0]).toMatch(/Choose the likely service/);
   });
+
+  // TT-001: the booking note must reflect the whole day across every household
+  // in the operator's org, not just the household being booked.
+  it("assesses the whole day's load across multiple households, not just the booked one", () => {
+    // Three dogs already booked that day across TWO other households.
+    const dayPets = [
+      pet({ id: "p1", client_id: "c1", breed: "Bichon" }), // small
+      pet({ id: "p2", client_id: "c1", breed: "Maltese" }), // small
+      pet({ id: "p3", client_id: "c2", breed: "Golden Retriever" }), // large
+    ];
+    const dayAppointments = [
+      appointment({ id: "a1", client_id: "c1", pet_id: "p1", date: "2026-06-08", time_slot: "9:00am" }),
+      appointment({ id: "a2", client_id: "c1", pet_id: "p2", date: "2026-06-08", time_slot: "10:30am" }),
+      appointment({ id: "a3", client_id: "c2", pet_id: "p3", date: "2026-06-08", time_slot: "12:00pm" }),
+    ];
+    // A new/empty household books one more dog onto the same day.
+    const candidate = pet({ id: "pc", client_id: "c3", breed: "Havanese" }); // small
+
+    const assessment = assessDayFit({
+      date: "2026-06-08",
+      appointments: dayAppointments,
+      pets: dayPets,
+      candidatePets: [{ pet: candidate, serviceType: "full_groom" }],
+      serviceType: "full_groom",
+    });
+
+    // Base reflects the full day (all households) — not "1 dog · looks open".
+    expect(assessment.totalDogs).toBe(3);
+    expect(assessment.largeDogs).toBe(1); // the Golden Retriever
+    // Projected = every dog booked that day + the one being added.
+    expect(assessment.projectedDogs).toBe(4);
+    expect(assessment.projectedLargeDogs).toBe(1);
+    expect(assessment.projectedLoadPoints).toBeGreaterThan(assessment.loadPoints);
+  });
+
+  // TT-001: the full-day set REPLACES the per-household base; it must not be
+  // concatenated with the household's own rows, which would double-count them.
+  it("counts a household's existing same-day booking exactly once", () => {
+    const dayPets = [
+      pet({ id: "pA", client_id: "c1", breed: "Bichon" }), // c1 already booked today
+      pet({ id: "pB", client_id: "c1", breed: "Maltese" }), // c1's other pet, being booked now
+      pet({ id: "pX", client_id: "c2", breed: "Poodle" }), // another household
+    ];
+    const dayAppointments = [
+      appointment({ id: "a1", client_id: "c1", pet_id: "pA", date: "2026-06-08", time_slot: "9:00am" }),
+      appointment({ id: "a2", client_id: "c2", pet_id: "pX", date: "2026-06-08", time_slot: "10:30am" }),
+    ];
+    // Only the new pet (pB) is the candidate; pA is already in the base.
+    const assessment = assessDayFit({
+      date: "2026-06-08",
+      appointments: dayAppointments,
+      pets: dayPets,
+      candidatePets: [{ pet: pet({ id: "pB", client_id: "c1", breed: "Maltese" }), serviceType: "full_groom" }],
+      serviceType: "full_groom",
+    });
+
+    // 2 already booked (pA + pX) + 1 new (pB) = 3. pA is not double-counted.
+    expect(assessment.totalDogs).toBe(2);
+    expect(assessment.projectedDogs).toBe(3);
+  });
 });
