@@ -28,10 +28,12 @@ npm run build && npm start
 Other scripts: `npm run lint`, `npm run typecheck`, `npm run icons` (regenerate
 placeholder PWA icons).
 
-The app is auth-gated by Supabase Auth (email/password plus Google OAuth) and
-restricted to an operator allowlist (see `lib/operatorAccess.ts`). The proxy
-enforces the allowlist on every routed request, and each server action
-re-verifies the session.
+The app is auth-gated by Supabase Auth (email/password plus Google OAuth). Entry
+is gated by ORGANIZATION MEMBERSHIP (WS3): a confirmed user with a membership
+enters the app; a confirmed user with no membership is routed to onboarding to
+create one. The proxy enforces a valid session on every routed request, each
+server action re-verifies the session, and per-org RLS isolates every row at the
+database layer.
 
 ## Safety — what this build does NOT do
 
