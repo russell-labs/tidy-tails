@@ -4,8 +4,10 @@ import { InboxMessageCenter } from "@/components/InboxMessageCenter";
 import { InboxSmsActions } from "@/components/InboxSmsActions";
 import type { AuditEvent } from "@/lib/audit";
 import { loadRecentAuditEvents } from "@/lib/audit.server";
+import { AddHousehold } from "@/components/AddHousehold";
+import { FirstRunEmptyState } from "@/components/FirstRunEmptyState";
 import { loadRecentBookingRequests } from "@/lib/bookingRequests.server";
-import { loadDataset } from "@/lib/data/repo";
+import { dataMode, loadDataset } from "@/lib/data/repo";
 import { fullName } from "@/lib/format";
 import {
   buildInboxItems,
@@ -31,6 +33,29 @@ export default async function InboxPage() {
     readOperatorSettings(),
   ]);
   const { clients, pets, appointments } = dataset;
+
+  // Brand-new business: no clients and no messages yet. Show a friendly first
+  // screen pointing to adding the first client, rather than three zero counters
+  // and an empty thread list (WS3 Slice C). Gated on zero messages too, so a
+  // stray inbound text from an unknown number is never hidden behind this.
+  if (clients.length === 0 && smsMessages.length === 0) {
+    return (
+      <main className="min-h-full px-5 py-8">
+        <div className="mb-8">
+          <h1 className="text-xl font-bold text-ink">Messages</h1>
+          <p className="mt-2 text-sm text-ink-muted">
+            Customer replies and booking requests will show up here.
+          </p>
+        </div>
+        <FirstRunEmptyState
+          title="No messages yet"
+          description="Once you add clients and start texting booking confirmations and reminders, their replies and requests land here."
+          action={<AddHousehold mode={dataMode()} />}
+        />
+      </main>
+    );
+  }
+
   const petsByClientId = groupByClientId(pets);
   const appointmentsByClientId = groupByClientId(appointments);
   const firstPlatformSentClientIds = buildFirstPlatformSentClientIds(auditEvents);
