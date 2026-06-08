@@ -99,6 +99,13 @@ jobs:
       - name: Cross-tenant isolation test (fails the build on any breach)
         run: psql -v ON_ERROR_STOP=1 -f v2/supabase/tests/cross_tenant_isolation.sql
 
+      # WS3 Slice B: prove migration 0005's self-serve org bootstrap policies +
+      # the org_one_owner_per_user index. Lives ONLY in this job (which applies
+      # all migrations); it must NOT run in cutover-rehearsal, where 0005 is
+      # absent — which is why it is a sibling file, not part of the test above.
+      - name: Self-serve org bootstrap isolation test (WS3 Slice B)
+        run: psql -v ON_ERROR_STOP=1 -f v2/supabase/tests/self_serve_bootstrap_isolation.sql
+
   # Production cutover rehearsal (WS2.4). Stands up an ephemeral Postgres at
   # prod's TRUE starting state — the original baseline ONLY (migration 0001; no
   # 0002/0003/0004) — seeds a single-operator "Sam" book with null-org rows, then
