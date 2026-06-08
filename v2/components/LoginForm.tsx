@@ -6,6 +6,7 @@
 // through useActionState — no full-page reload, no error round-trip through the
 // URL. The actual sign-in runs server-side in the signIn server action.
 
+import Link from "next/link";
 import { useActionState } from "react";
 import { useFormStatus } from "react-dom";
 import { signIn, signInWithGoogle, type AuthState } from "@/lib/actions/auth";
@@ -94,6 +95,24 @@ export function LoginForm({ initialError }: { initialError?: string | null }) {
           {pending ? "Signing in..." : "Sign in"}
         </button>
       </form>
+
+      <div className="flex flex-col gap-1 text-center text-sm text-ink-soft">
+        <Link
+          href="/forgot-password"
+          className="font-semibold text-brand hover:underline"
+        >
+          Forgot your password?
+        </Link>
+        <p>
+          New to Tidy Tails?{" "}
+          <Link
+            href="/signup"
+            className="font-semibold text-brand hover:underline"
+          >
+            Create an account
+          </Link>
+        </p>
+      </div>
     </div>
   );
 }

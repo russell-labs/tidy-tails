@@ -34,7 +34,7 @@ export default async function LoginPage({
         </p>
         <p className="mt-2 text-xl font-semibold text-ink">Sign in</p>
         <p className="mt-2 text-sm leading-6 text-ink-soft">
-          Use the approved operator account for the grooming book.
+          Sign in to your Tidy Tails grooming book.
         </p>
       </div>
 

@@ -3,6 +3,7 @@ import type { Row } from "@/lib/data/live";
 export type AuditEventType =
   | "auth.signed_in"
   | "auth.signed_out"
+  | "auth.password_updated"
   | "client.viewed"
   | "pet.viewed"
   | "client.created"
@@ -83,6 +84,7 @@ const SAFE_METADATA_KEYS = new Set([
 const LABELS: Record<AuditEventType, string> = {
   "auth.signed_in": "Signed in",
   "auth.signed_out": "Signed out",
+  "auth.password_updated": "Updated password",
   "client.viewed": "Viewed household",
   "pet.viewed": "Viewed pet",
   "client.created": "Added household",

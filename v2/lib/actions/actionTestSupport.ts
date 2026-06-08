@@ -45,6 +45,9 @@ export type SupabaseTestClient = {
     getUser: ReturnType<typeof vi.fn>;
     signInWithOAuth: ReturnType<typeof vi.fn>;
     signInWithPassword: ReturnType<typeof vi.fn>;
+    signUp: ReturnType<typeof vi.fn>;
+    resetPasswordForEmail: ReturnType<typeof vi.fn>;
+    updateUser: ReturnType<typeof vi.fn>;
     signOut: ReturnType<typeof vi.fn>;
   };
   from: ReturnType<typeof vi.fn>;
@@ -147,6 +150,9 @@ export function createSupabaseHarness(): SupabaseHarness {
       getUser: vi.fn(),
       signInWithOAuth: vi.fn(),
       signInWithPassword: vi.fn(),
+      signUp: vi.fn(),
+      resetPasswordForEmail: vi.fn(),
+      updateUser: vi.fn(),
       signOut: vi.fn(),
     },
     from: vi.fn((table: string) => makeQueryBuilder(table)),
@@ -165,6 +171,9 @@ export function createSupabaseHarness(): SupabaseHarness {
       client.auth.getUser.mockReset();
       client.auth.signInWithOAuth.mockReset();
       client.auth.signInWithPassword.mockReset();
+      client.auth.signUp.mockReset();
+      client.auth.resetPasswordForEmail.mockReset();
+      client.auth.updateUser.mockReset();
       client.auth.signOut.mockReset();
     },
   };
