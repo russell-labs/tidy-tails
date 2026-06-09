@@ -335,6 +335,7 @@ export default async function SchedulePage({
             rows={rows}
             softTarget={orgSettings.softTarget}
             bufferMinutes={orgSettings.bufferMinutes}
+            workingDay={orgSettings.workingDay}
           />
         ) : view === "day" ? (
           <OpenedDay

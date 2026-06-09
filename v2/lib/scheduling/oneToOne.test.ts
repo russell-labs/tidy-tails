@@ -4,6 +4,7 @@ import {
   hasOverlapConflict,
   hasUnplaceableBlock,
   oneToOneDaySummary,
+  oneToOneHeavinessNote,
   resolveExistingBlock,
   suggestedDurationMinutes,
   type ExistingBlock,
@@ -168,6 +169,8 @@ describe("oneToOneDaySummary", () => {
       bookedMinutes: 90,
       softTarget: 7,
       overTarget: false,
+      largeDogs: 0,
+      gettingHeavy: false,
     });
   });
 
@@ -176,5 +179,107 @@ describe("oneToOneDaySummary", () => {
     expect(oneToOneDaySummary({ date: "d", blocks, softTarget: 7 }).overTarget).toBe(
       true,
     );
+  });
+});
+
+describe("oneToOneDaySummary — heaviness (TT-010)", () => {
+  // An 8am–6pm working day = 600 minutes; ~80% = 480 minutes.
+  const workingDay = { startMinutes: 8 * 60, endMinutes: 18 * 60 };
+
+  it("counts large and xl dogs only", () => {
+    const summary = oneToOneDaySummary({
+      date: "d",
+      softTarget: 7,
+      workingDay,
+      blocks: [
+        { durationMinutes: 30, size: "small" },
+        { durationMinutes: 60, size: "medium" },
+        { durationMinutes: 90, size: "large" },
+        { durationMinutes: 120, size: "xl" },
+        { durationMinutes: 30, size: "unknown" },
+      ],
+    });
+    expect(summary.largeDogs).toBe(2);
+  });
+
+  it("gets heavy at >= 2 large dogs even when booked minutes are low", () => {
+    const summary = oneToOneDaySummary({
+      date: "d",
+      softTarget: 7,
+      workingDay,
+      blocks: [
+        { durationMinutes: 90, size: "large" },
+        { durationMinutes: 90, size: "large" },
+      ],
+    });
+    expect(summary.bookedMinutes).toBe(180); // well under the 480-min threshold
+    expect(summary.largeDogs).toBe(2);
+    expect(summary.gettingHeavy).toBe(true);
+  });
+
+  it("gets heavy at the minutes threshold (>= 80% of the working day) with no large dogs", () => {
+    const summary = oneToOneDaySummary({
+      date: "d",
+      softTarget: 7,
+      workingDay,
+      blocks: [
+        { durationMinutes: 240, size: "medium" },
+        { durationMinutes: 240, size: "small" }, // 480 total = exactly 80% of 600
+      ],
+    });
+    expect(summary.bookedMinutes).toBe(480);
+    expect(summary.largeDogs).toBe(0);
+    expect(summary.gettingHeavy).toBe(true);
+  });
+
+  it("does not get heavy on a light day (one large dog, minutes well under)", () => {
+    const summary = oneToOneDaySummary({
+      date: "d",
+      softTarget: 7,
+      workingDay,
+      blocks: [
+        { durationMinutes: 90, size: "large" },
+        { durationMinutes: 30, size: "small" },
+      ],
+    });
+    expect(summary.largeDogs).toBe(1);
+    expect(summary.gettingHeavy).toBe(false);
+  });
+
+  it("defaults to the standard 8am–6pm window when none is passed", () => {
+    const summary = oneToOneDaySummary({
+      date: "d",
+      softTarget: 7,
+      blocks: [{ durationMinutes: 480, size: "medium" }],
+    });
+    expect(summary.gettingHeavy).toBe(true);
+  });
+});
+
+describe("oneToOneHeavinessNote (TT-010)", () => {
+  it("returns null on a light day", () => {
+    expect(
+      oneToOneHeavinessNote({ largeDogs: 1, bookedMinutes: 120, gettingHeavy: false }),
+    ).toBeNull();
+  });
+
+  it("names the large dogs and booked time, and prompts a coat-type check", () => {
+    const note = oneToOneHeavinessNote({
+      largeDogs: 2,
+      bookedMinutes: 270,
+      gettingHeavy: true,
+    });
+    expect(note).toBe(
+      "2 large dogs and 4h 30m booked — your day's getting full. Check coat types before adding another large dog.",
+    );
+  });
+
+  it("omits the coat-type sentence when no large dogs are booked", () => {
+    const note = oneToOneHeavinessNote({
+      largeDogs: 0,
+      bookedMinutes: 480,
+      gettingHeavy: true,
+    });
+    expect(note).toBe("8h booked — your day's getting full.");
   });
 });
