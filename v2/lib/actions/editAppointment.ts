@@ -32,6 +32,7 @@ import {
 } from "@/lib/editAppointment";
 import { fullName } from "@/lib/format";
 import { customerFacingLocationLabel } from "@/lib/locationFinance";
+import { loadOrgSettings } from "@/lib/orgSettings.server";
 import { readOperatorSettings } from "@/lib/operatorSettings.server";
 import { parsePaymentInfo, type PaymentMethod, type PaymentStatus } from "@/lib/payments";
 import { scheduledAppointmentGroupFor } from "@/lib/schedule";
@@ -150,6 +151,20 @@ export async function editAppointment(
       status: "error",
       errors: {},
       formError: "Your session ended. Sign in again.",
+    };
+  }
+
+  // WS4a: this batched editor (morning tiles, gina/annette locations) does not
+  // fit a one_to_one org's duration blocks. The 1:1 edit experience is a later
+  // step; refuse server-side so a 1:1 appointment is never rewritten through the
+  // wrong flow (the detail page also degrades the UI). Defense-in-depth.
+  const orgSettings = await loadOrgSettings();
+  if (orgSettings.schedulingStyle === "one_to_one") {
+    return {
+      status: "error",
+      errors: {},
+      formError:
+        "Editing 1:1 appointments is coming in a later step. Nothing was changed.",
     };
   }
 

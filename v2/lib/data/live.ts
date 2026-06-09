@@ -113,6 +113,7 @@ export function mapAppointmentRow(r: Row): Appointment {
     pet_id: str(r.pet_id),
     date: str(r.date).slice(0, 10),
     time_slot: strOrNull(r.time_slot),
+    duration_minutes: numOrNull(r.duration_minutes), // 1:1 block length (WS4a)
     service: serviceLabel(r.service_type), // live column is `service_type`
     price: numOrNull(r.fee), // live column is `fee`
     tip: numOrNull(r.tip),

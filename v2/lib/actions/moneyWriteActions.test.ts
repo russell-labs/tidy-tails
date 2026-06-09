@@ -37,6 +37,19 @@ vi.mock("@/lib/operatorSettings.server", () => ({
   readOperatorSettings: vi.fn(),
 }));
 
+// editAppointment reads org scheduling style (WS4a) to refuse 1:1 edits; these
+// tests are the batched (Sam) path, so resolve to batched and add no DB read.
+vi.mock("@/lib/orgSettings.server", () => ({
+  loadOrgSettings: vi.fn(async () => ({
+    schedulingStyle: "batched",
+    locations: [],
+    durationDefaults: null,
+    bufferMinutes: 0,
+    workingDay: { startMinutes: 480, endMinutes: 1080 },
+    softTarget: 7,
+  })),
+}));
+
 vi.mock("@/lib/supabase/server", () => ({
   createServerSupabase: vi.fn(),
   getCurrentUser: vi.fn(),
