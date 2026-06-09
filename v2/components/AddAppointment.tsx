@@ -6,6 +6,7 @@ import {
   type BookingAvailabilityState,
 } from "@/lib/actions/availability";
 import { createBooking, type BookingState } from "@/lib/actions/appointments";
+import { getDayCapacity } from "@/lib/actions/dayCapacity";
 import {
   availableBookingTimeSlots,
   BOOKING_LOCATIONS,
@@ -211,6 +212,16 @@ function BookingForm({
     result: BookingAvailabilityState;
   } | null>(null);
   const [availabilityPending, startAvailabilityTransition] = useTransition();
+  // TT-001: the day-fit note + slot helpers must reflect the WHOLE day in the
+  // operator's org, not just this household. `dayLoad` is the full day's
+  // org-scoped appointments + referenced pets, fetched on date-select.
+  const [dayLoad, setDayLoad] = useState<{
+    date: string;
+    appointments: Appointment[];
+    pets: Pet[];
+  } | null>(null);
+  const [dayLoadFailedDate, setDayLoadFailedDate] = useState<string | null>(null);
+  const [, startDayLoadTransition] = useTransition();
 
   const selectedPets = pets.filter((p) => selectedPetIds.includes(p.id));
   const primaryPet = selectedPets[0] ?? pets[0];
@@ -241,8 +252,20 @@ function BookingForm({
     availabilityResult.serviceType === primaryServiceType
       ? availabilityResult.result
       : null;
+  // TT-001 day-fit base resolution. Three distinct states:
+  //   • ready   → use the full day's org-scoped set (every household that day)
+  //   • failed  → fall back to this household's rows so a transient fetch error
+  //               never blocks the booking
+  //   • loading → defer the note and show a loading treatment, never the stale
+  //               household-only count (the "1 dog · looks open" bug we fix here)
+  const dayLoadReady = Boolean(date) && dayLoad?.date === date;
+  const dayLoadFailed = dayLoadFailedDate === date;
+  const dayLoadLoading = Boolean(date) && !dayLoadReady && !dayLoadFailed;
+  const baseAppointments = dayLoadReady ? dayLoad!.appointments : appointments;
+  const basePets = dayLoadReady ? dayLoad!.pets : pets;
+
   const fallbackSlots = date
-    ? availableBookingTimeSlots(appointments, date).map((slot) =>
+    ? availableBookingTimeSlots(baseAppointments, date).map((slot) =>
         slot.available
           ? ({ ...slot, source: "open" } as const)
           : ({
@@ -257,21 +280,22 @@ function BookingForm({
       ? availability.slots
       : fallbackSlots
     : [];
-  const bookedTimes = date ? bookedTimesForDate(appointments, date) : [];
-  const dayFit = date
-    ? assessDayFit({
-        date,
-        appointments,
-        pets,
-        candidatePets: selectedPets.map((pet) => ({
-          pet,
-          serviceType: petServices[pet.id] ?? primaryServiceType,
-        })),
-        serviceType: primaryServiceType,
-        calibration: scheduleCalibration,
-        location,
-      })
-    : null;
+  const bookedTimes = date ? bookedTimesForDate(baseAppointments, date) : [];
+  const dayFit =
+    date && !dayLoadLoading
+      ? assessDayFit({
+          date,
+          appointments: baseAppointments,
+          pets: basePets,
+          candidatePets: selectedPets.map((pet) => ({
+            pet,
+            serviceType: petServices[pet.id] ?? primaryServiceType,
+          })),
+          serviceType: primaryServiceType,
+          calibration: scheduleCalibration,
+          location,
+        })
+      : null;
   const customerLocation = customerLocationLabelFromSettings(
     location,
     locationSettings,
@@ -318,6 +342,29 @@ function BookingForm({
       cancelled = true;
     };
   }, [date, primaryServiceType]);
+
+  // TT-001: on date-select, load that date's full org-scoped day for the
+  // capacity note + slot helpers. On failure, fall back to household-only data.
+  useEffect(() => {
+    if (!date) return;
+    let cancelled = false;
+    startDayLoadTransition(() => {
+      void getDayCapacity(date).then(
+        (result) => {
+          if (!cancelled) {
+            setDayLoad(result);
+            setDayLoadFailedDate((prev) => (prev === date ? null : prev));
+          }
+        },
+        () => {
+          if (!cancelled) setDayLoadFailedDate(date);
+        },
+      );
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [date]);
 
   function togglePet(id: string, checked: boolean) {
     setSelectedPetIds((current) => {
@@ -582,7 +629,11 @@ function BookingForm({
             </div>
           </Field>
 
-          {dayFit ? <DayFitCard assessment={dayFit} /> : null}
+          {dayLoadLoading ? (
+            <DayFitLoading />
+          ) : dayFit ? (
+            <DayFitCard assessment={dayFit} />
+          ) : null}
 
           <Field
             label="Location"
@@ -867,6 +918,19 @@ function BookingForm({
         </>
       )}
     </form>
+  );
+}
+
+// TT-001: shown while the whole day's load is loading, so the operator never
+// sees the stale household-only count flash before the real number arrives.
+function DayFitLoading() {
+  return (
+    <section className="rounded-xl bg-canvas px-3.5 py-3 text-sm text-ink-soft">
+      <p className="font-semibold">Checking the whole day…</p>
+      <p className="mt-1 leading-relaxed">
+        Counting every dog already booked that day.
+      </p>
+    </section>
   );
 }
 

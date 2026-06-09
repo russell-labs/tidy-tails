@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { formatAltContact } from "./altContact";
 import { buildEditClientUpdate, validateEditClient } from "./editClient";
 
 const valid = {
@@ -6,7 +7,9 @@ const valid = {
   first_name: "Mary",
   last_name: "Anca",
   phone: "705-330-1807",
-  alt_contact: "",
+  secondary_contact_name: "",
+  secondary_cell: "",
+  landline: "",
   email: "",
   address: "123 Main St",
   notes: "Prefers texts.",
@@ -27,6 +30,39 @@ describe("validateEditClient", () => {
       address: "123 Main St",
       notes: "Prefers texts.",
     });
+  });
+
+  it("recombines the three contact fields into alt_contact via the shared formatter", () => {
+    const result = validateEditClient({
+      ...valid,
+      secondary_contact_name: "Jane",
+      secondary_cell: "416-555-0199",
+      landline: "416-555-0200",
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.alt_contact).toBe(
+      formatAltContact({
+        secondaryName: "Jane",
+        secondaryCell: "416-555-0199",
+        landline: "416-555-0200",
+      }),
+    );
+    expect(result.value.alt_contact).toBe(
+      "Secondary: Jane - 416-555-0199; Landline: 416-555-0200",
+    );
+  });
+
+  it("validates the secondary cell and landline like intake (10 digits)", () => {
+    const badCell = validateEditClient({ ...valid, secondary_cell: "555-0142" });
+    expect(badCell.ok).toBe(false);
+    if (badCell.ok) return;
+    expect(badCell.errors.secondary_cell).toBeTruthy();
+
+    const badLandline = validateEditClient({ ...valid, landline: "12345" });
+    expect(badLandline.ok).toBe(false);
+    if (badLandline.ok) return;
+    expect(badLandline.errors.landline).toBeTruthy();
   });
 
   it("accepts a household with only a last name", () => {
@@ -74,5 +110,18 @@ describe("buildEditClientUpdate", () => {
       address: "123 Main St",
       notes: "Prefers texts.",
     });
+  });
+
+  it("writes the combined alt_contact to the clients update", () => {
+    const result = validateEditClient({
+      ...valid,
+      secondary_contact_name: "Jane",
+      secondary_cell: "416-555-0199",
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(buildEditClientUpdate(result.value).alt_contact).toBe(
+      "Secondary: Jane - 416-555-0199",
+    );
   });
 });
