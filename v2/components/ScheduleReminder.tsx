@@ -177,7 +177,11 @@ function ScheduleReminderForm({
       <input type="hidden" name="client_id" value={clientId} />
       <input type="hidden" name="appointment_id" value={appointmentId} />
       <input type="hidden" name="message" value={message} />
-      <input type="hidden" name="to_number" value={toNumber} />
+      <input
+        type="hidden"
+        name="to_number"
+        value={canChooseNumber ? toNumber : ""}
+      />
 
       <p
         className={`rounded-lg px-3 py-2 text-xs font-medium ${

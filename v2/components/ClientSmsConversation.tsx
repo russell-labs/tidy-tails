@@ -91,7 +91,11 @@ export function ClientSmsConversation({
           <SubmitDogOverlay label="Sending text" show={pending} />
           <input type="hidden" name="client_id" value={client.id} />
           <input type="hidden" name="message" value={message} />
-          <input type="hidden" name="to_number" value={toNumber} />
+          <input
+            type="hidden"
+            name="to_number"
+            value={canChooseNumber ? toNumber : ""}
+          />
 
           {state.status === "error" ? (
             <p className="mb-3 rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger-ink">
