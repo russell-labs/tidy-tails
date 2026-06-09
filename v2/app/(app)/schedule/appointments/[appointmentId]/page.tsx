@@ -20,6 +20,7 @@ import {
   calculateAppointmentMoney,
   locationLabelFromSettings,
 } from "@/lib/locationFinance";
+import { loadOrgSettings } from "@/lib/orgSettings.server";
 import { readOperatorSettings } from "@/lib/operatorSettings.server";
 import {
   parsePaymentInfo,
@@ -68,6 +69,7 @@ export default async function AppointmentActionPage({
   if (!client || !pet) notFound();
 
   const settings = await readOperatorSettings();
+  const orgSettings = await loadOrgSettings();
   const householdPets = pets.filter((candidate) => candidate.client_id === client.id);
   const householdAppointments = appointments.filter(
     (candidate) => candidate.client_id === client.id,
@@ -209,29 +211,40 @@ export default async function AppointmentActionPage({
             />
           ) : null}
 
-          <EditAppointment
-            clientId={client.id}
-            appointment={appointment}
-            appointments={householdAppointments}
-            groupAppointmentIds={appointmentGroup.map((candidate) => candidate.id)}
-            groupPetNames={appointmentGroupPetNames}
-            petName={pet.name}
-            ownerFirstName={client.first_name}
-            customerPhone={client.phone}
-            mode={dataMode()}
-            writesEnabled={isEditAppointmentWriteEnabled()}
-            locationSettings={settings.locationSettings}
-            trigger={
-              <ActionTile
-                title="Change or cancel appointment"
-                detail={
-                  appointmentGroup.length > 1
-                    ? "Update or cancel this dog, or all dogs booked in this time."
-                    : "Update the date, time, service, fee, payment, notes, or cancel this booking."
-                }
-              />
-            }
-          />
+          {orgSettings.schedulingStyle === "one_to_one" ? (
+            // The batched editor (morning tiles, gina/annette locations, day-fit)
+            // does not fit 1:1 duration blocks; the 1:1 edit experience is a later
+            // step (the editAppointment action also refuses 1:1). Degrade, don't
+            // show the wrong form.
+            <div className="rounded-2xl border border-line bg-surface px-4 py-3 text-sm text-ink-soft">
+              Editing 1:1 appointments is coming in a later step. For now, you can
+              book new blocks from a client&rsquo;s page.
+            </div>
+          ) : (
+            <EditAppointment
+              clientId={client.id}
+              appointment={appointment}
+              appointments={householdAppointments}
+              groupAppointmentIds={appointmentGroup.map((candidate) => candidate.id)}
+              groupPetNames={appointmentGroupPetNames}
+              petName={pet.name}
+              ownerFirstName={client.first_name}
+              customerPhone={client.phone}
+              mode={dataMode()}
+              writesEnabled={isEditAppointmentWriteEnabled()}
+              locationSettings={settings.locationSettings}
+              trigger={
+                <ActionTile
+                  title="Change or cancel appointment"
+                  detail={
+                    appointmentGroup.length > 1
+                      ? "Update or cancel this dog, or all dogs booked in this time."
+                      : "Update the date, time, service, fee, payment, notes, or cancel this booking."
+                  }
+                />
+              }
+            />
+          )}
 
           <LogGroom
             client={client}

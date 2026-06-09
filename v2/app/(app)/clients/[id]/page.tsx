@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { AddAppointment } from "@/components/AddAppointment";
+import { OneToOneAddAppointment } from "@/components/OneToOneAddAppointment";
 import { AddPet } from "@/components/AddPet";
 import { AppointmentHistory } from "@/components/AppointmentHistory";
 import { BackLink } from "@/components/BackLink";
@@ -12,6 +13,7 @@ import { PetCard } from "@/components/PetCard";
 import { dataMode, getClientRecord, loadVaccinations } from "@/lib/data/repo";
 import { groupPetsForDisplay, lastAppointment } from "@/lib/derive";
 import { digitsOnly, formatPhone, fullName } from "@/lib/format";
+import { loadOrgSettings } from "@/lib/orgSettings.server";
 import { readOperatorSettings } from "@/lib/operatorSettings.server";
 import { activePets } from "@/lib/petLifecycle";
 import {
@@ -53,6 +55,7 @@ export default async function ClientDetailPage({
 
   const { client, pets, appointments } = record;
   const operatorSettings = await readOperatorSettings();
+  const orgSettings = await loadOrgSettings();
   const recentSmsMessages = await loadClientSmsMessages(client.id, 12);
   const hasPriorOutboundSms = await hasClientOutboundSms(client.id);
   const allVaccinations = await loadVaccinations();
@@ -100,20 +103,31 @@ export default async function ClientDetailPage({
       </header>
 
       <div className="mt-4 flex flex-col gap-2.5">
-        <AddAppointment
-          client={client}
-          pets={bookablePets}
-          appointments={appointments}
-          mode={dataMode()}
-          writesEnabled={isAddAppointmentWriteEnabled()}
-          bookingConfirmationTemplate={
-            operatorSettings.bookingConfirmationTemplate
-          }
-          firstPlatformTextTemplate={operatorSettings.firstPlatformTextTemplate}
-          scheduleCalibration={operatorSettings.scheduleCalibration}
-          locationSettings={operatorSettings.locationSettings}
-          hasPriorOutboundSms={hasPriorOutboundSms}
-        />
+        {orgSettings.schedulingStyle === "one_to_one" ? (
+          <OneToOneAddAppointment
+            client={client}
+            pets={bookablePets}
+            mode={dataMode()}
+            writesEnabled={isAddAppointmentWriteEnabled()}
+            locations={orgSettings.locations}
+            durationDefaults={orgSettings.durationDefaults}
+          />
+        ) : (
+          <AddAppointment
+            client={client}
+            pets={bookablePets}
+            appointments={appointments}
+            mode={dataMode()}
+            writesEnabled={isAddAppointmentWriteEnabled()}
+            bookingConfirmationTemplate={
+              operatorSettings.bookingConfirmationTemplate
+            }
+            firstPlatformTextTemplate={operatorSettings.firstPlatformTextTemplate}
+            scheduleCalibration={operatorSettings.scheduleCalibration}
+            locationSettings={operatorSettings.locationSettings}
+            hasPriorOutboundSms={hasPriorOutboundSms}
+          />
+        )}
         <LogGroom
           client={client}
           pets={bookablePets}

@@ -3,7 +3,9 @@ import Link from "next/link";
 import { AddHousehold } from "@/components/AddHousehold";
 import { DayCloseoutControls } from "@/components/DayCloseoutControls";
 import { FirstRunEmptyState } from "@/components/FirstRunEmptyState";
+import { OneToOneOpenedDay } from "@/components/OneToOneOpenedDay";
 import { dataMode, loadDataset, loadDayCloseoutOverrideState } from "@/lib/data/repo";
+import { loadOrgSettings } from "@/lib/orgSettings.server";
 import { bookingLocationLabel } from "@/lib/booking";
 import {
   appointmentsForDay,
@@ -158,12 +160,14 @@ export default async function SchedulePage({
   const view = scheduleView(params.view);
   const selectedDay = params.day ?? params.week ?? todayISO();
   const range = weekRangeForDate(params.week ?? selectedDay);
-  const [{ clients, pets, appointments }, closeoutState, settings] =
+  const [{ clients, pets, appointments }, closeoutState, settings, orgSettings] =
     await Promise.all([
       loadDataset(),
       loadDayCloseoutOverrideState(),
       readOperatorSettings(),
+      loadOrgSettings(),
     ]);
+  const isOneToOne = orgSettings.schedulingStyle === "one_to_one";
 
   // Brand-new business: with no clients there is nothing to schedule yet. Show a
   // friendly first screen that points to adding the first client (WS3 Slice C),
@@ -292,19 +296,23 @@ export default async function SchedulePage({
           </Link>
         </div>
 
-        <div className="grid grid-cols-2 gap-2">
+        <div className={isOneToOne ? "" : "grid grid-cols-2 gap-2"}>
           <div className="rounded-xl border border-line bg-surface px-3 py-3">
             <p className="text-2xl font-bold text-ink">{rows.length}</p>
             <p className="text-xs font-medium text-ink-soft">Scheduled dogs</p>
           </div>
-          <div className="rounded-xl border border-line bg-surface px-3 py-3">
-            <p className="text-2xl font-bold text-ink">
-              {formatMoney(totalMoney.samNet)}
-            </p>
-            <p className="text-xs font-medium text-ink-soft">
-              Sam net · Gross {formatMoney(totalMoney.gross)}
-            </p>
-          </div>
+          {/* The Sam-net/gross money card is batched finance; a one_to_one org's
+              take-home view is WS4b, so it is hidden here. */}
+          {!isOneToOne ? (
+            <div className="rounded-xl border border-line bg-surface px-3 py-3">
+              <p className="text-2xl font-bold text-ink">
+                {formatMoney(totalMoney.samNet)}
+              </p>
+              <p className="text-xs font-medium text-ink-soft">
+                Sam net · Gross {formatMoney(totalMoney.gross)}
+              </p>
+            </div>
+          ) : null}
         </div>
       </section>
 
@@ -319,7 +327,16 @@ export default async function SchedulePage({
               : "Tap a day to open the slate. Sam still decides."}
           </p>
         </div>
-        {view === "day" ? (
+        {view === "day" && isOneToOne ? (
+          // 1:1 (one_to_one) day view: duration blocks, no per-location salon
+          // closeout (that finance surface is Sam's batched model; WS4b for 1:1).
+          <OneToOneOpenedDay
+            date={selectedDay}
+            rows={rows}
+            softTarget={orgSettings.softTarget}
+            bufferMinutes={orgSettings.bufferMinutes}
+          />
+        ) : view === "day" ? (
           <OpenedDay
             summary={selectedDaySummary}
             rows={rows}

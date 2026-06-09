@@ -1,0 +1,184 @@
+// The one_to_one (1:1) duration-block scheduling engine (WS4a).
+//
+// One dog per block. A booking gets a suggested, adjustable duration from the
+// dog's size + service, then lands on an open block of that length with
+// exclusive (overlap) conflict detection and an optional, default-off buffer.
+// Capacity is plain time arithmetic against a soft target. Pure — no I/O, no
+// React; unit-tested in oneToOne.test.ts.
+
+import type { ServiceType } from "../booking";
+import type { SizeClass } from "../dayCapacity";
+import {
+  DEFAULT_WORKING_DAY,
+  blocksOverlap,
+  formatMinutes,
+  parseTimeToMinutes,
+  type WorkingDay,
+} from "./time";
+
+// Per-size default block lengths (minutes), from Cheryl's intake: small 20–45
+// (~30), medium 45–75 (~60), large 60–150 (~90). Overridable per org.
+export type DurationDefaults = {
+  small: number;
+  medium: number;
+  large: number;
+  xl: number;
+};
+
+export const DEFAULT_DURATION_DEFAULTS: DurationDefaults = {
+  small: 30,
+  medium: 60,
+  large: 90,
+  xl: 120,
+};
+
+export const NAIL_TRIM_MINUTES = 15;
+const STEP_MINUTES = 15;
+
+// Auto-suggested block length for a service + dog size. The operator adjusts it
+// per booking; the adjusted value is what persists in appointments.duration_minutes.
+export function suggestedDurationMinutes(
+  serviceType: ServiceType | string | null | undefined,
+  size: SizeClass,
+  overrides?: Partial<DurationDefaults>,
+): number {
+  if (serviceType === "nail_trim") return NAIL_TRIM_MINUTES;
+  const defaults = { ...DEFAULT_DURATION_DEFAULTS, ...(overrides ?? {}) };
+  const base =
+    size === "small"
+      ? defaults.small
+      : size === "large"
+        ? defaults.large
+        : size === "xl"
+          ? defaults.xl
+          : defaults.medium; // medium + unknown
+  // A bath is a bit shorter than a full groom; round to the 5-minute grid.
+  if (serviceType === "bath_only") {
+    return Math.max(NAIL_TRIM_MINUTES, Math.round((base * 0.75) / 5) * 5);
+  }
+  return base;
+}
+
+// An existing same-date appointment resolved to a block. `startMinutes` is null
+// when its time_slot could not be parsed (legacy/hand-typed) — an "unplaceable"
+// block that the overlap math must treat conservatively, never skip.
+export type ExistingBlock = {
+  startMinutes: number | null;
+  durationMinutes: number;
+};
+
+// Resolve an appointment's (time_slot, duration_minutes) into an ExistingBlock.
+// A null/zero duration falls back to a conservative length so the block still
+// occupies space (fail TOWARD conflict). An unparseable time yields a null start.
+export function resolveExistingBlock(
+  timeSlot: string | null | undefined,
+  durationMinutes: number | null | undefined,
+  fallbackDurationMinutes: number,
+): ExistingBlock {
+  const start = parseTimeToMinutes(timeSlot);
+  const duration =
+    durationMinutes && durationMinutes > 0
+      ? durationMinutes
+      : fallbackDurationMinutes;
+  return { startMinutes: start, durationMinutes: duration };
+}
+
+// True when any existing block could not be placed (unparseable time). The
+// caller fails toward conflict: we cannot prove a candidate is clear, so we
+// refuse rather than risk a silent double-book.
+export function hasUnplaceableBlock(existing: ExistingBlock[]): boolean {
+  return existing.some((block) => block.startMinutes === null);
+}
+
+// Exclusive conflict detection for a candidate block. Returns true (conflict) if
+// the candidate overlaps any existing block within the buffer, OR if any existing
+// block is unplaceable (fail toward conflict).
+export function hasOverlapConflict({
+  candidateStartMinutes,
+  candidateDurationMinutes,
+  existing,
+  bufferMinutes = 0,
+}: {
+  candidateStartMinutes: number;
+  candidateDurationMinutes: number;
+  existing: ExistingBlock[];
+  bufferMinutes?: number;
+}): boolean {
+  if (hasUnplaceableBlock(existing)) return true;
+  return existing.some((block) =>
+    blocksOverlap(
+      candidateStartMinutes,
+      candidateDurationMinutes,
+      block.startMinutes as number,
+      block.durationMinutes,
+      bufferMinutes,
+    ),
+  );
+}
+
+// Open blocks of `durationMinutes` across the working day that don't conflict
+// with any existing block (+ buffer). Empty when an unplaceable block exists
+// (forces the operator to review that day before booking).
+export function availableBlocks({
+  durationMinutes,
+  existing,
+  bufferMinutes = 0,
+  workingDay = DEFAULT_WORKING_DAY,
+  stepMinutes = STEP_MINUTES,
+}: {
+  durationMinutes: number;
+  existing: ExistingBlock[];
+  bufferMinutes?: number;
+  workingDay?: WorkingDay;
+  stepMinutes?: number;
+}): string[] {
+  if (durationMinutes <= 0) return [];
+  if (hasUnplaceableBlock(existing)) return [];
+  const slots: string[] = [];
+  for (
+    let start = workingDay.startMinutes;
+    start + durationMinutes <= workingDay.endMinutes;
+    start += stepMinutes
+  ) {
+    const conflicts = existing.some((block) =>
+      blocksOverlap(
+        start,
+        durationMinutes,
+        block.startMinutes as number,
+        block.durationMinutes,
+        bufferMinutes,
+      ),
+    );
+    if (!conflicts) slots.push(formatMinutes(start));
+  }
+  return slots;
+}
+
+export type OneToOneDaySummary = {
+  date: string;
+  totalDogs: number;
+  bookedMinutes: number;
+  softTarget: number;
+  overTarget: boolean;
+};
+
+// Informational capacity for a day: dogs booked and total booked minutes against
+// a soft target (~5–7). Never a hard block — `overTarget` only flags a note.
+export function oneToOneDaySummary({
+  date,
+  blocks,
+  softTarget,
+}: {
+  date: string;
+  blocks: { durationMinutes: number }[];
+  softTarget: number;
+}): OneToOneDaySummary {
+  const bookedMinutes = blocks.reduce((sum, b) => sum + b.durationMinutes, 0);
+  return {
+    date,
+    totalDogs: blocks.length,
+    bookedMinutes,
+    softTarget,
+    overTarget: blocks.length > softTarget,
+  };
+}

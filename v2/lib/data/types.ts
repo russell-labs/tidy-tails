@@ -46,6 +46,7 @@ export type Appointment = {
   pet_id: string;
   date: string; // ISO date (YYYY-MM-DD)
   time_slot: string | null; // free-text appointment time, when recorded
+  duration_minutes?: number | null; // 1:1 block length (WS4a); null for waterfall rows
   service: string | null; // null when the live row has no service_type (e.g. backfills)
   price: number | null; // null when the live row has no fee recorded
   tip: number | null; // null when the row has no tip recorded
