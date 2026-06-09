@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { AddHousehold } from "@/components/AddHousehold";
 import { DayCloseoutControls } from "@/components/DayCloseoutControls";
-import { loadDataset, loadDayCloseoutOverrideState } from "@/lib/data/repo";
+import { FirstRunEmptyState } from "@/components/FirstRunEmptyState";
+import { dataMode, loadDataset, loadDayCloseoutOverrideState } from "@/lib/data/repo";
 import { bookingLocationLabel } from "@/lib/booking";
 import {
   appointmentsForDay,
@@ -162,6 +164,30 @@ export default async function SchedulePage({
       loadDayCloseoutOverrideState(),
       readOperatorSettings(),
     ]);
+
+  // Brand-new business: with no clients there is nothing to schedule yet. Show a
+  // friendly first screen that points to adding the first client (WS3 Slice C),
+  // rather than an empty week of zero-dollar days.
+  if (clients.length === 0) {
+    return (
+      <main className="px-4 py-4">
+        <header>
+          <h1 className="text-2xl font-bold text-ink">Schedule</h1>
+          <p className="mt-1 text-sm text-ink-soft">
+            Your schedule fills in once you have clients booked.
+          </p>
+        </header>
+        <div className="mt-6">
+          <FirstRunEmptyState
+            title="No appointments yet"
+            description="Add your first client and their pets, then you can book their first groom and see your day here."
+            action={<AddHousehold mode={dataMode()} />}
+          />
+        </div>
+      </main>
+    );
+  }
+
   const closeoutOverrides = closeoutState.overrides;
   const calibration = settings.scheduleCalibration;
   const rows =

@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { AddHousehold } from "@/components/AddHousehold";
+import { FirstRunEmptyState } from "@/components/FirstRunEmptyState";
 import { collapseLoggedGroomDuplicates } from "@/lib/appointmentLedger";
-import { loadDataset, loadDayCloseoutOverrides } from "@/lib/data/repo";
+import { dataMode, loadDataset, loadDayCloseoutOverrides } from "@/lib/data/repo";
 import { lapsedClients, revenueInRange, vaccinationState } from "@/lib/derive";
 import {
   formatDate,
@@ -60,6 +62,26 @@ export default async function ReportsPage({
     loadDayCloseoutOverrides(),
   ]);
   const { clients, pets, appointments: rawAppointments, vaccinations } = dataset;
+
+  // Brand-new business: with no clients there is no revenue, payout, or lapsed
+  // history to report. Show a friendly first screen instead of a page of
+  // zero-dollar sections and the misleading "everyone has been seen recently"
+  // (WS3 Slice C).
+  if (clients.length === 0) {
+    return (
+      <main className="px-4 py-5">
+        <h1 className="text-xl font-bold text-ink">Reports</h1>
+        <div className="mt-6">
+          <FirstRunEmptyState
+            title="No reports yet"
+            description="Add your first client and start booking grooms. Your revenue, payouts, and follow-ups will show up here as you work."
+            action={<AddHousehold mode={dataMode()} />}
+          />
+        </div>
+      </main>
+    );
+  }
+
   const appointments = collapseLoggedGroomDuplicates(rawAppointments);
   const threshold = parseThreshold(
     thresholdParam,

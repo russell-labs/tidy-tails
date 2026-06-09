@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { isActiveHouseholdSearch, shouldHideBottomNavForSearch } from "@/lib/searchUi";
 import { AddHousehold } from "./AddHousehold";
 import { ClientSearch } from "./ClientSearch";
+import { FirstRunEmptyState } from "./FirstRunEmptyState";
 import type { HouseholdCardData } from "./HouseholdCard";
 
 export function HomeSearch({
@@ -24,6 +25,21 @@ export function HomeSearch({
       delete document.body.dataset.tidySearchActive;
     };
   }, [hideBottomNav]);
+
+  // Brand-new business: no households yet. A search box over an empty book is
+  // pointless, so show a welcoming first screen whose only action is adding the
+  // first client (WS3 Slice C).
+  if (households.length === 0) {
+    return (
+      <main className="px-4 py-6">
+        <FirstRunEmptyState
+          title="Welcome to Tidy Tails"
+          description="Your book is empty. Add your first client and their pets to start booking grooms and tracking your day."
+          action={<AddHousehold mode={mode} />}
+        />
+      </main>
+    );
+  }
 
   return (
     <main className={`px-4 transition-[padding] duration-200 ${activeSearch ? "py-3" : "py-5"}`}>
