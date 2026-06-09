@@ -1,71 +1,101 @@
 import { expect, test } from "@playwright/test";
 
-// WS3 Slice B — onboarding wizard UI/validation smoke.
+// Onboarding wizard UI/validation smoke (WS3 + TT-004/005).
 //
-// The e2e harness runs the app in FIXTURES mode (NEXT_PUBLIC_USE_LIVE_DATA=off)
-// against a placeholder Supabase URL, with the e2e auth bypass on. So this test
-// drives the wizard's multi-step UI and client-side gating up to the review
-// step; it does NOT submit, because the real org-creation write path needs a
-// live database. The true signup -> confirm -> onboarding -> first-screen path
-// is the manual staging acceptance demo (per the WS3 plan), not this job.
+// Fixtures mode + the e2e auth bypass: this drives the wizard's multi-step UI
+// (structure → business → scheduling → locations → economics → review) and the
+// owned/rented economics branch + review Back/Edit. It does NOT submit — the real
+// org-creation write needs a live DB; that's the staging acceptance demo.
 
-test("onboarding wizard walks business -> scheduling -> locations -> economics -> review", async ({
+async function fillToLocations(page: import("@playwright/test").Page, structure: string) {
+  await page.goto("/onboarding");
+  await expect(page.getByText("Step 1 of 6 — Structure")).toBeVisible();
+  if (structure !== "own") {
+    await page.getByText(structure).click();
+  }
+  await page.getByRole("button", { name: "Continue" }).click(); // -> Business
+  await page.getByLabel("Business name").fill("Rusty's Shop");
+  await page.getByRole("button", { name: "Continue" }).click(); // -> Scheduling
+  await page.getByRole("button", { name: "Continue" }).click(); // -> Locations
+  await page.getByLabel("Name").fill("Rusty's Shop");
+  await page.getByLabel("Address").fill("5 Main St");
+}
+
+test("owner-operator can mark a location owned and enter expenses (no payout)", async ({
   page,
 }) => {
-  await page.goto("/onboarding");
+  await fillToLocations(page, "own");
+  // Structure 'own' defaults the location to owned.
+  await expect(page.getByRole("button", { name: "I own it" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await page.getByRole("button", { name: "Continue" }).click(); // -> Economics
 
-  // Step 1 — business name; Continue is gated until a name is entered.
-  await expect(page.getByText("Step 1 of 5 — Business")).toBeVisible();
+  await expect(page.getByText("Step 5 of 6 — Economics")).toBeVisible();
+  // Owned branch: expense categories, no "shop keeps %".
+  await expect(page.getByText("You keep 100% here.")).toBeVisible();
+  await expect(page.getByLabel("Rent / mortgage")).toBeVisible();
+  await expect(page.getByText("The shop keeps %")).toHaveCount(0);
+  await page.getByLabel("Rent / mortgage").fill("1500");
+  await page.getByRole("button", { name: "Continue" }).click(); // -> Review
+
+  await expect(page.getByText("Step 6 of 6 — Review")).toBeVisible();
+  await expect(page.getByText(/own — keep 100%, 1 expense/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Create my business" })).toBeVisible();
+});
+
+test("a rented location keeps the percent / daily-rate flow and validates the rate", async ({
+  page,
+}) => {
+  await fillToLocations(page, "I work at other shops");
+  // works_for_others defaults the location to rented.
+  await expect(
+    page.getByRole("button", { name: "I rent / get a cut" }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("button", { name: "Continue" }).click(); // -> Economics
+
+  await expect(page.getByLabel(/The shop.s cut/)).toBeVisible();
+  await page.getByLabel(/The shop.s cut/).selectOption("daily_rate");
   await expect(page.getByRole("button", { name: "Continue" })).toBeDisabled();
-
-  await page.getByLabel("Business name").fill("Cheryl's Mobile Grooming");
+  await page.getByLabel("Daily rate ($)").fill("85");
   await expect(page.getByRole("button", { name: "Continue" })).toBeEnabled();
-  await page.getByRole("button", { name: "Continue" }).click();
+});
 
-  // Step 2 — scheduling style (generic; not Sam-specific).
-  await expect(page.getByText("Step 2 of 5 — Scheduling")).toBeVisible();
-  await page.getByText("By appointment time (1:1 blocks)").click();
-  await page.getByRole("button", { name: "Continue" }).click();
-
-  // Step 3 — a generic location (name + address), not hardcoded gina/annette.
-  await expect(page.getByText("Step 3 of 5 — Locations")).toBeVisible();
-  await page.getByLabel("Name").fill("Downtown van");
-  await page.getByLabel("Address").fill("100 King St W, Toronto");
-  await page.getByRole("button", { name: "Continue" }).click();
-
-  // Step 4 — economics (percent payout default).
-  await expect(page.getByText("Step 4 of 5 — Economics")).toBeVisible();
-  await expect(page.getByLabel("Salon keeps %")).toBeVisible();
-  await page.getByRole("button", { name: "Continue" }).click();
-
-  // Step 5 — review reflects the captured answers and offers to create.
-  await expect(page.getByText("Step 5 of 5 — Review")).toBeVisible();
-  await expect(page.getByText("Cheryl's Mobile Grooming")).toBeVisible();
+test("the works-for-others structure de-emphasizes scheduling", async ({ page }) => {
+  await page.goto("/onboarding");
+  await page.getByText("I work at other shops").click();
+  await page.getByRole("button", { name: "Continue" }).click(); // -> Business
+  await page.getByLabel("Business name").fill("Chair Renter");
+  await page.getByRole("button", { name: "Continue" }).click(); // -> Scheduling
   await expect(
-    page.getByText(/Downtown van — 100 King St W, Toronto/),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Create my business" }),
+    page.getByText(/they set the schedule/i),
   ).toBeVisible();
 });
 
-test("onboarding requires a daily rate before leaving the economics step", async ({
-  page,
-}) => {
-  await page.goto("/onboarding");
+test("the review step supports Back and per-section Edit", async ({ page }) => {
+  await fillToLocations(page, "own");
+  await page.getByRole("button", { name: "Continue" }).click(); // -> Economics
+  await page.getByRole("button", { name: "Continue" }).click(); // -> Review
+  await expect(page.getByText("Step 6 of 6 — Review")).toBeVisible();
 
-  await page.getByLabel("Business name").fill("Flat Rate Grooming");
-  await page.getByRole("button", { name: "Continue" }).click();
-  await page.getByRole("button", { name: "Continue" }).click(); // scheduling default
+  // Per-section Edit jumps to the right step, pre-filled.
+  await page
+    .getByRole("button", { name: "Edit" })
+    .nth(1) // the "Business" row's Edit
+    .click();
+  await expect(page.getByText("Step 2 of 6 — Business")).toBeVisible();
+  await expect(page.getByLabel("Business name")).toHaveValue("Rusty's Shop");
+  await page.getByLabel("Business name").fill("Rusty's Grooming");
 
-  await page.getByLabel("Name").fill("Main shop");
-  await page.getByLabel("Address").fill("5 High St");
-  await page.getByRole("button", { name: "Continue" }).click();
+  // Walk forward to review and confirm the edit round-tripped.
+  await page.getByRole("button", { name: "Continue" }).click(); // -> Scheduling
+  await page.getByRole("button", { name: "Continue" }).click(); // -> Locations
+  await page.getByRole("button", { name: "Continue" }).click(); // -> Economics
+  await page.getByRole("button", { name: "Continue" }).click(); // -> Review
+  await expect(page.getByText(/Rusty's Grooming/)).toBeVisible();
 
-  // Switch this location to a flat daily rate but leave the rate blank.
-  await page.getByLabel("Payout model").selectOption("daily_rate");
-  await expect(page.getByRole("button", { name: "Continue" })).toBeDisabled();
-
-  await page.getByLabel("Daily rate ($)").fill("85");
-  await expect(page.getByRole("button", { name: "Continue" })).toBeEnabled();
+  // Review Back returns to Economics.
+  await page.getByRole("button", { name: "Back" }).click();
+  await expect(page.getByText("Step 5 of 6 — Economics")).toBeVisible();
 });
