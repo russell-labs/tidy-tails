@@ -160,25 +160,79 @@ export type OneToOneDaySummary = {
   bookedMinutes: number;
   softTarget: number;
   overTarget: boolean;
+  // TT-010: heaviness from the day's STRUCTURE (1:1 has no load points). The
+  // count of large/xl dogs booked, and whether the day is getting heavy.
+  largeDogs: number;
+  gettingHeavy: boolean;
 };
 
+// The day is "getting heavy" once booked time reaches ~80% of the working-day
+// window, OR two or more large dogs are on the slate (a coat-work signal that
+// the minutes alone miss). A soft caution, never a block.
+const HEAVY_MINUTES_FRACTION = 0.8;
+const HEAVY_LARGE_DOG_COUNT = 2;
+
 // Informational capacity for a day: dogs booked and total booked minutes against
-// a soft target (~5–7). Never a hard block — `overTarget` only flags a note.
+// a soft target (~5–7), plus the TT-010 heaviness signal. Never a hard block —
+// `overTarget`/`gettingHeavy` only flag notes. `size` per block is optional so
+// callers that don't track size (and existing call sites) keep working with a
+// large-dog count of 0.
 export function oneToOneDaySummary({
   date,
   blocks,
   softTarget,
+  workingDay = DEFAULT_WORKING_DAY,
 }: {
   date: string;
-  blocks: { durationMinutes: number }[];
+  blocks: { durationMinutes: number; size?: SizeClass }[];
   softTarget: number;
+  workingDay?: WorkingDay;
 }): OneToOneDaySummary {
   const bookedMinutes = blocks.reduce((sum, b) => sum + b.durationMinutes, 0);
+  const largeDogs = blocks.filter(
+    (b) => b.size === "large" || b.size === "xl",
+  ).length;
+  const heavyMinutes =
+    (workingDay.endMinutes - workingDay.startMinutes) * HEAVY_MINUTES_FRACTION;
+  const gettingHeavy =
+    bookedMinutes >= heavyMinutes || largeDogs >= HEAVY_LARGE_DOG_COUNT;
   return {
     date,
     totalDogs: blocks.length,
     bookedMinutes,
     softTarget,
     overTarget: blocks.length > softTarget,
+    largeDogs,
+    gettingHeavy,
   };
+}
+
+function compactDuration(minutes: number): string {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  if (h > 0 && m > 0) return `${h}h ${m}m`;
+  if (h > 0) return `${h}h`;
+  return `${m}m`;
+}
+
+// TT-010: the operator-facing caution for a heavy 1:1 day, or null when the day
+// is not heavy. Names the large dogs already booked and the booked time, and —
+// when large dogs are present — nudges a coat-type check before piling on
+// another big coat (mirrors the batched day-fit caution's intent).
+export function oneToOneHeavinessNote({
+  largeDogs,
+  bookedMinutes,
+  gettingHeavy,
+}: Pick<
+  OneToOneDaySummary,
+  "largeDogs" | "bookedMinutes" | "gettingHeavy"
+>): string | null {
+  if (!gettingHeavy) return null;
+  const lead =
+    largeDogs > 0
+      ? `${largeDogs} large dog${largeDogs === 1 ? "" : "s"} and ${compactDuration(bookedMinutes)} booked`
+      : `${compactDuration(bookedMinutes)} booked`;
+  const coat =
+    largeDogs > 0 ? " Check coat types before adding another large dog." : "";
+  return `${lead} — your day's getting full.${coat}`;
 }
