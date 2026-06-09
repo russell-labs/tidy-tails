@@ -1,7 +1,15 @@
 import Link from "next/link";
+import { inferSizeClass, type SizeClass } from "@/lib/dayCapacity";
 import type { ScheduledAppointment } from "@/lib/schedule";
-import { oneToOneDaySummary } from "@/lib/scheduling/oneToOne";
-import { formatMinutes, parseTimeToMinutes } from "@/lib/scheduling/time";
+import {
+  oneToOneDaySummary,
+  oneToOneHeavinessNote,
+} from "@/lib/scheduling/oneToOne";
+import {
+  formatMinutes,
+  parseTimeToMinutes,
+  type WorkingDay,
+} from "@/lib/scheduling/time";
 
 // 1:1 (one_to_one) day view (WS4a). One dog per time block, ordered by start,
 // with visible gaps and an informational capacity line against the soft target.
@@ -23,6 +31,7 @@ type Block = {
   endLabel: string | null;
   durationMinutes: number | null;
   petName: string;
+  size: SizeClass;
   service: string | null;
   location: string | null;
 };
@@ -32,11 +41,13 @@ export function OneToOneOpenedDay({
   rows,
   softTarget,
   bufferMinutes,
+  workingDay,
 }: {
   date: string;
   rows: ScheduledAppointment[];
   softTarget: number;
   bufferMinutes: number;
+  workingDay: WorkingDay;
 }) {
   const blocks: Block[] = rows
     .map((row): Block => {
@@ -50,6 +61,7 @@ export function OneToOneOpenedDay({
           start != null && duration != null ? formatMinutes(start + duration) : null,
         durationMinutes: duration,
         petName: row.pet?.name ?? "Dog",
+        size: row.pet ? inferSizeClass(row.pet) : "unknown",
         service: row.appointment.service,
         location: row.appointment.location ?? null,
       };
@@ -58,9 +70,14 @@ export function OneToOneOpenedDay({
 
   const summary = oneToOneDaySummary({
     date,
-    blocks: blocks.map((b) => ({ durationMinutes: b.durationMinutes ?? 0 })),
+    blocks: blocks.map((b) => ({
+      durationMinutes: b.durationMinutes ?? 0,
+      size: b.size,
+    })),
     softTarget,
+    workingDay,
   });
+  const heavinessNote = oneToOneHeavinessNote(summary);
 
   return (
     <div className="mt-3 flex flex-col gap-3">
@@ -76,6 +93,12 @@ export function OneToOneOpenedDay({
           {bufferMinutes > 0 ? ` · ${bufferMinutes}-min buffer on.` : ""}
         </p>
       </div>
+
+      {heavinessNote ? (
+        <p className="rounded-xl bg-warn-soft px-3.5 py-3 text-sm font-medium text-warn">
+          {heavinessNote}
+        </p>
+      ) : null}
 
       {blocks.length === 0 ? (
         <p className="rounded-xl border border-line bg-surface px-3.5 py-4 text-sm text-ink-soft">
