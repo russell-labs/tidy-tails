@@ -10,6 +10,7 @@ import {
 } from "@/lib/inboxReply";
 import { isExistingHouseholdForPlatformIntro } from "@/lib/messageCenterTemplates";
 import { getClientRecord, requireOrgId } from "@/lib/data/repo";
+import { resolveHouseholdSendNumber } from "@/lib/householdNumbers";
 import type { ClientRecord } from "@/lib/data/types";
 import { createServerSupabase, getCurrentUser } from "@/lib/supabase/server";
 import { getTwilioConfig, sendTwilioSms, toTwilioPhone } from "@/lib/twilio";
@@ -211,7 +212,23 @@ export async function sendClientSmsMessage(
   const record = await getClientRecord(validation.value.clientId);
   if (!record) return { status: "error", message: "That household could not be found." };
 
-  const to = toTwilioPhone(record.client.phone);
+  // TT-007: the operator may pick which household number to text. The server is
+  // authoritative — the chosen number must be on this household and textable.
+  const chosenNumber = resolveHouseholdSendNumber(
+    record.client,
+    formData.get("to_number")?.toString(),
+  );
+  if (!chosenNumber.ok) {
+    return {
+      status: "error",
+      message:
+        chosenNumber.reason === "not_textable"
+          ? "That number can't receive texts. Pick a mobile number."
+          : "That number isn't on this household. No text was sent.",
+    };
+  }
+
+  const to = toTwilioPhone(chosenNumber.value);
   if (!to) {
     return { status: "error", message: "That household phone number is not textable." };
   }

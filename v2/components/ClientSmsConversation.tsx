@@ -7,6 +7,11 @@ import type { Client } from "@/lib/data/types";
 import type { SmsMessage } from "@/lib/inboundSms";
 import { formatPhone, fullName } from "@/lib/format";
 import { buildSmsConversationView } from "@/lib/smsConversationView";
+import {
+  HouseholdNumberSelect,
+  defaultHouseholdNumber,
+  householdHasNumberChoice,
+} from "./HouseholdNumberSelect";
 import { SmsMessages } from "./SmsMessages";
 import { SubmitDogOverlay } from "./SubmitDog";
 
@@ -23,6 +28,8 @@ export function ClientSmsConversation({
   const router = useRouter();
   const [message, setMessage] = useState("");
   const [step, setStep] = useState<"write" | "review">("write");
+  const [toNumber, setToNumber] = useState(() => defaultHouseholdNumber(client));
+  const canChooseNumber = householdHasNumberChoice(client);
 
   async function submitMessage(
     previousState: InboxActionState,
@@ -84,6 +91,11 @@ export function ClientSmsConversation({
           <SubmitDogOverlay label="Sending text" show={pending} />
           <input type="hidden" name="client_id" value={client.id} />
           <input type="hidden" name="message" value={message} />
+          <input
+            type="hidden"
+            name="to_number"
+            value={canChooseNumber ? toNumber : ""}
+          />
 
           {state.status === "error" ? (
             <p className="mb-3 rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger-ink">
@@ -99,6 +111,13 @@ export function ClientSmsConversation({
 
           {step === "write" ? (
             <div className="space-y-2.5">
+              {canChooseNumber ? (
+                <HouseholdNumberSelect
+                  client={client}
+                  value={toNumber}
+                  onChange={setToNumber}
+                />
+              ) : null}
               <label className="flex flex-col gap-1.5">
                 <span className="text-sm font-medium text-ink-soft">
                   Message to {ownerName}
@@ -131,7 +150,7 @@ export function ClientSmsConversation({
               <div className="rounded-xl bg-canvas px-3.5 py-2.5 text-sm">
                 <span className="text-ink-soft">To </span>
                 <span className="font-semibold text-ink">{ownerName}</span>
-                <span className="text-ink-soft"> · {formatPhone(client.phone)}</span>
+                <span className="text-ink-soft"> · {formatPhone(toNumber)}</span>
               </div>
               <div className="whitespace-pre-wrap rounded-xl border border-line bg-canvas px-3.5 py-3 text-sm leading-relaxed text-ink">
                 {message}

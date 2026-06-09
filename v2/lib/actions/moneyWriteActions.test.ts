@@ -1067,6 +1067,51 @@ describe("createBooking — SMS consent gate (WS0)", () => {
     ).toBeUndefined();
   });
 
+  it("rejects a booking-text number that isn't on the household — before any write", async () => {
+    vi.stubEnv("TIDYTAILS_ENABLE_ADD_APPOINTMENT_WRITE", "on");
+    const record = clientRecord();
+    getClientRecordMock.mockResolvedValue({
+      ...record,
+      client: { ...record.client, sms_consent: true },
+    });
+
+    const result = await createBooking(
+      { status: "idle" },
+      bookingForm({ to_number: "7059999999" }),
+    );
+
+    expect(result).toMatchObject({
+      status: "error",
+      formError: "That number isn't on this household, so nothing was booked.",
+    });
+    expectNoSupabaseWrites();
+  });
+
+  it("rejects the landline for the booking text — before any write", async () => {
+    vi.stubEnv("TIDYTAILS_ENABLE_ADD_APPOINTMENT_WRITE", "on");
+    const record = clientRecord();
+    getClientRecordMock.mockResolvedValue({
+      ...record,
+      client: {
+        ...record.client,
+        sms_consent: true,
+        alt_contact: "Landline: 705-555-0300",
+      },
+    });
+
+    const result = await createBooking(
+      { status: "idle" },
+      bookingForm({ to_number: "7055550300" }),
+    );
+
+    expect(result).toMatchObject({
+      status: "error",
+      formError:
+        "That number can't receive texts. Pick a mobile number for the booking text.",
+    });
+    expectNoSupabaseWrites();
+  });
+
   it("records consent on the client when it is captured at booking", async () => {
     vi.stubEnv("TIDYTAILS_ENABLE_ADD_APPOINTMENT_WRITE", "on");
     getClientRecordMock.mockResolvedValue(clientRecord()); // not consented

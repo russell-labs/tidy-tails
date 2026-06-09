@@ -17,6 +17,7 @@
 import { revalidatePath } from "next/cache";
 import { recordAuditEvent } from "@/lib/audit.server";
 import { dataMode, getClientRecord, requireOrgId } from "@/lib/data/repo";
+import { resolveHouseholdSendNumber } from "@/lib/householdNumbers";
 import { createServerSupabase, getCurrentUser } from "@/lib/supabase/server";
 import { isReminderSendEnabled } from "@/lib/writeGate";
 import {
@@ -64,10 +65,11 @@ export async function prepareReminder(
   const clientId = String(formData.get("client_id") ?? "");
   const appointmentId = String(formData.get("appointment_id") ?? "");
   const rawMessage = String(formData.get("message") ?? "");
+  const chosenNumberRaw = String(formData.get("to_number") ?? "");
 
   // Re-fetch the household: the recipient phone and the appointment context
   // come from server-trusted data, never from the form. Only the message text
-  // is operator-supplied.
+  // (and which on-file number to text) is operator-supplied.
   const record = await getClientRecord(clientId);
   if (!record) {
     return {
@@ -81,8 +83,23 @@ export async function prepareReminder(
     appointmentId,
   });
 
+  // TT-007: the operator may pick which household number gets the reminder. The
+  // server is authoritative — the choice must be an on-file, textable number;
+  // no choice defaults to the primary cell.
+  const chosenNumber = resolveHouseholdSendNumber(record.client, chosenNumberRaw);
+  if (!chosenNumber.ok) {
+    return {
+      status: "error",
+      errors: {},
+      formError:
+        chosenNumber.reason === "not_textable"
+          ? "That number can't receive texts. Pick a mobile number for this reminder."
+          : "That number isn't on this household, so a reminder can't be prepared.",
+    };
+  }
+
   const validation = validateReminderInput({
-    phone: record.client.phone,
+    phone: chosenNumber.value,
     message: rawMessage,
   });
   if (!validation.ok) {

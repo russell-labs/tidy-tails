@@ -33,7 +33,8 @@ import type {
 import { lastKnownPrice, lastKnownService } from "@/lib/derive";
 import { serviceCodeFromLabel, serviceLabel } from "@/lib/data/live";
 import type { Appointment, Client, Pet } from "@/lib/data/types";
-import { formatMoney, formatReviewDate, fullName } from "@/lib/format";
+import { formatMoney, formatPhone, formatReviewDate, fullName } from "@/lib/format";
+import { householdNumberOptions } from "@/lib/householdNumbers";
 import { BookingTimeSlotPicker } from "./BookingTimeSlotPicker";
 import { Sheet } from "./Sheet";
 import { SubmitDogOverlay } from "./SubmitDog";
@@ -203,6 +204,16 @@ function BookingForm({
     Boolean(client.phone) && consentOnFile,
   );
   const [customerPhone, setCustomerPhone] = useState(client.phone);
+  // TT-007: which household number the booking text goes to. Empty = "the number
+  // above" (customer_phone, the primary), so single-number households and an
+  // edited primary are unchanged; a non-empty value is a chosen alternate cell,
+  // re-validated server-side. The landline is shown but never selectable.
+  const [bookingToNumber, setBookingToNumber] = useState("");
+  const altNumberOptions = householdNumberOptions({
+    phone: client.phone,
+    alt_contact: client.alt_contact,
+  }).filter((option) => option.kind !== "primary");
+  const hasAltNumbers = altNumberOptions.length > 0;
   const [petFees, setPetFees] = useState<Record<string, string>>(initialPetFees);
   const [notes, setNotes] = useState("");
   const [salonPayoutOverride, setSalonPayoutOverride] = useState("");
@@ -464,6 +475,7 @@ function BookingForm({
         value={smsConsentChecked ? "on" : ""}
       />
       <input type="hidden" name="customer_phone" value={customerPhone} />
+      <input type="hidden" name="to_number" value={bookingToNumber} />
       <input type="hidden" name="fee" value={primaryFee} />
       <input type="hidden" name="notes" value={notes} />
       <input
@@ -796,6 +808,27 @@ function BookingForm({
             </Field>
           ) : null}
 
+          {sendBookingText && hasAltNumbers ? (
+            <Field label="Send the booking text to">
+              <select
+                value={bookingToNumber}
+                onChange={(e) => setBookingToNumber(e.target.value)}
+                className={fieldClass}
+              >
+                <option value="">Text the number above (primary cell)</option>
+                {altNumberOptions.map((option) => (
+                  <option
+                    key={`${option.kind}-${option.value}`}
+                    value={option.value}
+                    disabled={!option.textable}
+                  >
+                    {option.label} · {formatPhone(option.value)}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          ) : null}
+
           <Field label="Notes (optional)" error={errors.notes}>
             <input
               type="text"
@@ -961,7 +994,7 @@ function DayFitCard({ assessment }: { assessment: DayFitAssessment }) {
         points.
       </p>
       <ul className="mt-2 list-disc space-y-1 pl-5 text-xs leading-relaxed">
-        {assessment.messages.slice(0, 3).map((message) => (
+        {assessment.messages.slice(0, 4).map((message) => (
           <li key={message}>{message}</li>
         ))}
       </ul>
