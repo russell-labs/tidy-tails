@@ -44,6 +44,7 @@ import {
   type BookingErrors,
 } from "@/lib/booking";
 import { fullName } from "@/lib/format";
+import { resolveHouseholdSendNumber } from "@/lib/householdNumbers";
 import { customerFacingLocationLabel } from "@/lib/locationFinance";
 import { readOperatorSettings } from "@/lib/operatorSettings.server";
 import { sendCustomerSms } from "./sendCustomerSms";
@@ -193,6 +194,30 @@ export async function createBooking(
         ? booking.customer_phone
         : record.client.phone,
   };
+
+  // TT-007: when a booking text is requested, the operator may pick which of the
+  // household's numbers it goes to. Validate that choice here — BEFORE any write
+  // — so an invalid pick fails fast and never leaves a saved appointment behind.
+  // No choice defaults to the (possibly just-edited) primary cell, so
+  // single-number bookings are unchanged.
+  let bookingSendTo = effectiveClient.phone;
+  if (booking.send_booking_text) {
+    const chosenNumber = resolveHouseholdSendNumber(
+      effectiveClient,
+      formData.get("to_number")?.toString(),
+    );
+    if (!chosenNumber.ok) {
+      return {
+        status: "error",
+        errors: {},
+        formError:
+          chosenNumber.reason === "not_textable"
+            ? "That number can't receive texts. Pick a mobile number for the booking text."
+            : "That number isn't on this household, so nothing was booked.",
+      };
+    }
+    bookingSendTo = chosenNumber.value;
+  }
 
   const summary: BookingSummary = {
     petName: petNames,
@@ -351,7 +376,7 @@ export async function createBooking(
     summary.bookingTextSend = await sendCustomerSms({
       clientId: booking.client_id,
       groomerId: user.id,
-      to: effectiveClient.phone,
+      to: bookingSendTo,
       body: bookingTextBody,
       label: "Booking",
     });

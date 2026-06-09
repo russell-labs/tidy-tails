@@ -202,6 +202,7 @@ export default async function AppointmentActionPage({
               ownerFirstName={client.first_name}
               ownerName={fullName(client.first_name, client.last_name)}
               phone={client.phone}
+              altContact={client.alt_contact}
               petName={target.petName}
               appointmentDate={target.appointmentDate}
               appointmentTime={target.appointmentTime}

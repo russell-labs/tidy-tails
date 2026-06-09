@@ -9,6 +9,11 @@ import {
 } from "@/lib/reminders";
 import { formatDate, formatPhone } from "@/lib/format";
 import type { OperatorSettings } from "@/lib/operatorSettings";
+import {
+  HouseholdNumberSelect,
+  defaultHouseholdNumber,
+  householdHasNumberChoice,
+} from "./HouseholdNumberSelect";
 import { Sheet } from "./Sheet";
 import { SubmitDogOverlay } from "./SubmitDog";
 
@@ -23,6 +28,7 @@ export function ScheduleReminder({
   ownerFirstName,
   ownerName,
   phone,
+  altContact,
   petName,
   appointmentDate,
   appointmentTime,
@@ -35,6 +41,7 @@ export function ScheduleReminder({
   ownerFirstName: string;
   ownerName: string;
   phone: string;
+  altContact: string | null;
   petName: string | null;
   appointmentDate: string;
   appointmentTime: string | null;
@@ -70,6 +77,7 @@ export function ScheduleReminder({
           ownerFirstName={ownerFirstName}
           ownerName={ownerName}
           phone={phone}
+          altContact={altContact}
           petName={petName}
           appointmentDate={appointmentDate}
           appointmentTime={appointmentTime}
@@ -89,6 +97,7 @@ function ScheduleReminderForm({
   ownerFirstName,
   ownerName,
   phone,
+  altContact,
   petName,
   appointmentDate,
   appointmentTime,
@@ -102,6 +111,7 @@ function ScheduleReminderForm({
   ownerFirstName: string;
   ownerName: string;
   phone: string;
+  altContact: string | null;
   petName: string | null;
   appointmentDate: string;
   appointmentTime: string | null;
@@ -113,6 +123,11 @@ function ScheduleReminderForm({
   >;
   onDone: () => void;
 }) {
+  const numberClient = { phone, alt_contact: altContact };
+  const [toNumber, setToNumber] = useState(() =>
+    defaultHouseholdNumber(numberClient),
+  );
+  const canChooseNumber = householdHasNumberChoice(numberClient);
   const [state, formAction, pending] = useActionState<ReminderState, FormData>(
     prepareReminder,
     { status: "idle" },
@@ -133,7 +148,7 @@ function ScheduleReminderForm({
   );
 
   function toReview() {
-    const validation = validateReminderInput({ phone, message });
+    const validation = validateReminderInput({ phone: toNumber, message });
     if (!validation.ok) {
       setErrors(validation.errors);
       return;
@@ -162,6 +177,7 @@ function ScheduleReminderForm({
       <input type="hidden" name="client_id" value={clientId} />
       <input type="hidden" name="appointment_id" value={appointmentId} />
       <input type="hidden" name="message" value={message} />
+      <input type="hidden" name="to_number" value={toNumber} />
 
       <p
         className={`rounded-lg px-3 py-2 text-xs font-medium ${
@@ -184,8 +200,16 @@ function ScheduleReminderForm({
       <div className="rounded-xl bg-canvas px-3.5 py-2.5 text-sm">
         <span className="text-ink-soft">To </span>
         <span className="font-semibold text-ink">{ownerName}</span>
-        <span className="text-ink-soft"> · {formatPhone(phone)}</span>
+        <span className="text-ink-soft"> · {formatPhone(toNumber)}</span>
       </div>
+
+      {canChooseNumber && step === "form" ? (
+        <HouseholdNumberSelect
+          client={numberClient}
+          value={toNumber}
+          onChange={setToNumber}
+        />
+      ) : null}
 
       <p className="rounded-lg bg-brand-soft px-3 py-2 text-xs font-medium text-brand-ink">
         Reminder for <span className="font-semibold">{petName ?? "the dog"}</span>{" "}

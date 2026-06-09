@@ -303,6 +303,146 @@ describe("prepareReminder", () => {
   });
 });
 
+describe("TT-007 — operator picks which household number to text", () => {
+  // A realistic toTwilioPhone so the chosen number is observable in the send
+  // (the default harness mock collapses everything to +17055550100).
+  function realisticToTwilioPhone() {
+    toTwilioPhoneMock.mockImplementation((phone: string) => {
+      const digits = phone.replace(/\D/g, "");
+      if (digits.length === 10) return `+1${digits}`;
+      if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`;
+      return null;
+    });
+  }
+
+  describe("sendClientSmsMessage", () => {
+    it("sends to the chosen secondary cell when it is on the household", async () => {
+      vi.stubEnv("TIDYTAILS_ENABLE_REMINDER_SEND", "on");
+      realisticToTwilioPhone();
+      getClientRecordMock.mockResolvedValue(
+        clientRecord({
+          client: { alt_contact: "Secondary: Jamie - 705-555-0200" },
+        }),
+      );
+
+      const result = await sendClientSmsMessage(
+        { status: "idle" },
+        form({
+          client_id: "client-1",
+          message: "Hi Jamie, see you soon.",
+          to_number: "705-555-0200",
+        }),
+      );
+
+      expect(result).toEqual({ status: "sent", message: "Text sent." });
+      expect(sendTwilioSmsMock).toHaveBeenCalledWith(
+        expect.objectContaining({ fromNumber: "+17055550199" }),
+        { to: "+17055550200", body: "Hi Jamie, see you soon." },
+      );
+    });
+
+    it("rejects the landline (it can't receive texts) and sends nothing", async () => {
+      vi.stubEnv("TIDYTAILS_ENABLE_REMINDER_SEND", "on");
+      realisticToTwilioPhone();
+      getClientRecordMock.mockResolvedValue(
+        clientRecord({ client: { alt_contact: "Landline: 705-555-0300" } }),
+      );
+
+      const result = await sendClientSmsMessage(
+        { status: "idle" },
+        form({
+          client_id: "client-1",
+          message: "Hi Mary.",
+          to_number: "705-555-0300",
+        }),
+      );
+
+      expect(result).toEqual({
+        status: "error",
+        message: "That number can't receive texts. Pick a mobile number.",
+      });
+      expectNoWritesOrSms();
+    });
+
+    it("rejects a number that does not belong to the household", async () => {
+      vi.stubEnv("TIDYTAILS_ENABLE_REMINDER_SEND", "on");
+      realisticToTwilioPhone();
+      getClientRecordMock.mockResolvedValue(clientRecord());
+
+      const result = await sendClientSmsMessage(
+        { status: "idle" },
+        form({
+          client_id: "client-1",
+          message: "Hi Mary.",
+          to_number: "705-555-9999",
+        }),
+      );
+
+      expect(result).toEqual({
+        status: "error",
+        message: "That number isn't on this household. No text was sent.",
+      });
+      expectNoWritesOrSms();
+    });
+  });
+
+  describe("prepareReminder", () => {
+    it("sends the reminder to the chosen secondary cell when it is on the household", async () => {
+      vi.stubEnv("TIDYTAILS_ENABLE_REMINDER_SEND", "on");
+      realisticToTwilioPhone();
+      getClientRecordMock.mockResolvedValue(
+        clientRecord({
+          client: { alt_contact: "Secondary: Jamie - 705-555-0200" },
+          appointments: [
+            appointment({ id: "appt-1", date: isoDate(3), time_slot: "10:30am" }),
+          ],
+        }),
+      );
+
+      const result = await prepareReminder(
+        { status: "idle" },
+        form({
+          client_id: "client-1",
+          appointment_id: "appt-1",
+          message: "Reminder for Kiwi tomorrow.",
+          to_number: "705-555-0200",
+        }),
+      );
+
+      expect(result).toMatchObject({ status: "sent" });
+      expect(sendTwilioSmsMock).toHaveBeenCalledWith(
+        expect.objectContaining({ fromNumber: "+17055550199" }),
+        { to: "+17055550200", body: "Reminder for Kiwi tomorrow." },
+      );
+    });
+
+    it("rejects the landline and prepares/sends nothing", async () => {
+      vi.stubEnv("TIDYTAILS_ENABLE_REMINDER_SEND", "on");
+      realisticToTwilioPhone();
+      getClientRecordMock.mockResolvedValue(
+        clientRecord({ client: { alt_contact: "Landline: 705-555-0300" } }),
+      );
+
+      const result = await prepareReminder(
+        { status: "idle" },
+        form({
+          client_id: "client-1",
+          appointment_id: "appt-1",
+          message: "Reminder for Kiwi tomorrow.",
+          to_number: "705-555-0300",
+        }),
+      );
+
+      expect(result).toMatchObject({
+        status: "error",
+        formError:
+          "That number can't receive texts. Pick a mobile number for this reminder.",
+      });
+      expectNoWritesOrSms();
+    });
+  });
+});
+
 describe("inbox message status actions", () => {
   it("marks an SMS handled with the scoped update payload", async () => {
     const result = await markSmsHandled(

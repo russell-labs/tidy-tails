@@ -448,6 +448,7 @@ export function assessDayFit({
     projectedLoadPoints,
     calibration,
     fit,
+    summary.largeDogs,
   );
 
   for (const profile of dogProfiles) {
@@ -521,6 +522,12 @@ function dayMessages(
   points: number,
   calibration: ScheduleCalibration,
   fit: LocationFit,
+  // TT-008: the large dogs ALREADY booked on the day (excludes any candidate
+  // being weighed). Defaults to `largeDogs` so the waterfall's day summary —
+  // which has no candidate — keeps its booked count. assessDayFit passes the
+  // booked-only count so the coat caution says "N already booked", never the
+  // projected total.
+  bookedLargeDogs: number = largeDogs,
 ): string[] {
   const messages = [
     `${dogs} dog${dogs === 1 ? "" : "s"} booked/projected · ${largeDogs} large · ${points.toFixed(2).replace(/\.00$/, "")} load points.`,
@@ -532,6 +539,15 @@ function dayMessages(
   } else if (largeDogs === calibration.largeDogMax) {
     messages.push(
       `${largeDogs} large dogs is Sam's usual labor maximum while bathing and drying solo.`,
+    );
+  }
+  // TT-008: once the day is getting heavy with large dogs, name the count
+  // already booked and nudge a coat-type check before piling on another big
+  // coat. Additive (a separate `if`, not chained off the max branches) so it
+  // still fires when a third large dog would tip the day to the labor max.
+  if (bookedLargeDogs >= 2) {
+    messages.push(
+      `${bookedLargeDogs} large dogs already booked, your day is getting heavy — check coat types before adding another large dog.`,
     );
   }
   if (fit.message) messages.push(fit.message);

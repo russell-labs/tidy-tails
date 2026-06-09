@@ -193,6 +193,50 @@ describe("day capacity rubric", () => {
     expect(assessment.projectedDogs).toBe(5);
     expect(["possible", "heavy"]).toContain(assessment.status);
     expect(assessment.messages.join(" ")).toMatch(/Check details/i);
+    // TT-008: two large dogs already booked → the coat-type caution fires.
+    expect(assessment.messages.join(" ")).toMatch(
+      /2 large dogs already booked.*check coat types before adding another large dog/i,
+    );
+  });
+
+  it("TT-008: cautions about coat types once large dogs already booked is getting heavy", () => {
+    const pets = [
+      pet({ id: "l1", breed: "German Shepherd" }),
+      pet({ id: "l2", breed: "Labrador Retriever" }),
+    ];
+    const summary = summarizeDayLoad({
+      date: "2026-05-29",
+      pets,
+      appointments: [
+        appointment({ pet_id: "l1" }),
+        appointment({ pet_id: "l2", time_slot: "10:30am" }),
+      ],
+    });
+    expect(summary.largeDogs).toBe(2);
+    // Sam's waterfall surfaces messages[1] — the caution must land there.
+    expect(summary.messages[1]).toMatch(
+      /2 large dogs already booked, your day is getting heavy — check coat types before adding another large dog\./,
+    );
+  });
+
+  it("TT-008: counts only already-booked large dogs, not a large candidate being weighed", () => {
+    const pets = [
+      pet({ id: "l1", breed: "German Shepherd" }),
+      pet({ id: "l2", breed: "Labrador Retriever" }),
+    ];
+    const assessment = assessDayFit({
+      date: "2026-05-29",
+      pets,
+      // Only ONE large dog is booked; the second large dog is the candidate.
+      appointments: [appointment({ pet_id: "l1" })],
+      candidatePet: pets[1],
+      serviceType: "full_groom",
+    });
+    expect(assessment.largeDogs).toBe(1);
+    expect(assessment.projectedLargeDogs).toBe(2);
+    // One booked large dog is below the caution floor — no "already booked" line,
+    // and it never claims "2 already booked" off the projected total.
+    expect(assessment.messages.join(" ")).not.toMatch(/already booked/i);
   });
 
   it("does not apply an automatic same-household discount", () => {
