@@ -8,6 +8,7 @@
 // (lib/actions/intake.ts) composes these; the intake sheet
 // (components/AddHousehold.tsx) reuses validateIntake client-side for review.
 
+import { formatAltContact } from "./altContact";
 import { digitsOnly } from "./format";
 import { parseStoredPetBirthDate } from "./petAge";
 
@@ -113,27 +114,6 @@ function parseChoice<T extends string>(
   const v = (raw ?? "").trim();
   if (v === "") return "unknown" as T;
   return allowed.includes(v as T) ? (v as T) : null;
-}
-
-function formatAltContact({
-  secondaryName,
-  secondaryCell,
-  landline,
-}: {
-  secondaryName: string | null;
-  secondaryCell: string | null;
-  landline: string | null;
-}): string | null {
-  const parts: string[] = [];
-  if (secondaryName && secondaryCell) {
-    parts.push(`Secondary: ${secondaryName} - ${secondaryCell}`);
-  } else if (secondaryName) {
-    parts.push(`Secondary: ${secondaryName}`);
-  } else if (secondaryCell) {
-    parts.push(`Secondary cell: ${secondaryCell}`);
-  }
-  if (landline) parts.push(`Landline: ${landline}`);
-  return parts.length > 0 ? parts.join("; ") : null;
 }
 
 function rawPets(raw: Partial<IntakeInput>): Partial<PetIntakeInput>[] {

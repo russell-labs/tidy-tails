@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useState } from "react";
+import { parseAltContact } from "@/lib/altContact";
 import { editClient, type EditClientState } from "@/lib/actions/editClient";
 import type { Client } from "@/lib/data/types";
 import { validateEditClient, type EditClientErrors } from "@/lib/editClient";
@@ -75,7 +76,12 @@ function EditClientForm({
   const [firstName, setFirstName] = useState(client.first_name);
   const [lastName, setLastName] = useState(client.last_name);
   const [phone, setPhone] = useState(client.phone);
-  const [altContact, setAltContact] = useState(client.alt_contact ?? "");
+  // The three structured contact fields are parsed out of the stored alt_contact
+  // so they pre-fill exactly as Add household captured them (parity, TT-003).
+  const initialAlt = parseAltContact(client.alt_contact);
+  const [secondaryName, setSecondaryName] = useState(initialAlt.secondaryName ?? "");
+  const [secondaryCell, setSecondaryCell] = useState(initialAlt.secondaryCell ?? "");
+  const [landline, setLandline] = useState(initialAlt.landline ?? "");
   const [email, setEmail] = useState(client.email ?? "");
   const [address, setAddress] = useState(client.address ?? "");
   const [notes, setNotes] = useState(client.notes ?? "");
@@ -86,7 +92,9 @@ function EditClientForm({
       first_name: firstName,
       last_name: lastName,
       phone,
-      alt_contact: altContact,
+      secondary_contact_name: secondaryName,
+      secondary_cell: secondaryCell,
+      landline,
       email,
       address,
       notes,
@@ -121,7 +129,9 @@ function EditClientForm({
       <input type="hidden" name="first_name" value={firstName} />
       <input type="hidden" name="last_name" value={lastName} />
       <input type="hidden" name="phone" value={phone} />
-      <input type="hidden" name="alt_contact" value={altContact} />
+      <input type="hidden" name="secondary_contact_name" value={secondaryName} />
+      <input type="hidden" name="secondary_cell" value={secondaryCell} />
+      <input type="hidden" name="landline" value={landline} />
       <input type="hidden" name="email" value={email} />
       <input type="hidden" name="address" value={address} />
       <input type="hidden" name="notes" value={notes} />
@@ -166,12 +176,35 @@ function EditClientForm({
               className={fieldClass}
             />
           </Field>
-          <Field label="Alternate contact" error={errors.alt_contact}>
+          <Field
+            label="Secondary contact name (optional)"
+            error={errors.secondary_contact_name}
+          >
             <input
               type="text"
-              value={altContact}
-              onChange={(e) => setAltContact(e.target.value)}
-              placeholder="Optional"
+              value={secondaryName}
+              onChange={(e) => setSecondaryName(e.target.value)}
+              placeholder="Partner, spouse, or backup contact"
+              className={fieldClass}
+            />
+          </Field>
+          <Field label="Secondary cell (optional)" error={errors.secondary_cell}>
+            <input
+              type="tel"
+              inputMode="tel"
+              value={secondaryCell}
+              onChange={(e) => setSecondaryCell(e.target.value)}
+              placeholder="416-555-0199"
+              className={fieldClass}
+            />
+          </Field>
+          <Field label="Landline (optional)" error={errors.landline}>
+            <input
+              type="tel"
+              inputMode="tel"
+              value={landline}
+              onChange={(e) => setLandline(e.target.value)}
+              placeholder="416-555-0200"
               className={fieldClass}
             />
           </Field>
@@ -219,6 +252,15 @@ function EditClientForm({
           <dl className="flex flex-col gap-1.5 rounded-xl border border-line bg-canvas px-3.5 py-3 text-sm">
             <ReviewRow label="Owner" value={ownerName} />
             <ReviewRow label="Phone" value={formatPhone(phone)} />
+            {secondaryName.trim() ? (
+              <ReviewRow label="Secondary" value={secondaryName} />
+            ) : null}
+            {secondaryCell.trim() ? (
+              <ReviewRow label="Secondary cell" value={formatPhone(secondaryCell)} />
+            ) : null}
+            {landline.trim() ? (
+              <ReviewRow label="Landline" value={formatPhone(landline)} />
+            ) : null}
             <ReviewRow label="Address" value={address.trim() || "Not set"} />
             <ReviewRow label="Notes" value={notes.trim() || "Not set"} />
           </dl>
