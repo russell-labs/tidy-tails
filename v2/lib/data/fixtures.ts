@@ -8,6 +8,7 @@
 // demonstrations stay accurate whenever the app is run.
 
 import type { Appointment, Client, Pet, Vaccination } from "./types";
+import type { OwnedLocation } from "../orgSettings";
 import type { SmsMessage } from "../inboundSms";
 
 function isoDaysAgo(n: number): string {
@@ -264,4 +265,64 @@ export const FIXTURE_SMS_MESSAGES: SmsMessage[] = [
     sent_at: new Date(Date.now() - 1000 * 60 * 26).toISOString(),
     created_at: new Date(Date.now() - 1000 * 60 * 26).toISOString(),
   },
+];
+
+// WS4b — a standalone owner-operator (own-facility) fixture for exercising the
+// take-home reports + Owner Economics export. Deliberately NOT merged into
+// FIXTURE_APPOINTMENTS (which feeds Sam's batched demo) — owner appointments
+// carry a free-text owned-location name, not gina/annette, and must not pollute
+// Sam's data. Dates are fixed so the monthly take-home math is deterministic.
+export const FIXTURE_OWNER_MONTH = {
+  from: "2026-05-01",
+  to: "2026-05-31",
+} as const;
+
+export const FIXTURE_OWNED_LOCATION: OwnedLocation = {
+  name: "Cheryl's Shop",
+  address: "5 Maple Street, Orillia",
+  expenses: {
+    rentMortgage: 1200,
+    utilities: 150,
+    supplies: 80,
+    upkeep: 20,
+    cleaning: 50,
+  },
+};
+
+function ownerAppt(
+  id: string,
+  date: string,
+  price: number,
+  tip: number | null,
+  notes: string | null = null,
+): Appointment {
+  return {
+    id,
+    client_id: `owner-c-${id}`,
+    pet_id: `owner-p-${id}`,
+    date,
+    time_slot: "10:00am",
+    duration_minutes: 90,
+    service: "Full groom",
+    price,
+    tip,
+    notes,
+    status: "booked",
+    location: FIXTURE_OWNED_LOCATION.name,
+    google_calendar_id: null,
+    google_event_id: null,
+    google_sync_status: null,
+    google_sync_error: null,
+    google_synced_at: null,
+    created_at: "2026-05-01T00:00:00.000Z",
+  };
+}
+
+// May 2026 at Cheryl's Shop: three collected visits (with tips) and one waiting
+// on payment (excluded from collected). Fees 280, tips 25, collected 305.
+export const FIXTURE_OWNER_APPOINTMENTS: Appointment[] = [
+  ownerAppt("o1", "2026-05-04", 90, 10),
+  ownerAppt("o2", "2026-05-12", 120, 0),
+  ownerAppt("o3", "2026-05-20", 70, 15),
+  ownerAppt("o4", "2026-05-26", 100, 20, "[payment:cash; payment_status:waiting]"),
 ];

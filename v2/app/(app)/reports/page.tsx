@@ -13,6 +13,9 @@ import {
   relativeDate,
 } from "@/lib/format";
 import { readOperatorSettings } from "@/lib/operatorSettings.server";
+import { loadOrgSettings } from "@/lib/orgSettings.server";
+import { buildOwnerTakeHomeView } from "@/lib/ownerEconomics";
+import { OwnerTakeHomeSection } from "@/components/OwnerTakeHomeSection";
 import { parsePaymentInfo } from "@/lib/payments";
 import {
   calculateDayLocationMoney,
@@ -56,11 +59,13 @@ export default async function ReportsPage({
     lapsed: lapsedParam,
   } = await searchParams;
   const { year, month } = parseMonth(monthParam);
-  const [operatorSettings, dataset, closeoutOverrides] = await Promise.all([
-    readOperatorSettings(),
-    loadDataset(),
-    loadDayCloseoutOverrides(),
-  ]);
+  const [operatorSettings, orgSettings, dataset, closeoutOverrides] =
+    await Promise.all([
+      readOperatorSettings(),
+      loadOrgSettings(),
+      loadDataset(),
+      loadDayCloseoutOverrides(),
+    ]);
   const { clients, pets, appointments: rawAppointments, vaccinations } = dataset;
 
   // Brand-new business: with no clients there is no revenue, payout, or lapsed
@@ -142,6 +147,18 @@ export default async function ReportsPage({
   );
   const closeoutFinal = closeoutRows.reduce((sum, row) => sum + row.salonPayout, 0);
   const closeoutOverridesCount = closeoutRows.filter((row) => row.override).length;
+  // WS4b — an owner-operator (org with an owned location) sees "Your take-home"
+  // in place of "Salon payouts". Triggering on the PRESENCE of an owned location
+  // means a hybrid org (owned + rented) still gets owner take-home for its owned
+  // shop; rented-side math is WS4c. Sam (no owned location) keeps the salon
+  // section verbatim.
+  const ownedLocations = orgSettings.ownedLocations;
+  const ownerTakeHomeView = buildOwnerTakeHomeView({
+    ownedLocations,
+    appointments,
+    from,
+    to,
+  });
   const clientsById = new Map(clients.map((client) => [client.id, client]));
   const petsById = new Map(pets.map((pet) => [pet.id, pet]));
   const waitingPayments = appointments
@@ -239,7 +256,11 @@ export default async function ReportsPage({
         </p>
       </section>
 
-      {/* Salon payouts ----------------------------------------------------- */}
+      {/* Owner take-home (WS4b) replaces Salon payouts for owned orgs ------- */}
+      {ownedLocations.length > 0 ? (
+        <OwnerTakeHomeSection view={ownerTakeHomeView} />
+      ) : (
+      /* Salon payouts ----------------------------------------------------- */
       <section className="mt-7">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-faint">
           Salon payouts
@@ -294,6 +315,7 @@ export default async function ReportsPage({
           </ul>
         )}
       </section>
+      )}
 
       {/* Payment follow-up -------------------------------------------------- */}
       <section className="mt-7">

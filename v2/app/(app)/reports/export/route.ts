@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { recordAuditEvent } from "@/lib/audit.server";
 import { createBookkeeperWorkbookBuffer } from "@/lib/bookkeeperExport";
 import { loadDataset, loadDayCloseoutOverrides } from "@/lib/data/repo";
+import { loadOrgSettings } from "@/lib/orgSettings.server";
 import { getCurrentUser } from "@/lib/supabase/server";
 
 function parseMonth(raw: string | null): { year: number; month: number } {
@@ -47,10 +48,12 @@ export async function GET(request: NextRequest) {
   const user = await getCurrentUser();
   if (!user) return new NextResponse("Unauthorized", { status: 401 });
 
-  const [{ clients, pets, appointments }, closeoutOverrides] = await Promise.all([
-    loadDataset(),
-    loadDayCloseoutOverrides(),
-  ]);
+  const [{ clients, pets, appointments }, closeoutOverrides, orgSettings] =
+    await Promise.all([
+      loadDataset(),
+      loadDayCloseoutOverrides(),
+      loadOrgSettings(),
+    ]);
   const { from, to, period } = rangeFromParams(
     request,
     appointments.map((a) => a.date),
@@ -63,6 +66,7 @@ export async function GET(request: NextRequest) {
     from,
     to,
     period,
+    ownedLocations: orgSettings.ownedLocations,
   });
   await recordAuditEvent({
     eventType: "bookkeeper.exported",

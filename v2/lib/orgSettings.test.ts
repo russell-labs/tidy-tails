@@ -74,3 +74,74 @@ describe("per-org location validation", () => {
     expect(orgLocationAddress(settings, "nope")).toBeNull();
   });
 });
+
+describe("orgSettings — economics (WS4b)", () => {
+  const raw = {
+    scheduling_style: "one_to_one",
+    settings: {
+      businessStructure: "own",
+      locations: [
+        {
+          type: "owned",
+          name: "Cheryl's Shop",
+          address: "5 Maple St",
+          expenses: {
+            rentMortgage: 1200,
+            utilities: 150,
+            supplies: 80,
+            upkeep: null,
+            cleaning: 40,
+          },
+        },
+      ],
+    },
+  };
+
+  it("exposes businessStructure", () => {
+    expect(normalizeOrgSettings(raw).businessStructure).toBe("own");
+  });
+
+  it("exposes owned locations with their expenses", () => {
+    expect(normalizeOrgSettings(raw).ownedLocations).toEqual([
+      {
+        name: "Cheryl's Shop",
+        address: "5 Maple St",
+        expenses: {
+          rentMortgage: 1200,
+          utilities: 150,
+          supplies: 80,
+          upkeep: null,
+          cleaning: 40,
+        },
+      },
+    ]);
+  });
+
+  it("keeps the legacy name+address locations list working", () => {
+    expect(normalizeOrgSettings(raw).locations).toEqual([
+      { name: "Cheryl's Shop", address: "5 Maple St" },
+    ]);
+  });
+
+  it("ignores rented locations in the owned list", () => {
+    const hybrid = {
+      scheduling_style: "one_to_one",
+      settings: {
+        businessStructure: "hybrid",
+        locations: [
+          { type: "owned", name: "Cheryl's Shop", address: "5 Maple St", expenses: {} },
+          { type: "rented", name: "Gina's", address: "60 Olive", payoutType: "percent", salonKeepsPercent: 47, dailyRate: null },
+        ],
+      },
+    };
+    const owned = normalizeOrgSettings(hybrid).ownedLocations;
+    expect(owned).toHaveLength(1);
+    expect(owned[0].name).toBe("Cheryl's Shop");
+  });
+
+  it("defaults to empty economics for a Sam-like (no settings) org", () => {
+    const s = normalizeOrgSettings({ scheduling_style: "batched", settings: {} });
+    expect(s.businessStructure).toBeNull();
+    expect(s.ownedLocations).toEqual([]);
+  });
+});
