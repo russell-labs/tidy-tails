@@ -1,3 +1,4 @@
+import { formatAltContact } from "./altContact";
 import { digitsOnly } from "./format";
 
 export type EditClientInput = {
@@ -5,7 +6,12 @@ export type EditClientInput = {
   first_name: string;
   last_name: string;
   phone: string;
-  alt_contact: string;
+  // The three structured "other contact" fields (parity with Add household).
+  // They are recombined into the single `alt_contact` column on save; there are
+  // no secondary_contact_name / secondary_cell columns.
+  secondary_contact_name: string;
+  secondary_cell: string;
+  landline: string;
   email: string;
   address: string;
   notes: string;
@@ -41,6 +47,14 @@ function optionalText(v: string | undefined): string | null {
   return t === "" ? null : t;
 }
 
+// Same rule as intake: an optional phone is valid when empty, or carries a North
+// American digit count (10, or 11 with a leading 1).
+function phoneLooksValid(phone: string | null): boolean {
+  if (!phone) return true;
+  const d = digitsOnly(phone);
+  return d.length === 10 || (d.length === 11 && d.startsWith("1"));
+}
+
 export function validateEditClient(
   raw: Partial<EditClientInput>,
 ): EditClientValidationResult {
@@ -70,10 +84,24 @@ export function validateEditClient(
     errors.phone = "Enter a 10-digit phone number.";
   }
 
-  const alt_contact = optionalText(raw.alt_contact);
-  if (alt_contact && alt_contact.length > TEXT_MAX) {
-    errors.alt_contact = "That alternate contact is too long.";
+  const secondaryName = optionalText(raw.secondary_contact_name);
+  if (secondaryName && secondaryName.length > NAME_MAX) {
+    errors.secondary_contact_name = "That name is too long.";
   }
+
+  const secondaryCell = optionalText(raw.secondary_cell);
+  if (!phoneLooksValid(secondaryCell)) {
+    errors.secondary_cell = "Enter a 10-digit phone number.";
+  }
+
+  const landline = optionalText(raw.landline);
+  if (!phoneLooksValid(landline)) {
+    errors.landline = "Enter a 10-digit phone number.";
+  }
+
+  // Recombine into the single alt_contact column via the shared formatter, so
+  // an edit produces a byte-identical string to what create would write.
+  const alt_contact = formatAltContact({ secondaryName, secondaryCell, landline });
 
   const email = optionalText(raw.email);
   if (email && (email.length > EMAIL_MAX || !EMAIL_RE.test(email))) {
