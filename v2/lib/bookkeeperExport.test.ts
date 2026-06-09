@@ -240,3 +240,107 @@ describe("createBookkeeperWorkbookBuffer", () => {
     expect(closeouts?.getCell("F2").value).toBe("Rounded at end of day");
   });
 });
+
+import {
+  FIXTURE_OWNED_LOCATION,
+  FIXTURE_OWNER_APPOINTMENTS,
+  FIXTURE_OWNER_MONTH,
+} from "./data/fixtures";
+
+const OWNER_ECONOMICS_HEADERS = [
+  "Location",
+  "Fees",
+  "Tips",
+  "Collected",
+  "Rent / mortgage",
+  "Utilities",
+  "Supplies",
+  "Upkeep",
+  "Cleaning",
+  "Total costs",
+  "Take-home",
+];
+
+async function loadWorkbook(buffer: ArrayBuffer): Promise<ExcelJS.Workbook> {
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(
+    Buffer.from(buffer) as unknown as Parameters<typeof workbook.xlsx.load>[0],
+  );
+  return workbook;
+}
+
+describe("createBookkeeperWorkbookBuffer — Owner Economics (WS4b)", () => {
+  it("Sam-unchanged: no ownedLocations → no Owner Economics sheet, same three sheets", async () => {
+    const buffer = await createBookkeeperWorkbookBuffer({
+      clients,
+      pets,
+      appointments,
+      closeoutOverrides,
+      from: "2026-01-01",
+      to: "2026-12-31",
+      period: "all",
+    });
+    const workbook = await loadWorkbook(buffer);
+    expect(workbook.worksheets.map((w) => w.name)).toEqual([
+      "Bookkeeper Export",
+      "Summary",
+      "Day Closeouts",
+    ]);
+    expect(workbook.getWorksheet("Owner Economics")).toBeUndefined();
+  });
+
+  it("owned org: appends an Owner Economics sheet with fees, tips, costs, take-home", async () => {
+    const buffer = await createBookkeeperWorkbookBuffer({
+      clients: [],
+      pets: [],
+      appointments: FIXTURE_OWNER_APPOINTMENTS,
+      from: FIXTURE_OWNER_MONTH.from,
+      to: FIXTURE_OWNER_MONTH.to,
+      period: "month",
+      ownedLocations: [FIXTURE_OWNED_LOCATION],
+    });
+    const workbook = await loadWorkbook(buffer);
+    const sheet = workbook.getWorksheet("Owner Economics");
+    expect(sheet).toBeDefined();
+    expect(sheet?.getRow(1).values).toEqual([, ...OWNER_ECONOMICS_HEADERS]);
+    expect(sheet?.getCell("A2").value).toBe("Cheryl's Shop");
+    expect(sheet?.getCell("B2").value).toBe(280); // fees
+    expect(sheet?.getCell("C2").value).toBe(25); // tips
+    expect(sheet?.getCell("D2").value).toBe(305); // collected
+    expect(sheet?.getCell("E2").value).toBe(1200); // rent
+    expect(sheet?.getCell("J2").value).toBe(1500); // total costs
+    expect(sheet?.getCell("K2").value).toBe(-1195); // take-home = 305 - 1500
+    // The other sheets are still present and unchanged.
+    expect(workbook.getWorksheet("Bookkeeper Export")).toBeDefined();
+    expect(workbook.getWorksheet("Day Closeouts")).toBeDefined();
+  });
+
+  it("owned org with no expenses on file leaves Take-home blank (not 0)", async () => {
+    const buffer = await createBookkeeperWorkbookBuffer({
+      clients: [],
+      pets: [],
+      appointments: FIXTURE_OWNER_APPOINTMENTS,
+      from: FIXTURE_OWNER_MONTH.from,
+      to: FIXTURE_OWNER_MONTH.to,
+      period: "month",
+      ownedLocations: [
+        {
+          name: FIXTURE_OWNED_LOCATION.name,
+          address: FIXTURE_OWNED_LOCATION.address,
+          expenses: {
+            rentMortgage: null,
+            utilities: null,
+            supplies: null,
+            upkeep: null,
+            cleaning: null,
+          },
+        },
+      ],
+    });
+    const workbook = await loadWorkbook(buffer);
+    const sheet = workbook.getWorksheet("Owner Economics");
+    expect(sheet?.getCell("D2").value).toBe(305); // collected still shown
+    expect(sheet?.getCell("J2").value).toBeNull(); // total costs blank
+    expect(sheet?.getCell("K2").value).toBeNull(); // take-home blank, not 0
+  });
+});

@@ -2,6 +2,8 @@ import ExcelJS from "exceljs";
 import { collapseLoggedGroomDuplicates } from "./appointmentLedger";
 import { bookingLocationLabel } from "./booking";
 import type { Appointment, Client, DayCloseoutOverride, Pet } from "./data/types";
+import type { OwnedLocation } from "./orgSettings";
+import { isWholeMonth, ownerLocationTakeHome } from "./ownerEconomics";
 import { parsePaymentInfo, stripPaymentInfo } from "./payments";
 import { stripSalonPayoutOverride } from "./payoutOverride";
 
@@ -42,6 +44,88 @@ const DAY_CLOSEOUT_HEADERS = [
   "Difference",
   "Note",
 ] as const;
+
+// WS4b — owner-operator economics, appended only for an org with owned locations.
+// Sam's workbook (no owned locations) is unchanged: this sheet is never added.
+const OWNER_ECONOMICS_HEADERS = [
+  "Location",
+  "Fees",
+  "Tips",
+  "Collected",
+  "Rent / mortgage",
+  "Utilities",
+  "Supplies",
+  "Upkeep",
+  "Cleaning",
+  "Total costs",
+  "Take-home",
+] as const;
+
+function addOwnerEconomicsSheet(
+  workbook: ExcelJS.Workbook,
+  {
+    ownedLocations,
+    appointments,
+    from,
+    to,
+  }: {
+    ownedLocations: OwnedLocation[];
+    appointments: Appointment[];
+    from: string;
+    to: string;
+  },
+): void {
+  // Take-home is only honest for a full calendar month of recurring expenses.
+  const showTakeHome = isWholeMonth(from, to);
+  const sheet = workbook.addWorksheet("Owner Economics", {
+    views: [{ state: "frozen", ySplit: 1 }],
+  });
+  sheet.addRow([...OWNER_ECONOMICS_HEADERS]);
+  for (const location of ownedLocations) {
+    const t = ownerLocationTakeHome({
+      locationName: location.name,
+      appointments,
+      from,
+      to,
+      expenses: location.expenses,
+    });
+    sheet.addRow([
+      location.name,
+      t.fees,
+      t.tips,
+      t.collected,
+      location.expenses.rentMortgage,
+      location.expenses.utilities,
+      location.expenses.supplies,
+      location.expenses.upkeep,
+      location.expenses.cleaning,
+      t.hasExpensesOnFile ? t.totalExpenses : null,
+      showTakeHome && t.hasExpensesOnFile ? t.takeHome : null,
+    ]);
+  }
+  sheet.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
+  sheet.getRow(1).fill = {
+    type: "pattern",
+    pattern: "solid",
+    fgColor: { argb: "FF6D28D9" },
+  };
+  sheet.columns = [
+    { width: 22 },
+    { width: 12 },
+    { width: 12 },
+    { width: 14 },
+    { width: 16 },
+    { width: 12 },
+    { width: 12 },
+    { width: 12 },
+    { width: 12 },
+    { width: 14 },
+    { width: 14 },
+  ];
+  for (let column = 2; column <= OWNER_ECONOMICS_HEADERS.length; column += 1) {
+    sheet.getColumn(column).numFmt = "$#,##0.00";
+  }
+}
 
 export function buildBookkeeperRows({
   clients,
@@ -96,7 +180,11 @@ export async function createBookkeeperWorkbookBuffer({
   to,
   period,
   closeoutOverrides = [],
-}: ExportInput & { period: string }): Promise<ArrayBuffer> {
+  ownedLocations = [],
+}: ExportInput & {
+  period: string;
+  ownedLocations?: OwnedLocation[];
+}): Promise<ArrayBuffer> {
   const rows = buildBookkeeperRows({ clients, pets, appointments, from, to });
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "Tidy Tails";
@@ -196,6 +284,11 @@ export async function createBookkeeperWorkbookBuffer({
   ];
   for (const column of [3, 4, 5]) {
     closeouts.getColumn(column).numFmt = "$#,##0.00";
+  }
+
+  // WS4b — owner-operator economics last, only when the org has owned locations.
+  if (ownedLocations.length > 0) {
+    addOwnerEconomicsSheet(workbook, { ownedLocations, appointments, from, to });
   }
 
   const buffer = await workbook.xlsx.writeBuffer();
