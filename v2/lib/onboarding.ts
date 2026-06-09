@@ -1,33 +1,67 @@
-// Onboarding input capture for WS3 (the front door).
+// Onboarding input capture for the front door (WS3 + TT-004/005).
 //
 // Pure, DB-free shaping of the onboarding wizard's answers into the values the
-// `createOrganization` server action persists: a business name, a scheduling
-// style, and one or more GENERIC locations with per-location economics.
+// `createOrganization` server action persists. It captures the business
+// STRUCTURE (own / works-for-others / both), a single scheduling style for the
+// owned operation, and one or more locations each typed OWNED or RENTED:
+//   - owned  → the groomer keeps 100% and tracks expenses (no payout split).
+//   - rented → the existing percent / daily-rate split with the shop.
 //
-// WS3 only CAPTURES and STORES these — the 1:1 scheduling engine and the
-// economics engine are WS4. Locations are arbitrary (name + address); there is
-// no hardcoded gina/annette map here (that map in operatorSettings.ts is
-// Sam-specific and stays untouched until WS4 generalizes the engine). The only
-// shape reused from operatorSettings is `LocationPayoutType`.
+// This is the CAPTURE side of WS4b: it only stores the structure + per-location
+// type + expenses into org_settings.settings. Take-home / expense REPORTING and
+// the rented-location PAYOUT MATH (Gina's split, tip-splitting) remain WS4b/WS4c.
+// No DB migration — it all rides the existing org_settings.settings jsonb.
 
 import type { LocationPayoutType } from "./operatorSettings";
 
 export type SchedulingStyle = "batched" | "one_to_one";
-
 export const SCHEDULING_STYLES = ["batched", "one_to_one"] as const;
 
-export type OnboardingLocation = {
+export type BusinessStructure = "own" | "works_for_others" | "hybrid";
+export const BUSINESS_STRUCTURES = ["own", "works_for_others", "hybrid"] as const;
+
+// Owned-location expense categories (TT-004). Optional labeled amounts — we
+// capture whatever the operator enters; nothing is required. Reporting is WS4b.
+export type LocationExpenses = {
+  rentMortgage: number | null;
+  utilities: number | null;
+  supplies: number | null;
+  upkeep: number | null;
+  cleaning: number | null;
+};
+
+export const EXPENSE_CATEGORIES = [
+  { key: "rentMortgage", label: "Rent / mortgage" },
+  { key: "utilities", label: "Utilities" },
+  { key: "supplies", label: "Supplies" },
+  { key: "upkeep", label: "Upkeep" },
+  { key: "cleaning", label: "Cleaning" },
+] as const satisfies readonly { key: keyof LocationExpenses; label: string }[];
+
+export type OwnedLocation = {
+  type: "owned";
   name: string;
   address: string;
+  expenses: LocationExpenses;
+};
+
+export type RentedLocation = {
+  type: "rented";
+  name: string;
+  address: string;
+  // For `percent` the shop keeps this %; for `daily_rate` it is 0 and dailyRate
+  // carries the value. (A percentage is the same number whether framed "the shop
+  // keeps X%" or "you owe X%" — copy differs, the stored split does not.)
   payoutType: LocationPayoutType;
-  // Kept for BOTH payout types so WS4 reads one shape: for `percent` the salon
-  // keeps this %; for `daily_rate` it is 0 and dailyRate carries the value.
   salonKeepsPercent: number;
   dailyRate: number | null;
 };
 
+export type OnboardingLocation = OwnedLocation | RentedLocation;
+
 export type OnboardingInput = {
   businessName: string;
+  businessStructure: BusinessStructure;
   schedulingStyle: SchedulingStyle;
   locations: OnboardingLocation[];
 };
@@ -39,7 +73,10 @@ export type OnboardingParseResult =
 // The shape the server action writes into the org_settings row (minus org_id).
 export type OrgSettingsSeed = {
   scheduling_style: SchedulingStyle;
-  settings: { locations: OnboardingLocation[] };
+  settings: {
+    businessStructure: BusinessStructure;
+    locations: OnboardingLocation[];
+  };
 };
 
 export const MAX_LOCATIONS = 10;
@@ -54,6 +91,12 @@ function asSchedulingStyle(raw: unknown): SchedulingStyle {
   // Coerce anything unexpected to the load-based default (Sam's style); the
   // wizard always submits a valid choice, so this only guards malformed input.
   return raw === "one_to_one" ? "one_to_one" : "batched";
+}
+
+function asBusinessStructure(raw: unknown): BusinessStructure {
+  return raw === "works_for_others" || raw === "hybrid"
+    ? raw
+    : "own"; // default: runs their own business
 }
 
 function asPayoutType(raw: unknown): LocationPayoutType {
@@ -73,17 +116,35 @@ function asMoney(raw: unknown): number | null {
   return Math.round(value * 100) / 100;
 }
 
+function normalizeExpenses(raw: unknown): LocationExpenses {
+  const source =
+    raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+  return {
+    rentMortgage: asMoney(source.rentMortgage),
+    utilities: asMoney(source.utilities),
+    supplies: asMoney(source.supplies),
+    upkeep: asMoney(source.upkeep),
+    cleaning: asMoney(source.cleaning),
+  };
+}
+
 function normalizeLocation(raw: unknown):
   | { ok: true; value: OnboardingLocation }
   | { ok: false; error: string } {
   const source =
-    raw && typeof raw === "object"
-      ? (raw as Record<string, unknown>)
-      : {};
+    raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
   const name = asString(source.name).slice(0, LOCATION_FIELD_MAX);
   const address = asString(source.address).slice(0, LOCATION_FIELD_MAX);
   if (!name) return { ok: false, error: "Each location needs a name." };
   if (!address) return { ok: false, error: "Each location needs an address." };
+
+  // Back-compat: a location with no `type` is the pre-TT-004 rented model.
+  if (source.type === "owned") {
+    return {
+      ok: true,
+      value: { type: "owned", name, address, expenses: normalizeExpenses(source.expenses) },
+    };
+  }
 
   const payoutType = asPayoutType(source.payoutType);
   const salonKeepsPercent =
@@ -96,7 +157,10 @@ function normalizeLocation(raw: unknown):
     };
   }
 
-  return { ok: true, value: { name, address, payoutType, salonKeepsPercent, dailyRate } };
+  return {
+    ok: true,
+    value: { type: "rented", name, address, payoutType, salonKeepsPercent, dailyRate },
+  };
 }
 
 // Server-authoritative validation + normalization of the wizard payload.
@@ -128,6 +192,7 @@ export function normalizeOnboardingInput(raw: unknown): OnboardingParseResult {
     ok: true,
     value: {
       businessName,
+      businessStructure: asBusinessStructure(source.businessStructure),
       schedulingStyle: asSchedulingStyle(source.schedulingStyle),
       locations,
     },
@@ -138,6 +203,9 @@ export function normalizeOnboardingInput(raw: unknown): OnboardingParseResult {
 export function buildOrgSettings(input: OnboardingInput): OrgSettingsSeed {
   return {
     scheduling_style: input.schedulingStyle,
-    settings: { locations: input.locations },
+    settings: {
+      businessStructure: input.businessStructure,
+      locations: input.locations,
+    },
   };
 }
