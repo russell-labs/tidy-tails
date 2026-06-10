@@ -149,6 +149,28 @@ export function scheduledAppointmentGroupFor(
   );
 }
 
+// The dogs booked in one same-household time bubble, as Pet records, with the
+// opened appointment's pet first so a consumer that defaults to `pets[0]` (e.g.
+// LogGroom) selects the dog whose appointment is being viewed. Deduped by pet,
+// and pets missing from `householdPets` are dropped. A single-dog booking
+// returns just `[primaryPet]`.
+export function appointmentGroupPets(
+  group: Appointment[],
+  householdPets: Pet[],
+  primaryPet: Pet,
+): Pet[] {
+  const result: Pet[] = [primaryPet];
+  const seen = new Set<string>([primaryPet.id]);
+  for (const appointment of group) {
+    if (seen.has(appointment.pet_id)) continue;
+    const pet = householdPets.find((candidate) => candidate.id === appointment.pet_id);
+    if (!pet) continue;
+    seen.add(pet.id);
+    result.push(pet);
+  }
+  return result;
+}
+
 export function weekRangeForDate(rawDate: string, today = new Date()): WeekRange {
   const parsed = /^\d{4}-\d{2}-\d{2}$/.test(rawDate)
     ? new Date(`${rawDate}T12:00:00`)

@@ -90,7 +90,9 @@ export function LogGroom({
   );
 }
 
-function GroomForm({
+// Exported for component tests — the live form is reached through the Sheet,
+// which renders via a portal and only when open, so tests drive it directly.
+export function GroomForm({
   client,
   pets,
   appointments,

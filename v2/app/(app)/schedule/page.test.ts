@@ -26,6 +26,21 @@ describe("schedule appointment tiles", () => {
     expect(source).toContain("Not started");
   });
 
+  it("passes the booked household dogs into LogGroom for same-household bookings", () => {
+    const source = readFileSync(
+      "app/(app)/schedule/appointments/[appointmentId]/page.tsx",
+      "utf8",
+    );
+
+    // The picker only appears when LogGroom gets the group's dogs — a revert to
+    // the single-pet `pets={[pet]}` would drop the dropdown for combined
+    // bookings, so guard the wiring explicitly.
+    expect(source).toContain(
+      "pets={appointmentGroupPets(appointmentGroup, householdPets, pet)}",
+    );
+    expect(source).not.toContain("pets={[pet]}");
+  });
+
   it("uses distinct workboard tones for active and logged schedule cards", () => {
     const source = readFileSync("app/(app)/schedule/page.tsx", "utf8");
 

@@ -31,7 +31,11 @@ import {
 } from "@/lib/payments";
 import { stripSalonPayoutOverride } from "@/lib/payoutOverride";
 import { buildReminderTarget } from "@/lib/reminders";
-import { scheduledAppointmentGroupFor, weekRangeForDate } from "@/lib/schedule";
+import {
+  appointmentGroupPets,
+  scheduledAppointmentGroupFor,
+  weekRangeForDate,
+} from "@/lib/schedule";
 import {
   isEditAppointmentWriteEnabled,
   isLogGroomWriteEnabled,
@@ -249,7 +253,7 @@ export default async function AppointmentActionPage({
 
           <LogGroom
             client={client}
-            pets={[pet]}
+            pets={appointmentGroupPets(appointmentGroup, householdPets, pet)}
             appointments={householdAppointments}
             mode={dataMode()}
             writesEnabled={isLogGroomWriteEnabled()}
