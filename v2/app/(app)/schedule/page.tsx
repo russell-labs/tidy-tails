@@ -139,7 +139,7 @@ function daySummaryMetrics(summary: DaySummary, money: DayMoney): string {
     summary.largeDogs
   } large · ${summary.loadPoints.toFixed(2).replace(/\.00$/, "")} pts · Gross ${formatMoney(
     money.gross,
-  )} · Sam ${formatMoney(money.samNet)}`;
+  )} · Net ${formatMoney(money.samNet)}`;
 }
 
 function uniqueText(values: Array<string | null | undefined>): string | null {
@@ -309,7 +309,7 @@ export default async function SchedulePage({
                 {formatMoney(totalMoney.samNet)}
               </p>
               <p className="text-xs font-medium text-ink-soft">
-                Sam net · Gross {formatMoney(totalMoney.gross)}
+                Net · Gross {formatMoney(totalMoney.gross)}
               </p>
             </div>
           ) : null}
@@ -324,7 +324,7 @@ export default async function SchedulePage({
           <p className="mt-1 text-sm text-ink-soft">
             {view === "day"
               ? "The selected day opened up with the dogs already booked."
-              : "Tap a day to open the slate. Sam still decides."}
+              : "Tap a day to open the slate. You still decide."}
           </p>
         </div>
         {view === "day" && isOneToOne ? (

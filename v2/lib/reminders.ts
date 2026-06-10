@@ -19,6 +19,7 @@ import type { Appointment, Pet } from "./data/types";
 import { customerBookingLocationLabel, formatPetNames } from "./booking";
 import { digitsOnly, formatDate } from "./format";
 import { customerLocationLabelFromSettings } from "./locationFinance";
+import { applyOperatorName } from "./operatorIdentity";
 import type { LocationSettingsMap } from "./operatorSettings";
 
 function pad(n: number): string {
@@ -56,6 +57,7 @@ export type ReminderContext = {
   appointmentTemplate?: string;
   rebookTemplate?: string;
   locationSettings?: LocationSettingsMap;
+  operatorName: string;
 };
 
 export type ReminderTemplateVars = {
@@ -65,6 +67,7 @@ export type ReminderTemplateVars = {
   appointmentTime?: string | null;
   appointmentLocation?: string | null;
   locationSettings?: LocationSettingsMap;
+  operatorName?: string;
 };
 
 export function renderReminderTemplate(
@@ -88,21 +91,30 @@ export function renderReminderTemplate(
       ? "the grooming location"
       : rawLocation || "the grooming location");
 
-  return template
+  const rendered = template
     .replaceAll("[first name]", owner)
     .replaceAll("[pet name]", pet)
     .replaceAll("[date]", date)
     .replaceAll("[time]", time)
     .replaceAll("[location]", location)
     .trim();
+  return applyOperatorName(rendered, vars.operatorName ?? "");
 }
 
-function ensureAppointmentTime(message: string, template: string, time: string | null | undefined): string {
+function ensureAppointmentTime(
+  message: string,
+  template: string,
+  time: string | null | undefined,
+  operatorName: string,
+): string {
   const appointmentTime = (time ?? "").trim();
   if (!appointmentTime || template.includes("[time]")) return message;
   if (message.toLowerCase().includes(appointmentTime.toLowerCase())) return message;
-  const signature = " — Samantha";
-  if (message.endsWith(signature)) {
+  // After rendering, the message ends with the resolved signature (or none).
+  // Insert the appointment time just before it so the sign-off stays last.
+  const name = operatorName.trim();
+  const signature = name ? ` — ${name}` : "";
+  if (signature && message.endsWith(signature)) {
     return `${message.slice(0, -signature.length)} Appointment time: ${appointmentTime}.${signature}`;
   }
   return `${message} Appointment time: ${appointmentTime}.`;
@@ -119,16 +131,17 @@ export function buildReminderMessage(ctx: ReminderContext): string {
   if (ctx.appointmentDate) {
     const template =
       ctx.appointmentTemplate ??
-      "Hi [first name], a friendly reminder that [pet name] has a grooming appointment at [location] on [date] at [time]. See you then! — Samantha";
+      "Hi [first name], a friendly reminder that [pet name] has a grooming appointment at [location] on [date] at [time]. See you then! — [your name]";
     return ensureAppointmentTime(
       renderReminderTemplate(template, ctx),
       template,
       ctx.appointmentTime,
+      ctx.operatorName,
     );
   }
   return renderReminderTemplate(
     ctx.rebookTemplate ??
-      `Hi ${owner}, it's been a little while since ${pet}'s last visit to Tidy Tails. Would you like to book in for a groom? — Samantha`,
+      `Hi ${owner}, it's been a little while since ${pet}'s last visit to Tidy Tails. Would you like to book in for a groom? — [your name]`,
     ctx,
   );
 }

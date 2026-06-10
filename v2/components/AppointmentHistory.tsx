@@ -18,6 +18,7 @@ function Row({
   mode,
   writesEnabled,
   locationSettings,
+  operatorName,
 }: {
   appointment: Appointment;
   clientId: string;
@@ -27,6 +28,7 @@ function Row({
   mode: "fixtures" | "live";
   writesEnabled: boolean;
   locationSettings: LocationSettingsMap;
+  operatorName: string;
 }) {
   const total = (appointment.price ?? 0) + (appointment.tip ?? 0);
   const paymentPill = paymentPillForAppointments([appointment]);
@@ -99,6 +101,7 @@ function Row({
         mode={mode}
         writesEnabled={writesEnabled}
         locationSettings={locationSettings}
+        operatorName={operatorName}
         trigger={trigger}
       />
     </li>
@@ -113,6 +116,7 @@ export function AppointmentHistory({
   mode,
   writesEnabled,
   locationSettings,
+  operatorName,
 }: {
   appointments: Appointment[];
   clientId: string;
@@ -121,6 +125,7 @@ export function AppointmentHistory({
   mode: "fixtures" | "live";
   writesEnabled: boolean;
   locationSettings: LocationSettingsMap;
+  operatorName: string;
 }) {
   if (appointments.length === 0) {
     return (
@@ -161,6 +166,7 @@ export function AppointmentHistory({
                 mode={mode}
                 writesEnabled={writesEnabled}
                 locationSettings={locationSettings}
+                operatorName={operatorName}
               />
             ))}
           </ul>
@@ -187,6 +193,7 @@ export function AppointmentHistory({
                 mode={mode}
                 writesEnabled={writesEnabled}
                 locationSettings={locationSettings}
+                operatorName={operatorName}
               />
             ))}
           </ul>
@@ -214,6 +221,7 @@ export function AppointmentHistory({
                   mode={mode}
                   writesEnabled={writesEnabled}
                   locationSettings={locationSettings}
+                  operatorName={operatorName}
                 />
               ))}
             </ul>

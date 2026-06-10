@@ -576,7 +576,7 @@ describe("buildAppointmentInsert — payload + null policy", () => {
 });
 
 describe("buildBookingTextMessage", () => {
-  it("summarizes the booking details for a customer SMS", () => {
+  it("summarizes the booking details for a customer SMS, signed by the operator", () => {
     expect(
       buildBookingTextMessage({
         ownerFirstName: "Mary",
@@ -585,6 +585,7 @@ describe("buildBookingTextMessage", () => {
         time: "10:30am",
         service: "Full groom",
         location: "290 Millard Street, Orillia",
+        operatorName: "Samantha",
       }),
     ).toBe(
       "Hi Mary, Whiskey is booked for full groom on 2026-06-01 at 10:30am at 290 Millard Street, Orillia. See you then! — Samantha",
@@ -600,13 +601,28 @@ describe("buildBookingTextMessage", () => {
         time: "10:30am",
         service: "Full groom",
         location: "290 Millard Street, Orillia",
+        operatorName: "Samantha",
       }),
     ).toBe(
       "Hi Mary, Whiskey and Kiwi are booked for full groom on 2026-06-01 at 10:30am at 290 Millard Street, Orillia. See you then! — Samantha",
     );
   });
 
-  it("falls back gracefully when optional details are missing", () => {
+  it("signs with the org's own operator name", () => {
+    expect(
+      buildBookingTextMessage({
+        ownerFirstName: "Mary",
+        petName: "Kiwi",
+        date: "2026-06-01",
+        time: null,
+        service: null,
+        location: null,
+        operatorName: "Cheryl",
+      }),
+    ).toBe("Hi Mary, Kiwi is booked on 2026-06-01. See you then! — Cheryl");
+  });
+
+  it("drops the signature when the org has no operator name", () => {
     expect(
       buildBookingTextMessage({
         ownerFirstName: null,
@@ -615,8 +631,9 @@ describe("buildBookingTextMessage", () => {
         time: null,
         service: null,
         location: null,
+        operatorName: "",
       }),
-    ).toBe("Hi there, Kiwi is booked on 2026-06-01. See you then! — Samantha");
+    ).toBe("Hi there, Kiwi is booked on 2026-06-01. See you then!");
   });
 });
 
@@ -646,6 +663,23 @@ describe("customer-facing booking labels", () => {
     ).toBe(
       "Hi Mary, Whiskey is booked for Full groom on Jun 29, 2026 at 10am at 60 Olive Crescent, Orillia.",
     );
+  });
+
+  it("substitutes the operator-name placeholder in booking templates", () => {
+    expect(
+      renderBookingMessageTemplate(
+        "Hi [first name], booked [pet name]. — [your name]",
+        {
+          ownerFirstName: "Mary",
+          petName: "Whiskey",
+          date: "Jun 29, 2026",
+          time: "10am",
+          service: "Full groom",
+          location: "60 Olive Crescent, Orillia",
+          operatorName: "Cheryl",
+        },
+      ),
+    ).toBe("Hi Mary, booked Whiskey. — Cheryl");
   });
 });
 

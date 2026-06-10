@@ -14,8 +14,8 @@ test("schedule appointment flow opens actions and prepares one grouped reminder"
   await page.goto(`/schedule?view=day&day=${tomorrow}`);
 
   await expect(page.getByRole("heading", { name: "Schedule" })).toBeVisible();
-  await expect(page.getByText("Sam net · Gross $150.00")).toBeVisible();
-  await expect(page.getByText("Sam $105.00")).toBeVisible();
+  await expect(page.getByText("Net · Gross $150.00")).toBeVisible();
+  await expect(page.getByText("Net $105.00")).toBeVisible();
   await expect(
     page.getByRole("link", { name: /10:00am[\s\S]*Pepper \+ Olive/ }),
   ).toHaveCount(1);
@@ -24,7 +24,7 @@ test("schedule appointment flow opens actions and prepares one grouped reminder"
 
   await expect(page.getByRole("heading", { name: "Pepper" })).toBeVisible();
   await expect(page.getByText("Gross$72.00")).toBeVisible();
-  await expect(page.getByText("Sam net$50.40")).toBeVisible();
+  await expect(page.getByText("Net$50.40")).toBeVisible();
   await expect(page.getByText("Salon payoutSalon keeps 30%")).toBeVisible();
 
   await page.getByRole("button", { name: "Send reminder" }).click();
@@ -97,7 +97,7 @@ test("message center and notification bell reflect actionable SMS state", async 
   await expect(page.getByRole("heading", { name: "Theo Brandt" })).toBeVisible();
   await expect(page.getByText("Customer reply")).toBeVisible();
   await expect(page.getByText("Question")).toBeVisible();
-  await expect(page.getByText("Sam message")).toHaveCount(2);
+  await expect(page.getByText("Your message")).toHaveCount(2);
   await expect(page.getByText("Delivered")).toBeVisible();
   await expect(page.getByText("Failed", { exact: true })).toBeVisible();
 });
@@ -118,11 +118,10 @@ test("salon payout setting changes update schedule gross and Sam net totals", as
 
   await page.goto(`/schedule?view=day&day=${tomorrow}`);
 
-  await expect(page.getByText("Sam net · Gross $150.00")).toBeVisible();
-  await expect(page.getByText("Sam $75.00")).toBeVisible();
+  await expect(page.getByText("Net · Gross $150.00")).toBeVisible();
   await expect(page.getByText("Net $75.00")).toBeVisible();
 
   await page.getByRole("link", { name: /10:00am[\s\S]*Pepper/ }).click();
-  await expect(page.getByText("Sam net$36.00")).toBeVisible();
+  await expect(page.getByText("Net$36.00")).toBeVisible();
   await expect(page.getByText("Salon payoutSalon keeps 50%")).toBeVisible();
 });

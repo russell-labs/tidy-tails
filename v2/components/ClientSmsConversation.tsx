@@ -128,7 +128,7 @@ export function ClientSmsConversation({
                   onChange={(event) => setMessage(event.currentTarget.value)}
                   maxLength={MESSAGE_MAX}
                   className="w-full resize-none rounded-xl border border-line bg-canvas px-3.5 py-2.5 text-base leading-relaxed text-ink outline-none placeholder:text-ink-faint focus:border-brand focus:ring-2 focus:ring-brand/20"
-                  placeholder="Write Sam's text..."
+                  placeholder="Write your text..."
                 />
               </label>
               <div className="flex items-center justify-between gap-3">

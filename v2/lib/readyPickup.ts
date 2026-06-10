@@ -1,10 +1,12 @@
 import { digitsOnly } from "./format";
+import { applyOperatorName } from "./operatorIdentity";
 
 const MESSAGE_MAX = 480;
 
 export type ReadyPickupTemplateVars = {
   ownerFirstName: string | null;
   petName: string | null;
+  operatorName?: string;
 };
 
 export function renderReadyPickupTemplate(
@@ -13,21 +15,23 @@ export function renderReadyPickupTemplate(
 ): string {
   const owner = (vars.ownerFirstName ?? "").trim() || "there";
   const pet = (vars.petName ?? "").trim() || "your dog";
-  return template
+  const rendered = template
     .replaceAll("[first name]", owner)
     .replaceAll("[pet name]", pet)
     .trim();
+  return applyOperatorName(rendered, vars.operatorName ?? "");
 }
 
 export function buildReadyPickupMessage({
   ownerFirstName,
   petName,
+  operatorName,
   template,
-}: ReadyPickupTemplateVars & { template?: string }): string {
+}: ReadyPickupTemplateVars & { operatorName: string; template?: string }): string {
   return renderReadyPickupTemplate(
     template ??
-      "Hi [first name], [pet name] is ready to be picked up. — Samantha",
-    { ownerFirstName, petName },
+      "Hi [first name], [pet name] is ready to be picked up. — [your name]",
+    { ownerFirstName, petName, operatorName },
   );
 }
 

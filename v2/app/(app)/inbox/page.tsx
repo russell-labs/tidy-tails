@@ -20,17 +20,19 @@ import {
   isExistingHouseholdForPlatformIntro,
 } from "@/lib/messageCenterTemplates";
 import { readOperatorSettings } from "@/lib/operatorSettings.server";
+import { loadOrgSettings } from "@/lib/orgSettings.server";
 import { loadRecentSmsMessages } from "@/lib/smsMessages.server";
 
 export const metadata: Metadata = { title: "Messages" };
 
 export default async function InboxPage() {
-  const [smsMessages, bookingRequests, auditEvents, dataset, operatorSettings] = await Promise.all([
+  const [smsMessages, bookingRequests, auditEvents, dataset, operatorSettings, orgSettings] = await Promise.all([
     loadRecentSmsMessages(100),
     loadRecentBookingRequests(25),
     loadRecentAuditEvents(1000),
     loadDataset(),
     readOperatorSettings(),
+    loadOrgSettings(),
   ]);
   const { clients, pets, appointments } = dataset;
 
@@ -82,7 +84,7 @@ export default async function InboxPage() {
         <div>
           <h1 className="text-xl font-bold text-ink">Messages</h1>
           <p className="mt-2 text-sm text-ink-muted">
-            Customer replies and booking requests that may need Sam&apos;s attention.
+            Customer replies and booking requests that may need your attention.
           </p>
         </div>
       </div>
@@ -97,6 +99,7 @@ export default async function InboxPage() {
         threads={smsThreads}
         messages={smsMessages}
         settings={operatorSettings}
+        operatorName={orgSettings.operatorName}
         clients={clients.map((client) => ({
           id: client.id,
           first_name: client.first_name,

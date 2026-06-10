@@ -534,11 +534,11 @@ function dayMessages(
   ];
   if (largeDogs > calibration.largeDogMax) {
     messages.push(
-      `${largeDogs} large dogs is usually too many large dogs for one day and is over Sam's usual labor maximum while bathing and drying solo.`,
+      `${largeDogs} large dogs is usually too many large dogs for one day and is over your usual labor maximum while bathing and drying solo.`,
     );
   } else if (largeDogs === calibration.largeDogMax) {
     messages.push(
-      `${largeDogs} large dogs is Sam's usual labor maximum while bathing and drying solo.`,
+      `${largeDogs} large dogs is your usual labor maximum while bathing and drying solo.`,
     );
   }
   // TT-008: once the day is getting heavy with large dogs, name the count

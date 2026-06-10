@@ -105,6 +105,7 @@ describe("renderMessageCenterTemplate", () => {
       renderMessageCenterTemplate({
         key: "booking_confirmation",
         settings,
+        operatorName: "Cheryl",
         client: client(),
         pets: [pet()],
         appointments: [appointment()],
@@ -119,11 +120,28 @@ describe("renderMessageCenterTemplate", () => {
       renderMessageCenterTemplate({
         key: "appointment_reminder",
         settings,
+        operatorName: "Cheryl",
         client: client({ first_name: "" }),
         pets: [],
         appointments: [],
       }),
     ).toBe("Reminder for your dog on soon at the scheduled time.");
+  });
+
+  it("signs message-center templates with the org's operator name", () => {
+    expect(
+      renderMessageCenterTemplate({
+        key: "appointment_reminder",
+        settings: {
+          ...settings,
+          appointmentReminderTemplate: "Reminder for [pet name]. — [your name]",
+        },
+        operatorName: "Cheryl",
+        client: client(),
+        pets: [pet()],
+        appointments: [appointment()],
+      }),
+    ).toBe("Reminder for Kiwi. — Cheryl");
   });
 });
 

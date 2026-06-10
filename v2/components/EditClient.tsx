@@ -230,7 +230,7 @@ function EditClientForm({
             <textarea
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              placeholder="Anything Sam should know about this household"
+              placeholder="Anything you should know about this household"
               className={`${fieldClass} min-h-24 resize-none`}
             />
           </Field>

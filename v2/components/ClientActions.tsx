@@ -30,6 +30,7 @@ export function ClientActions({
   appointments,
   mode,
   reminderSettings,
+  operatorName,
 }: {
   client: Client;
   pets: Pet[];
@@ -39,6 +40,7 @@ export function ClientActions({
     OperatorSettings,
     "appointmentReminderTemplate" | "rebookReminderTemplate"
   >;
+  operatorName: string;
 }) {
   const [open, setOpen] = useState(false);
   // Remount the form on each close so a reopened sheet starts fresh.
@@ -80,6 +82,7 @@ export function ClientActions({
           appointments={appointments}
           mode={mode}
           reminderSettings={reminderSettings}
+          operatorName={operatorName}
           onDone={close}
         />
       </Sheet>
@@ -93,6 +96,7 @@ function ReminderForm({
   appointments,
   mode,
   reminderSettings,
+  operatorName,
   onDone,
 }: {
   client: Client;
@@ -103,6 +107,7 @@ function ReminderForm({
     OperatorSettings,
     "appointmentReminderTemplate" | "rebookReminderTemplate"
   >;
+  operatorName: string;
   onDone: () => void;
 }) {
   const [state, formAction, pending] = useActionState<ReminderState, FormData>(
@@ -131,6 +136,7 @@ function ReminderForm({
       appointmentLocation: target?.appointmentLocation ?? null,
       appointmentTemplate: reminderSettings.appointmentReminderTemplate,
       rebookTemplate: reminderSettings.rebookReminderTemplate,
+      operatorName,
     }),
   );
 
@@ -276,7 +282,7 @@ function ModeNote({ mode }: { mode: "fixtures" | "live" }) {
   if (mode === "live") {
     return (
       <p className="rounded-lg bg-warn-soft px-3 py-2 text-xs font-medium text-warn">
-        Sam reviews this message before anything sends. If reminder sending is
+        You review this message before anything sends. If reminder sending is
         switched on, confirming sends one SMS.
       </p>
     );

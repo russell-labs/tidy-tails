@@ -72,6 +72,7 @@ describe("buildReminderMessage — message generation", () => {
       petName: "Waffles",
       appointmentDate: "2026-05-23",
       appointmentTime: "10:30am",
+      operatorName: "Samantha",
     });
     expect(msg).toContain("Hannah");
     expect(msg).toContain("Waffles");
@@ -84,6 +85,7 @@ describe("buildReminderMessage — message generation", () => {
       ownerFirstName: "Hannah",
       petName: "Waffles",
       appointmentDate: null,
+      operatorName: "Samantha",
     });
     expect(msg).toContain("Hannah");
     expect(msg).toContain("Waffles");
@@ -92,6 +94,7 @@ describe("buildReminderMessage — message generation", () => {
       ownerFirstName: "Hannah",
       petName: "Waffles",
       appointmentDate: "2026-05-23",
+      operatorName: "Samantha",
     });
     expect(msg).not.toBe(dated);
   });
@@ -101,6 +104,7 @@ describe("buildReminderMessage — message generation", () => {
       ownerFirstName: "Hannah",
       petName: null,
       appointmentDate: "2026-05-23",
+      operatorName: "Samantha",
     });
     expect(msg).toContain("your dog");
   });
@@ -110,8 +114,31 @@ describe("buildReminderMessage — message generation", () => {
       ownerFirstName: "  ",
       petName: "Waffles",
       appointmentDate: null,
+      operatorName: "Samantha",
     });
     expect(msg).toContain("there");
+  });
+
+  it("signs the default reminder with the org's operator name", () => {
+    const msg = buildReminderMessage({
+      ownerFirstName: "Hannah",
+      petName: "Waffles",
+      appointmentDate: null,
+      operatorName: "Cheryl",
+    });
+    expect(msg).toContain("— Cheryl");
+    expect(msg).not.toContain("Samantha");
+  });
+
+  it("drops the signature from the default reminder when the org has no operator name", () => {
+    const msg = buildReminderMessage({
+      ownerFirstName: "Hannah",
+      petName: "Waffles",
+      appointmentDate: null,
+      operatorName: "",
+    });
+    expect(msg).not.toContain("—");
+    expect(msg.trimEnd()).toBe(msg);
   });
 
   it("uses the saved appointment template when one is provided", () => {
@@ -120,6 +147,7 @@ describe("buildReminderMessage — message generation", () => {
       petName: "Waffles",
       appointmentDate: "2026-05-23",
       appointmentTemplate: "Hi [first name], [pet name] is booked on [date].",
+      operatorName: "Samantha",
     });
     expect(msg).toBe("Hi Hannah, Waffles is booked on May 23, 2026.");
   });
@@ -131,7 +159,8 @@ describe("buildReminderMessage — message generation", () => {
       appointmentDate: "2026-05-23",
       appointmentTime: "10:30am",
       appointmentTemplate:
-        "Hi [first name], [pet name] is booked on [date]. See you soon! — Samantha",
+        "Hi [first name], [pet name] is booked on [date]. See you soon! — [your name]",
+      operatorName: "Samantha",
     });
 
     expect(msg).toContain("10:30am");
@@ -144,6 +173,7 @@ describe("buildReminderMessage — message generation", () => {
       petName: "Waffles",
       appointmentDate: null,
       rebookTemplate: "Hi [first name], should we book [pet name]?",
+      operatorName: "Samantha",
     });
     expect(msg).toBe("Hi Hannah, should we book Waffles?");
   });

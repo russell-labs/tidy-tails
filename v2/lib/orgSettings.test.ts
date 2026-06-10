@@ -18,6 +18,22 @@ describe("normalizeOrgSettings", () => {
     );
   });
 
+  it("defaults operatorName to an empty string when absent", () => {
+    expect(normalizeOrgSettings({}).operatorName).toBe("");
+  });
+
+  it("reads and trims a per-org operatorName from settings", () => {
+    expect(
+      normalizeOrgSettings({ settings: { operatorName: "  Cheryl  " } }).operatorName,
+    ).toBe("Cheryl");
+  });
+
+  it("ignores a non-string operatorName", () => {
+    expect(
+      normalizeOrgSettings({ settings: { operatorName: 42 } }).operatorName,
+    ).toBe("");
+  });
+
   it("reads a one_to_one org with locations and knobs", () => {
     const result = normalizeOrgSettings({
       scheduling_style: "one_to_one",

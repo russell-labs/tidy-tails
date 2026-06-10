@@ -24,7 +24,7 @@ export function DayCloseoutControls({
           Day closeout
         </h3>
         <p className="mt-1 text-xs text-ink-soft">
-          Override the salon payout after Sam does the end-of-day math.
+          Override the salon payout after you do the end-of-day math.
         </p>
       </div>
       <div className="flex flex-col gap-3">

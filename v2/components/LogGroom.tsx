@@ -304,7 +304,7 @@ export function GroomForm({
             </div>
             <p className="text-xs text-ink-faint">
               Waiting payments show up for follow-up and stay out of collected
-              revenue until Sam marks them paid.
+              revenue until you mark them paid.
             </p>
           </fieldset>
 

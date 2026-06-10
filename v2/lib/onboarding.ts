@@ -76,6 +76,10 @@ export type OrgSettingsSeed = {
   settings: {
     businessStructure: BusinessStructure;
     locations: OnboardingLocation[];
+    // TT-012 — the name that signs this org's customer texts. Seeded from the
+    // business name so a brand-new org never inherits another operator's name;
+    // it can be refined later. Read back via lib/orgSettings.ts.
+    operatorName: string;
   };
 };
 
@@ -206,6 +210,7 @@ export function buildOrgSettings(input: OnboardingInput): OrgSettingsSeed {
     settings: {
       businessStructure: input.businessStructure,
       locations: input.locations,
+      operatorName: input.businessName,
     },
   };
 }

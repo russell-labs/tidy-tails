@@ -9,6 +9,7 @@ import {
   isExistingHouseholdForPlatformIntro,
 } from "@/lib/messageCenterTemplates";
 import { readOperatorSettings } from "@/lib/operatorSettings.server";
+import { loadOrgSettings } from "@/lib/orgSettings.server";
 import { loadRecentSmsMessages } from "@/lib/smsMessages.server";
 
 export const metadata: Metadata = { title: "Message thread" };
@@ -20,11 +21,12 @@ export default async function MessageThreadPage({
 }) {
   const { threadKey: encodedThreadKey } = await params;
   const threadKey = decodeURIComponent(encodedThreadKey);
-  const [smsMessages, auditEvents, dataset, operatorSettings] = await Promise.all([
+  const [smsMessages, auditEvents, dataset, operatorSettings, orgSettings] = await Promise.all([
     loadRecentSmsMessages(100),
     loadRecentAuditEvents(1000),
     loadDataset(),
     readOperatorSettings(),
+    loadOrgSettings(),
   ]);
 
   const { clients, pets, appointments } = dataset;
@@ -42,6 +44,7 @@ export default async function MessageThreadPage({
         activeThreadKey={threadKey}
         threads={smsThreads}
         messages={smsMessages}
+        operatorName={orgSettings.operatorName}
         settings={operatorSettings}
         clients={clients.map((client) => ({
           id: client.id,

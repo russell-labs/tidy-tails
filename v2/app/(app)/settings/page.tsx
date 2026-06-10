@@ -14,6 +14,7 @@ import {
 import { loadRecentAuditEvents } from "@/lib/audit.server";
 import { readGoogleCalendarConnection } from "@/lib/googleCalendar.server";
 import { readOperatorSettings } from "@/lib/operatorSettings.server";
+import { loadOrgSettings } from "@/lib/orgSettings.server";
 import { readSmsReadiness, type SmsReadiness } from "@/lib/smsReadiness";
 import { loadRecentSmsMessages } from "@/lib/smsMessages.server";
 import { getCurrentUser } from "@/lib/supabase/server";
@@ -149,7 +150,7 @@ function SmsReadinessPanel({ readiness }: { readiness: SmsReadiness }) {
           <div>
             <p className="text-sm font-semibold text-ink">Two-way texting</p>
             <p className="mt-1 text-xs leading-relaxed text-ink-soft">
-              Sam can send texts from household conversations after outbound
+              You can send texts from household conversations after outbound
               SMS is ready. Customer replies appear in Inbox after inbound
               persistence and the Twilio webhook are connected.
             </p>
@@ -277,6 +278,7 @@ export default async function SettingsPage({
 }) {
   const user = await getCurrentUser();
   const settings = await readOperatorSettings();
+  const orgSettings = await loadOrgSettings();
   const calendar = await readGoogleCalendarConnection();
   const recentActivity = await loadRecentAuditEvents(12);
   const recentSmsMessages = await loadRecentSmsMessages(3);
@@ -300,7 +302,7 @@ export default async function SettingsPage({
               <p className="text-sm font-semibold text-ink">Location money</p>
               <p className="mt-1 text-xs leading-relaxed text-ink-soft">
                 These addresses feed booking copy. Schedule money uses the
-                salon-keeps percentage to show Sam&apos;s net.
+                salon-keeps percentage to show your net.
               </p>
             </div>
             <Pill tone="ready">Active</Pill>
@@ -371,7 +373,7 @@ export default async function SettingsPage({
                 Google Calendar
               </p>
               <p className="mt-1 text-xs leading-relaxed text-ink-soft">
-                New bookings can create calendar events after Sam connects her
+                New bookings can create calendar events after you connect your
                 Google account. The booking still saves if Google is unavailable.
               </p>
               <p className="mt-2 text-xs leading-relaxed text-ink-soft">
@@ -464,7 +466,10 @@ export default async function SettingsPage({
       <Card title="Account">
         <Row label="Signed in as" value={user?.email ?? "—"} />
         <Row label="Business name" value="Tidy Tails" />
-        <Row label="Reminder sender" value="Samantha" />
+        <Row
+          label="Reminder sender"
+          value={orgSettings.operatorName || "Not set"}
+        />
       </Card>
 
       <form action={signOut} className="mt-6">

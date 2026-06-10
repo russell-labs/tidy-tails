@@ -243,7 +243,27 @@ describe("buildOrgSettings", () => {
       settings: {
         businessStructure: "hybrid",
         locations: input.locations,
+        operatorName: "Rusty's Shop",
       },
     });
+  });
+
+  it("seeds operatorName from the business name so a new org signs its own texts", () => {
+    const input: OnboardingInput = {
+      businessName: "Cheryl's Mobile Grooming",
+      businessStructure: "own",
+      schedulingStyle: "batched",
+      locations: [
+        {
+          type: "owned",
+          name: "Home base",
+          address: "1 King St",
+          expenses: { rentMortgage: null, utilities: null, supplies: null, upkeep: null, cleaning: null },
+        },
+      ],
+    };
+    expect(buildOrgSettings(input).settings.operatorName).toBe(
+      "Cheryl's Mobile Grooming",
+    );
   });
 });

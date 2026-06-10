@@ -58,6 +58,7 @@ export function AddAppointment({
   scheduleCalibration,
   locationSettings,
   hasPriorOutboundSms,
+  operatorName,
 }: {
   client: Client;
   pets: Pet[];
@@ -69,6 +70,7 @@ export function AddAppointment({
   scheduleCalibration: ScheduleCalibration;
   locationSettings: LocationSettingsMap;
   hasPriorOutboundSms: boolean;
+  operatorName: string;
 }) {
   const [open, setOpen] = useState(false);
   const [knownPriorOutboundSms, setKnownPriorOutboundSms] =
@@ -126,6 +128,7 @@ export function AddAppointment({
           scheduleCalibration={scheduleCalibration}
           locationSettings={locationSettings}
           hasPriorOutboundSms={knownPriorOutboundSms}
+          operatorName={operatorName}
           onDone={close}
         />
       </Sheet>
@@ -144,6 +147,7 @@ function BookingForm({
   scheduleCalibration,
   locationSettings,
   hasPriorOutboundSms,
+  operatorName,
   onDone,
 }: {
   client: Client;
@@ -156,6 +160,7 @@ function BookingForm({
   scheduleCalibration: ScheduleCalibration;
   locationSettings: LocationSettingsMap;
   hasPriorOutboundSms: boolean;
+  operatorName: string;
   onDone: (options?: { markPriorOutboundSms?: boolean }) => void;
 }) {
   const [state, formAction, pending] = useActionState<BookingState, FormData>(
@@ -323,6 +328,7 @@ function BookingForm({
       time: time || null,
       service: selectedServiceLabels.length === 1 ? selectedServiceLabels[0] : null,
       location: customerLocation,
+      operatorName,
     });
   const currentBookingMessage = sendBookingText
     ? bookingMessage.trim() || defaultBookingMessage()
@@ -545,7 +551,7 @@ function BookingForm({
             error={errors.time_slot}
             hint={
               date
-                ? "Tap an open drop-off slot or type a custom time. Pickup is end of business day unless Sam says otherwise."
+                ? "Tap an open drop-off slot or type a custom time. Pickup is end of business day unless you say otherwise."
                 : "Choose a date first to see open drop-off slots."
             }
           >
@@ -694,7 +700,7 @@ function BookingForm({
               <span className="font-semibold text-ink">Email calendar invite</span>
               <span className="block text-xs leading-relaxed">
                 {client.email
-                  ? "Send a Google Calendar invite when Sam confirms the booking."
+                  ? "Send a Google Calendar invite when you confirm the booking."
                   : "Add an owner email here; it saves to this household for next time."}
               </span>
             </span>
@@ -765,7 +771,7 @@ function BookingForm({
               </span>
               <span className="block text-xs leading-relaxed">
                 {hasTextConsent
-                  ? "Send one SMS with the booking date, time, service, and location after Sam confirms. Sam can edit the exact text on the review step."
+                  ? "Send one SMS with the booking date, time, service, and location after you confirm. You can edit the exact text on the review step."
                   : "Capture texting consent above to enable."}
               </span>
             </span>
@@ -789,7 +795,7 @@ function BookingForm({
               </span>
               <span className="block text-xs leading-relaxed">
                 {hasTextConsent
-                  ? "Keep this number on the household so Sam can send appointment reminders later. Nothing sends from this option."
+                  ? "Keep this number on the household so you can send appointment reminders later. Nothing sends from this option."
                   : "Capture texting consent above to enable."}
               </span>
             </span>
@@ -908,7 +914,7 @@ function BookingForm({
             <Field
               label="Booking text to send"
               error={errors.booking_message}
-              hint={`${currentBookingMessage.length}/480 characters. This is what the customer will receive if Sam confirms.`}
+              hint={`${currentBookingMessage.length}/480 characters. This is what the customer will receive if you confirm.`}
             >
               <select
                 value={bookingMessageDraftKind}

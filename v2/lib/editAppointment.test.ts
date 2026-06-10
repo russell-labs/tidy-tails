@@ -113,16 +113,42 @@ describe("validateEditAppointment", () => {
 });
 
 describe("buildCancellationTextMessage", () => {
-  it("renders a clear customer cancellation text", () => {
+  it("renders a clear customer cancellation text signed by the operator", () => {
     expect(
       buildCancellationTextMessage({
         ownerFirstName: "Mary",
         petName: "Kiwi",
         date: "2026-05-29",
         time: "10:30am",
+        operatorName: "Samantha",
       }),
     ).toBe(
       "Hi Mary, Kiwi's Tidy Tails appointment on 2026-05-29 at 10:30am has been cancelled. - Samantha",
+    );
+  });
+
+  it("signs with the org's own operator name, or drops the signature when unset", () => {
+    expect(
+      buildCancellationTextMessage({
+        ownerFirstName: "Mary",
+        petName: "Kiwi",
+        date: "2026-05-29",
+        time: "10:30am",
+        operatorName: "Cheryl",
+      }),
+    ).toBe(
+      "Hi Mary, Kiwi's Tidy Tails appointment on 2026-05-29 at 10:30am has been cancelled. - Cheryl",
+    );
+    expect(
+      buildCancellationTextMessage({
+        ownerFirstName: "Mary",
+        petName: "Kiwi",
+        date: "2026-05-29",
+        time: "10:30am",
+        operatorName: "",
+      }),
+    ).toBe(
+      "Hi Mary, Kiwi's Tidy Tails appointment on 2026-05-29 at 10:30am has been cancelled.",
     );
   });
 });
@@ -137,6 +163,7 @@ describe("buildBookingUpdateTextMessage", () => {
         time: "9:30am",
         service: "Full groom",
         location: "60 Olive Crescent, Orillia",
+        operatorName: "Samantha",
       }),
     ).toBe(
       "Hi Mary, updated booking for Kiwi: Full groom on 2026-06-12 at 9:30am at 60 Olive Crescent, Orillia. See you then! - Samantha",

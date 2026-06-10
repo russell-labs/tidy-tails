@@ -99,15 +99,15 @@ export const DEFAULT_LOCATION_SETTINGS: LocationSettingsMap = {
 
 export const DEFAULT_OPERATOR_SETTINGS: OperatorSettings = {
   bookingConfirmationTemplate:
-    "Hi [first name], booking confirmed for [pet name]: [service] on [date] at [time] at [location]. See you then! — Samantha",
+    "Hi [first name], booking confirmed for [pet name]: [service] on [date] at [time] at [location]. See you then! — [your name]",
   firstPlatformTextTemplate:
-    "Hi [first name], it’s Samantha from Tidy Tails. I’m starting to send booking details through my new Tidy Tails system, so this message may come from a new number. Booking confirmed for [pet name]: [service] on [date] at [time] at [location]. See you then! — Samantha",
+    "Hi [first name], it’s [your name] from Tidy Tails. I’m starting to send booking details through my new Tidy Tails system, so this message may come from a new number. Booking confirmed for [pet name]: [service] on [date] at [time] at [location]. See you then! — [your name]",
   appointmentReminderTemplate:
-    "Hi [first name], reminder that [pet name] is booked with Tidy Tails on [date] at [time]. See you soon! — Samantha",
+    "Hi [first name], reminder that [pet name] is booked with Tidy Tails on [date] at [time]. See you soon! — [your name]",
   rebookReminderTemplate:
-    "Hi [first name], it's been a little while since [pet name]'s last visit. Would you like to book in for a groom? — Samantha",
+    "Hi [first name], it's been a little while since [pet name]'s last visit. Would you like to book in for a groom? — [your name]",
   readyPickupTemplate:
-    "Hi [first name], [pet name] is ready to be picked up. — Samantha",
+    "Hi [first name], [pet name] is ready to be picked up. — [your name]",
   lapsedThresholdDays: 90,
   scheduleCalibration: DEFAULT_SCHEDULE_CALIBRATION,
   locationSettings: DEFAULT_LOCATION_SETTINGS,
