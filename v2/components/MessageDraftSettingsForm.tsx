@@ -34,7 +34,7 @@ export function MessageDraftSettingsForm({
       ) : null}
 
       <p className="text-xs leading-relaxed text-ink-soft">
-        The app prepares drafts only. Sam still reviews and confirms every
+        The app prepares drafts only. You still review and confirm every
         message before anything sends.
       </p>
 

@@ -35,6 +35,7 @@ export function ScheduleReminder({
   appointmentLocation,
   mode,
   reminderSettings,
+  operatorName,
 }: {
   clientId: string;
   appointmentId: string;
@@ -51,6 +52,7 @@ export function ScheduleReminder({
     OperatorSettings,
     "appointmentReminderTemplate" | "rebookReminderTemplate" | "locationSettings"
   >;
+  operatorName: string;
 }) {
   const [open, setOpen] = useState(false);
   const [formKey, setFormKey] = useState(0);
@@ -84,6 +86,7 @@ export function ScheduleReminder({
           appointmentLocation={appointmentLocation}
           mode={mode}
           reminderSettings={reminderSettings}
+          operatorName={operatorName}
           onDone={close}
         />
       </Sheet>
@@ -104,6 +107,7 @@ function ScheduleReminderForm({
   appointmentLocation,
   mode,
   reminderSettings,
+  operatorName,
   onDone,
 }: {
   clientId: string;
@@ -121,6 +125,7 @@ function ScheduleReminderForm({
     OperatorSettings,
     "appointmentReminderTemplate" | "rebookReminderTemplate" | "locationSettings"
   >;
+  operatorName: string;
   onDone: () => void;
 }) {
   const numberClient = { phone, alt_contact: altContact };
@@ -144,6 +149,7 @@ function ScheduleReminderForm({
       appointmentTemplate: reminderSettings.appointmentReminderTemplate,
       rebookTemplate: reminderSettings.rebookReminderTemplate,
       locationSettings: reminderSettings.locationSettings,
+      operatorName,
     }),
   );
 
@@ -191,7 +197,7 @@ function ScheduleReminderForm({
         }`}
       >
         {mode === "live"
-          ? "Sam reviews this message before anything sends. Confirming sends one SMS if reminder sending is switched on."
+          ? "You review this message before anything sends. Confirming sends one SMS if reminder sending is switched on."
           : "Demo mode — confirming will not send anything."}
       </p>
 

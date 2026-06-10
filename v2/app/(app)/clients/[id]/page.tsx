@@ -126,6 +126,7 @@ export default async function ClientDetailPage({
             scheduleCalibration={operatorSettings.scheduleCalibration}
             locationSettings={operatorSettings.locationSettings}
             hasPriorOutboundSms={hasPriorOutboundSms}
+            operatorName={orgSettings.operatorName}
           />
         )}
         <LogGroom
@@ -141,6 +142,7 @@ export default async function ClientDetailPage({
           appointments={appointments}
           mode={dataMode()}
           reminderSettings={operatorSettings}
+          operatorName={orgSettings.operatorName}
         />
       </div>
 
@@ -204,6 +206,7 @@ export default async function ClientDetailPage({
           mode={dataMode()}
           writesEnabled={isEditAppointmentWriteEnabled()}
           locationSettings={operatorSettings.locationSettings}
+          operatorName={orgSettings.operatorName}
         />
       </section>
     </main>

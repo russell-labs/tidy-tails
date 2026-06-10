@@ -9,6 +9,7 @@
 // review step — one validator, both paths. Unit-tested in booking.test.ts.
 
 import type { Appointment, Pet } from "./data/types";
+import { applyOperatorName } from "./operatorIdentity";
 import {
   validateSalonPayoutOverrideInput,
   withSalonPayoutOverride,
@@ -561,6 +562,7 @@ export function buildBookingTextMessage({
   time,
   service,
   location,
+  operatorName,
 }: {
   ownerFirstName: string | null;
   petName: string;
@@ -568,12 +570,16 @@ export function buildBookingTextMessage({
   time: string | null;
   service: string | null;
   location: string | null;
+  operatorName: string;
 }): string {
   const who = ownerFirstName?.trim() || "there";
   const when = time ? `${date} at ${time}` : date;
   const servicePart = service ? ` for ${service.toLowerCase()}` : "";
   const locationPart = location ? ` at ${location}` : "";
-  return `Hi ${who}, ${petName} ${pluralVerbForPetName(petName)} booked${servicePart} on ${when}${locationPart}. See you then! — Samantha`;
+  return applyOperatorName(
+    `Hi ${who}, ${petName} ${pluralVerbForPetName(petName)} booked${servicePart} on ${when}${locationPart}. See you then! — [your name]`,
+    operatorName,
+  );
 }
 
 export function renderBookingMessageTemplate(
@@ -585,9 +591,10 @@ export function renderBookingMessageTemplate(
     time: string | null;
     service: string | null;
     location: string | null;
+    operatorName?: string;
   },
 ): string {
-  return template
+  const rendered = template
     .replace(/\[first name\]/gi, vars.ownerFirstName?.trim() || "there")
     .replace(/\[pet name\]/gi, vars.petName)
     .replace(/\[date\]/gi, vars.date)
@@ -595,4 +602,5 @@ export function renderBookingMessageTemplate(
     .replace(/\[service\]/gi, vars.service ?? "grooming")
     .replace(/\[location\]/gi, vars.location ?? "the grooming location")
     .trim();
+  return applyOperatorName(rendered, vars.operatorName ?? "");
 }

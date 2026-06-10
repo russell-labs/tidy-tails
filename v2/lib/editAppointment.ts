@@ -15,6 +15,7 @@ import {
   validateSalonPayoutOverrideInput,
   withSalonPayoutOverride,
 } from "./payoutOverride";
+import { applyOperatorName } from "./operatorIdentity";
 
 export type EditAppointmentInput = {
   client_id: string;
@@ -294,15 +295,20 @@ export function buildCancellationTextMessage({
   petName,
   date,
   time,
+  operatorName,
 }: {
   ownerFirstName: string | null;
   petName: string;
   date: string;
   time: string | null;
+  operatorName: string;
 }): string {
   const who = ownerFirstName?.trim() || "there";
   const when = time ? `${date} at ${time}` : date;
-  return `Hi ${who}, ${petName}'s Tidy Tails appointment on ${when} has been cancelled. - Samantha`;
+  return applyOperatorName(
+    `Hi ${who}, ${petName}'s Tidy Tails appointment on ${when} has been cancelled. - [your name]`,
+    operatorName,
+  );
 }
 
 export function buildBookingUpdateTextMessage({
@@ -312,6 +318,7 @@ export function buildBookingUpdateTextMessage({
   time,
   service,
   location,
+  operatorName,
 }: {
   ownerFirstName: string | null;
   petName: string;
@@ -319,12 +326,16 @@ export function buildBookingUpdateTextMessage({
   time: string | null;
   service: string | null;
   location: string | null;
+  operatorName: string;
 }): string {
   const who = ownerFirstName?.trim() || "there";
   const serviceText = service?.trim() || "Grooming";
   const when = time ? `${date} at ${time}` : date;
   const where = location?.trim() ? ` at ${location.trim()}` : "";
-  return `Hi ${who}, updated booking for ${petName}: ${serviceText} on ${when}${where}. See you then! - Samantha`;
+  return applyOperatorName(
+    `Hi ${who}, updated booking for ${petName}: ${serviceText} on ${when}${where}. See you then! - [your name]`,
+    operatorName,
+  );
 }
 
 export function validateBookingUpdateTextInput(

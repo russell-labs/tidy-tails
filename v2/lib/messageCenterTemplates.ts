@@ -3,6 +3,7 @@ import { customerBookingLocationLabel } from "./booking";
 import type { Appointment, Client, Pet } from "./data/types";
 import { formatDate } from "./format";
 import { customerLocationLabelFromSettings } from "./locationFinance";
+import { applyOperatorName } from "./operatorIdentity";
 import type { OperatorSettings } from "./operatorSettings";
 
 export type MessageCenterTemplateKey =
@@ -30,12 +31,14 @@ const FIRST_PLATFORM_LAUNCH_DATE = new Date("2026-05-24T00:00:00Z");
 export function renderMessageCenterTemplate({
   key,
   settings,
+  operatorName,
   client,
   pets,
   appointments,
 }: {
   key: MessageCenterTemplateKey;
   settings: OperatorSettings;
+  operatorName: string;
   client: Pick<Client, "first_name">;
   pets: Pet[];
   appointments: Appointment[];
@@ -55,6 +58,7 @@ export function renderMessageCenterTemplate({
     appointmentService: appointment?.service ?? null,
     appointmentLocation: appointment?.location ?? null,
     locationSettings: settings.locationSettings,
+    operatorName,
   });
 }
 
@@ -131,6 +135,7 @@ function renderTemplate(
     appointmentService: string | null;
     appointmentLocation: string | null;
     locationSettings: OperatorSettings["locationSettings"];
+    operatorName?: string;
   },
 ): string {
   const location =
@@ -141,7 +146,7 @@ function renderTemplate(
     customerBookingLocationLabel(vars.appointmentLocation) ??
     (vars.appointmentLocation?.trim() || "the grooming location");
 
-  return template
+  const rendered = template
     .replaceAll("[first name]", vars.ownerFirstName?.trim() || "there")
     .replaceAll("[pet name]", vars.petName?.trim() || "your dog")
     .replaceAll("[date]", vars.appointmentDate ? formatDate(vars.appointmentDate) : "soon")
@@ -149,4 +154,5 @@ function renderTemplate(
     .replaceAll("[service]", vars.appointmentService?.trim() || "the service")
     .replaceAll("[location]", location)
     .trim();
+  return applyOperatorName(rendered, vars.operatorName ?? "");
 }

@@ -159,7 +159,7 @@ export default async function AppointmentActionPage({
             }
           />
           {appointment.price != null ? (
-            <DetailRow label="Sam net" value={formatMoney(money.samNet)} />
+            <DetailRow label="Net" value={formatMoney(money.samNet)} />
           ) : null}
           {appointment.price != null && money.payoutLabel ? (
             <DetailRow label="Salon payout" value={money.payoutLabel} />
@@ -213,6 +213,7 @@ export default async function AppointmentActionPage({
               appointmentLocation={target.appointmentLocation}
               mode={dataMode()}
               reminderSettings={settings}
+              operatorName={orgSettings.operatorName}
             />
           ) : null}
 
@@ -238,6 +239,7 @@ export default async function AppointmentActionPage({
               mode={dataMode()}
               writesEnabled={isEditAppointmentWriteEnabled()}
               locationSettings={settings.locationSettings}
+              operatorName={orgSettings.operatorName}
               trigger={
                 <ActionTile
                   title="Change or cancel appointment"
@@ -264,6 +266,7 @@ export default async function AppointmentActionPage({
             pet={pet}
             mode={dataMode()}
             settings={settings}
+            operatorName={orgSettings.operatorName}
           />
         </div>
       </section>

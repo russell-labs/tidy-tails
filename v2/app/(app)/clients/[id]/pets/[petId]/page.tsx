@@ -15,6 +15,7 @@ import { dataMode, loadDataset } from "@/lib/data/repo";
 import { lastKnownPrice, matchingPetRows } from "@/lib/derive";
 import { formatDate, formatMoney, fullName } from "@/lib/format";
 import { readOperatorSettings } from "@/lib/operatorSettings.server";
+import { loadOrgSettings } from "@/lib/orgSettings.server";
 import { formatPetAge } from "@/lib/petAge";
 import { isPetPassedAway } from "@/lib/petLifecycle";
 import {
@@ -58,6 +59,7 @@ export default async function PetDetailPage({
   const { id, petId } = await params;
   const { clients, pets, appointments, vaccinations } = await loadDataset();
   const settings = await readOperatorSettings();
+  const orgSettings = await loadOrgSettings();
 
   const pet = pets.find((p) => p.id === petId && p.client_id === id);
   const client = clients.find((c) => c.id === id);
@@ -131,7 +133,7 @@ export default async function PetDetailPage({
           <p className="font-semibold">Combined pet history</p>
           <p className="mt-1 text-xs leading-relaxed">
             This page combines {siblingRows.length} imported {pet.name} records
-            so Sam can see the full history in one place.
+            so you can see the full history in one place.
           </p>
         </div>
       ) : null}
@@ -204,6 +206,7 @@ export default async function PetDetailPage({
               pet={pet}
               mode={dataMode()}
               settings={{ readyPickupTemplate: settings.readyPickupTemplate }}
+              operatorName={orgSettings.operatorName}
             />
           </div>
           <p className="mt-2 text-xs leading-relaxed text-ink-faint">
@@ -224,6 +227,7 @@ export default async function PetDetailPage({
           mode={dataMode()}
           writesEnabled={isEditAppointmentWriteEnabled()}
           locationSettings={settings.locationSettings}
+          operatorName={orgSettings.operatorName}
         />
       </section>
     </main>

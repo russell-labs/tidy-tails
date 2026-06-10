@@ -16,7 +16,7 @@ function phoneForMessage(message: SmsMessage): string {
 }
 
 function directionLabel(message: SmsMessage): string {
-  return message.direction === "inbound" ? "Customer reply" : "Sam message";
+  return message.direction === "inbound" ? "Customer reply" : "Your message";
 }
 
 function directionClass(message: SmsMessage): string {

@@ -82,6 +82,7 @@ export function EditAppointment({
   mode,
   writesEnabled,
   locationSettings,
+  operatorName,
   trigger,
 }: {
   clientId: string;
@@ -95,6 +96,7 @@ export function EditAppointment({
   mode: "fixtures" | "live";
   writesEnabled: boolean;
   locationSettings: LocationSettingsMap;
+  operatorName: string;
   trigger?: React.ReactNode;
 }) {
   const [open, setOpen] = useState(false);
@@ -142,6 +144,7 @@ export function EditAppointment({
           mode={mode}
           writesEnabled={writesEnabled}
           locationSettings={locationSettings}
+          operatorName={operatorName}
           onDone={close}
         />
       </Sheet>
@@ -161,6 +164,7 @@ function EditAppointmentForm({
   mode,
   writesEnabled,
   locationSettings,
+  operatorName,
   onDone,
 }: {
   clientId: string;
@@ -174,6 +178,7 @@ function EditAppointmentForm({
   mode: "fixtures" | "live";
   writesEnabled: boolean;
   locationSettings: LocationSettingsMap;
+  operatorName: string;
   onDone: () => void;
 }) {
   const [state, formAction, pending] = useActionState<
@@ -267,6 +272,7 @@ function EditAppointmentForm({
           : scopedPetLabel,
       date: targetAppointment.date,
       time: targetAppointment.time_slot,
+      operatorName,
     });
   const [cancellationMessage, setCancellationMessage] = useState(
     defaultCancellationMessage("single"),
@@ -316,6 +322,7 @@ function EditAppointmentForm({
       time: time.trim() || null,
       service: serviceLabel,
       location: customerLocation,
+      operatorName,
     });
   const currentBookingUpdateMessage = sendBookingUpdateText
     ? bookingUpdateMessage.trim() || defaultBookingUpdateMessage()
@@ -386,6 +393,7 @@ function EditAppointmentForm({
           "the pet",
         date: nextAppointment.date,
         time: nextAppointment.time_slot,
+        operatorName,
       }),
     );
   }
@@ -722,7 +730,7 @@ function EditAppointmentForm({
                   Text updated booking to owner
                 </span>
                 <span className="block text-xs leading-relaxed">
-                  Sam reviews the updated date, time, service, and location
+                  You review the updated date, time, service, and location
                   before anything sends.
                   {editScope === "group" && canEditGroup
                     ? " This text is sent once for the household."
@@ -770,7 +778,7 @@ function EditAppointmentForm({
                                 Text cancellation to owner
                               </span>
                               <span className="block text-xs">
-                                Sam can edit this before deleting.
+                                You can edit this before deleting.
                               </span>
                             </span>
                           </label>
@@ -894,7 +902,7 @@ function EditAppointmentForm({
               />
               <span className="text-xs text-ink-faint">
                 {currentBookingUpdateMessage.length}/480 characters. This sends
-                only after Sam confirms.
+                only after you confirm.
               </span>
             </Field>
           ) : null}

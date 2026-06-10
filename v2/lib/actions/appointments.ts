@@ -28,6 +28,7 @@ import {
 import { mapAppointmentRow, serviceLabel } from "@/lib/data/live";
 import { createServerSupabase, getCurrentUser } from "@/lib/supabase/server";
 import { isAddAppointmentWriteEnabled } from "@/lib/writeGate";
+import { loadOrgSettings } from "@/lib/orgSettings.server";
 import {
   checkGoogleCalendarAppointmentAvailability,
   syncAppointmentToGoogleCalendar,
@@ -286,7 +287,7 @@ export async function createBooking(
   }
 
   // Flag ON: persist the appointment rows. The auth-aware server client
-  // carries Samantha's JWT, so the column DEFAULT auth.uid() stamps groomer_id.
+  // carries the operator's JWT, so the column DEFAULT auth.uid() stamps groomer_id.
   const supabase = await createServerSupabase();
   const clientPatch: {
     email?: string | null;
@@ -363,6 +364,7 @@ export async function createBooking(
   });
   summary.calendar = { status: calendar.status, message: calendar.message };
   if (booking.send_booking_text && effectiveClient.phone) {
+    const orgSettings = await loadOrgSettings();
     const bookingTextBody =
       booking.booking_message?.trim() ||
       buildBookingTextMessage({
@@ -372,6 +374,7 @@ export async function createBooking(
         time: summary.time,
         service: summary.service,
         location: summary.location,
+        operatorName: orgSettings.operatorName,
       });
     summary.bookingTextSend = await sendCustomerSms({
       clientId: booking.client_id,

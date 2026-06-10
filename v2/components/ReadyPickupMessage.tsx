@@ -25,11 +25,13 @@ export function ReadyPickupMessage({
   pet,
   mode,
   settings,
+  operatorName,
 }: {
   client: Client;
   pet: Pet;
   mode: "fixtures" | "live";
   settings: Pick<OperatorSettings, "readyPickupTemplate">;
+  operatorName: string;
 }) {
   const [open, setOpen] = useState(false);
   const [formKey, setFormKey] = useState(0);
@@ -55,6 +57,7 @@ export function ReadyPickupMessage({
           pet={pet}
           mode={mode}
           settings={settings}
+          operatorName={operatorName}
           onDone={close}
         />
       </Sheet>
@@ -67,12 +70,14 @@ function ReadyPickupForm({
   pet,
   mode,
   settings,
+  operatorName,
   onDone,
 }: {
   client: Client;
   pet: Pet;
   mode: "fixtures" | "live";
   settings: Pick<OperatorSettings, "readyPickupTemplate">;
+  operatorName: string;
   onDone: () => void;
 }) {
   const [state, formAction, pending] = useActionState<ReadyPickupState, FormData>(
@@ -85,6 +90,7 @@ function ReadyPickupForm({
     buildReadyPickupMessage({
       ownerFirstName: client.first_name,
       petName: pet.name,
+      operatorName,
       template: settings.readyPickupTemplate,
     }),
   );
@@ -204,7 +210,7 @@ function ModeNote({ mode }: { mode: "fixtures" | "live" }) {
   if (mode === "live") {
     return (
       <p className="rounded-lg bg-warn-soft px-3 py-2 text-xs font-medium text-warn">
-        Sam reviews this pickup text before anything sends.
+        You review this pickup text before anything sends.
       </p>
     );
   }

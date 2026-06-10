@@ -38,6 +38,7 @@ export function InboxMessageCenter({
   messages,
   clients,
   settings,
+  operatorName,
   activeThreadKey: initialActiveThreadKey,
   standalone = false,
 }: {
@@ -45,6 +46,7 @@ export function InboxMessageCenter({
   messages: SmsMessage[];
   clients: ClientSummary[];
   settings: OperatorSettings;
+  operatorName: string;
   activeThreadKey?: string;
   standalone?: boolean;
 }) {
@@ -184,7 +186,7 @@ export function InboxMessageCenter({
                 insertTemplate={insertTemplate}
               />
               <p className="rounded-xl border border-line bg-surface px-3.5 py-3 text-sm leading-relaxed text-ink-soft">
-                This will start a new message thread after Sam sends.
+                This will start a new message thread after you send.
               </p>
             </div>
           ) : null}
@@ -244,6 +246,7 @@ export function InboxMessageCenter({
       renderMessageCenterTemplate({
         key: nextTemplateKey,
         settings,
+        operatorName,
         client: activeClient,
         pets: activeClient.pets,
         appointments: activeClient.appointments,
@@ -321,7 +324,7 @@ export function InboxMessageCenter({
                   />
                 ) : (
                   <p className="rounded-xl border border-line bg-surface px-3.5 py-3 text-sm leading-relaxed text-ink-soft">
-                    This will start a new message thread after Sam sends.
+                    This will start a new message thread after you send.
                   </p>
                 )}
               </div>
@@ -356,7 +359,7 @@ function ThreadPreview({ thread, name }: { thread: SmsThread; name: string }) {
           </p>
         </div>
         <p className="mt-2 line-clamp-2 text-sm leading-relaxed text-ink-muted">
-          {thread.latestDirection === "outbound" ? "Sam: " : ""}
+          {thread.latestDirection === "outbound" ? "You: " : ""}
           {thread.latestBody}
         </p>
         <div className="mt-2 flex items-center gap-2 text-xs font-semibold text-ink-faint">
@@ -489,7 +492,7 @@ function ThreadComposer({
           className="w-full resize-none rounded-xl border border-line bg-surface px-3.5 py-2.5 text-base leading-relaxed text-ink outline-none placeholder:text-ink-faint focus:border-brand focus:ring-2 focus:ring-brand/20"
           placeholder={
             canSend
-              ? "Write Sam's text..."
+              ? "Write your text..."
               : "Match this phone number to an owner before texting."
           }
           disabled={!canSend || pending}

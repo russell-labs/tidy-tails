@@ -40,9 +40,14 @@ export type OrgSettings = {
   // businessStructure / empty ownedLocations for a Sam-like org (no settings).
   businessStructure: BusinessStructure | null;
   ownedLocations: OwnedLocation[];
+  // TT-012 — the name that signs this org's customer texts and labels its
+  // operator surfaces. "" → use a neutral label / drop the signature (a Sam-like
+  // org with no row reads as "" and is seeded "Samantha" at cutover).
+  operatorName: string;
 };
 
 export const DEFAULT_SOFT_TARGET = 7;
+export const OPERATOR_NAME_MAX = 80;
 
 // The fail-safe value: a brand-new/absent org_settings row reads as Sam's
 // batched waterfall with no 1:1 knobs.
@@ -55,6 +60,7 @@ export const DEFAULT_ORG_SETTINGS: OrgSettings = {
   softTarget: DEFAULT_SOFT_TARGET,
   businessStructure: null,
   ownedLocations: [],
+  operatorName: "",
 };
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -174,6 +180,7 @@ export function normalizeOrgSettings(row: {
     softTarget: clampInt(settings.softTarget, DEFAULT_SOFT_TARGET, 1, 50),
     businessStructure: normalizeBusinessStructure(settings.businessStructure),
     ownedLocations: normalizeOwnedLocations(settings.locations),
+    operatorName: asString(settings.operatorName).slice(0, OPERATOR_NAME_MAX),
   };
 }
 
