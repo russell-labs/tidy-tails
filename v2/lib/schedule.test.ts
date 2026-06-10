@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Appointment, Client, Pet } from "./data/types";
 import { FIXTURE_APPOINTMENTS } from "./data/fixtures";
 import {
+  appointmentGroupPets,
   appointmentsForDay,
   appointmentsForWeek,
   bookedFeesForDate,
@@ -282,6 +283,39 @@ describe("week schedule helpers", () => {
         appt({ id: "other-day", date: "2026-05-22", price: 100 }),
       ], "2026-05-21"),
     ).toBe(45);
+  });
+});
+
+describe("appointmentGroupPets", () => {
+  const [whiskey, oliver] = householdPets;
+
+  it("returns the booked dogs with the opened appointment's pet first", () => {
+    const group = [
+      appt({ id: "a-whiskey", pet_id: "p1" }),
+      appt({ id: "a-oliver", pet_id: "p2" }),
+    ];
+    expect(appointmentGroupPets(group, householdPets, oliver)).toEqual([
+      oliver,
+      whiskey,
+    ]);
+  });
+
+  it("returns just the primary pet for a single-dog booking", () => {
+    const group = [appt({ id: "a-whiskey", pet_id: "p1" })];
+    expect(appointmentGroupPets(group, householdPets, whiskey)).toEqual([whiskey]);
+  });
+
+  it("dedupes repeated pets and drops pets missing from the household", () => {
+    const group = [
+      appt({ id: "a-whiskey", pet_id: "p1" }),
+      appt({ id: "a-whiskey-dup", pet_id: "p1" }),
+      appt({ id: "a-oliver", pet_id: "p2" }),
+      appt({ id: "a-ghost", pet_id: "p9" }),
+    ];
+    expect(appointmentGroupPets(group, householdPets, whiskey)).toEqual([
+      whiskey,
+      oliver,
+    ]);
   });
 });
 
