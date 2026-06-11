@@ -63,6 +63,22 @@ insert into public.appointments (id, org_id, groomer_id, client_id, pet_id, date
   ('00000000-0000-0000-0000-0000000000a6', '00000000-0000-0000-0000-00000000f002', '00000000-0000-0000-0000-0000000000bb', '00000000-0000-0000-0000-0000000000c5', '00000000-0000-0000-0000-0000000000d6', '2026-06-19', '1:00pm',  'annette', 'nail_trim',  25, 'booked')
 on conflict (id) do nothing;
 
+-- ---- daily_income (TT-014): one lump-sum rented-chair day per tenant --------
+-- Guarded on table existence: seed.sql is shared with the cutover-rehearsal CI
+-- job, which builds its schema from baseline 0001 + the cutover script (which
+-- does NOT create daily_income — a post-cutover feature migration) rather than
+-- from the migrations. The table is present in the isolation gate (all
+-- migrations applied) and absent in cutover rehearsal; skip cleanly there.
+do $$
+begin
+  if to_regclass('public.daily_income') is not null then
+    insert into public.daily_income (id, org_id, groomer_id, date, location, amount, note) values
+      ('00000000-0000-0000-0000-0000000000e1', '00000000-0000-0000-0000-00000000f001', '00000000-0000-0000-0000-0000000000aa', '2026-06-12', 'gina',    240.00, 'Rented chair day — cash total'),
+      ('00000000-0000-0000-0000-0000000000e2', '00000000-0000-0000-0000-00000000f002', '00000000-0000-0000-0000-0000000000bb', '2026-06-12', 'annette', 180.00, 'End of day total')
+    on conflict (id) do nothing;
+  end if;
+end $$;
+
 -- ---- Backfill: any pre-existing tenant-1 rows that predate org_id (WS1 seed)
 update public.clients      set org_id = '00000000-0000-0000-0000-00000000f001' where groomer_id = '00000000-0000-0000-0000-0000000000aa' and org_id is null;
 update public.pets         set org_id = '00000000-0000-0000-0000-00000000f001' where groomer_id = '00000000-0000-0000-0000-0000000000aa' and org_id is null;
