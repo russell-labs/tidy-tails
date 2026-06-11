@@ -2,12 +2,26 @@ import { describe, expect, it } from "vitest";
 import type { Appointment } from "./data/types";
 import {
   calculateAppointmentMoney,
+  calculateDayLocationMoney,
   calculateDayMoney,
   customerFacingLocationLabel,
   customerLocationLabelFromSettings,
   locationLabelFromSettings,
 } from "./locationFinance";
 import { DEFAULT_OPERATOR_SETTINGS } from "./operatorSettings";
+import type { DailyIncome } from "./data/types";
+
+function dailyIncome(overrides: Partial<DailyIncome>): DailyIncome {
+  return {
+    id: overrides.id ?? "i1",
+    date: overrides.date ?? "2026-06-12",
+    location: overrides.location ?? "gina",
+    amount: overrides.amount ?? 200,
+    note: overrides.note ?? null,
+    created_at: "2026-06-12T20:00:00.000Z",
+    updated_at: "2026-06-12T20:00:00.000Z",
+  };
+}
 
 function appointment(overrides: Partial<Appointment>): Appointment {
   return {
@@ -100,6 +114,79 @@ describe("location finance", () => {
       gross: 250,
       salonPayout: 55,
       samNet: 195,
+    });
+  });
+
+  it("creates a location row for an income-only day and derives the percent cut (TT-014)", () => {
+    const rows = calculateDayLocationMoney(
+      [],
+      "2026-06-12",
+      DEFAULT_OPERATOR_SETTINGS.locationSettings,
+      [],
+      [dailyIncome({ location: "gina", amount: 200 })],
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      location: "gina",
+      gross: 200,
+      calculatedSalonPayout: 60, // 30% of 200
+      salonPayout: 60,
+      samNet: 140,
+      override: null,
+    });
+  });
+
+  it("derives the flat daily-rate cut for an income-only day (TT-014)", () => {
+    const settings = {
+      ...DEFAULT_OPERATOR_SETTINGS.locationSettings,
+      gina: {
+        ...DEFAULT_OPERATOR_SETTINGS.locationSettings.gina,
+        payoutType: "daily_rate" as const,
+        dailyRate: 50,
+      },
+    };
+    const rows = calculateDayLocationMoney(
+      [],
+      "2026-06-12",
+      settings,
+      [],
+      [dailyIncome({ location: "gina", amount: 200 })],
+    );
+    expect(rows[0]).toMatchObject({
+      gross: 200,
+      calculatedSalonPayout: 50, // flat rent, not a percent
+      samNet: 150,
+    });
+  });
+
+  it("adds daily income to appointment gross at the same location (TT-014)", () => {
+    const rows = calculateDayLocationMoney(
+      [appointment({ price: 100, location: "gina" })],
+      "2026-06-12",
+      DEFAULT_OPERATOR_SETTINGS.locationSettings,
+      [],
+      [dailyIncome({ location: "gina", amount: 200 })],
+    );
+    expect(rows[0]).toMatchObject({
+      gross: 300,
+      calculatedSalonPayout: 90, // 30% of 300
+      samNet: 210,
+    });
+  });
+
+  it("rolls daily income into the day gross and net totals (TT-014)", () => {
+    expect(
+      calculateDayMoney(
+        [appointment({ price: 100, location: "gina" })],
+        "2026-06-12",
+        DEFAULT_OPERATOR_SETTINGS.locationSettings,
+        [],
+        [dailyIncome({ location: "gina", amount: 200 })],
+      ),
+    ).toEqual({
+      gross: 300,
+      salonPayout: 90,
+      samNet: 210,
     });
   });
 

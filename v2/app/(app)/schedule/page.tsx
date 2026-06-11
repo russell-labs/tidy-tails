@@ -2,9 +2,15 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { AddHousehold } from "@/components/AddHousehold";
 import { DayCloseoutControls } from "@/components/DayCloseoutControls";
+import { DailyIncomeControls } from "@/components/DailyIncomeControls";
 import { FirstRunEmptyState } from "@/components/FirstRunEmptyState";
 import { OneToOneOpenedDay } from "@/components/OneToOneOpenedDay";
-import { dataMode, loadDataset, loadDayCloseoutOverrideState } from "@/lib/data/repo";
+import {
+  dataMode,
+  loadDataset,
+  loadDailyIncomeState,
+  loadDayCloseoutOverrideState,
+} from "@/lib/data/repo";
 import { loadOrgSettings } from "@/lib/orgSettings.server";
 import { bookingLocationLabel } from "@/lib/booking";
 import {
@@ -160,10 +166,17 @@ export default async function SchedulePage({
   const view = scheduleView(params.view);
   const selectedDay = params.day ?? params.week ?? todayISO();
   const range = weekRangeForDate(params.week ?? selectedDay);
-  const [{ clients, pets, appointments }, closeoutState, settings, orgSettings] =
+  const [
+    { clients, pets, appointments },
+    closeoutState,
+    dailyIncomeState,
+    settings,
+    orgSettings,
+  ] =
     await Promise.all([
       loadDataset(),
       loadDayCloseoutOverrideState(),
+      loadDailyIncomeState(),
       readOperatorSettings(),
       loadOrgSettings(),
     ]);
@@ -193,6 +206,7 @@ export default async function SchedulePage({
   }
 
   const closeoutOverrides = closeoutState.overrides;
+  const dailyIncome = dailyIncomeState.income;
   const calibration = settings.scheduleCalibration;
   const rows =
     view === "day"
@@ -213,6 +227,7 @@ export default async function SchedulePage({
           selectedDay,
           settings.locationSettings,
           closeoutOverrides,
+          dailyIncome,
         )
       : rows.reduce(
           (sum, row) => {
@@ -346,14 +361,17 @@ export default async function SchedulePage({
               selectedDaySummary.date,
               settings.locationSettings,
               closeoutOverrides,
+              dailyIncome,
             )}
             closeouts={calculateDayLocationMoney(
               appointments,
               selectedDaySummary.date,
               settings.locationSettings,
               closeoutOverrides,
+              dailyIncome,
             )}
             closeoutReady={closeoutState.ready}
+            dailyIncomeReady={dailyIncomeState.ready}
             calibration={calibration}
             locationSettings={settings.locationSettings}
           />
@@ -368,6 +386,7 @@ export default async function SchedulePage({
                   summary.date,
                   settings.locationSettings,
                   closeoutOverrides,
+                  dailyIncome,
                 )}
               />
             ))}
@@ -441,6 +460,7 @@ function OpenedDay({
   money,
   closeouts,
   closeoutReady,
+  dailyIncomeReady,
   calibration,
   locationSettings,
 }: {
@@ -449,6 +469,7 @@ function OpenedDay({
   money: DayMoney;
   closeouts: DayLocationMoney[];
   closeoutReady: boolean;
+  dailyIncomeReady: boolean;
   calibration: ScheduleCalibration;
   locationSettings: LocationSettingsMap;
 }) {
@@ -487,6 +508,16 @@ function OpenedDay({
         {closeoutReady ? (
           <DayCloseoutControls
             rows={closeouts}
+            locationLabels={{
+              gina: locationLabelFromSettings("gina", locationSettings) ?? "Gina",
+              annette:
+                locationLabelFromSettings("annette", locationSettings) ?? "Annette",
+            }}
+          />
+        ) : null}
+        {dailyIncomeReady ? (
+          <DailyIncomeControls
+            date={summary.date}
             locationLabels={{
               gina: locationLabelFromSettings("gina", locationSettings) ?? "Gina",
               annette:
