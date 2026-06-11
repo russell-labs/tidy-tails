@@ -32,6 +32,7 @@ vi.mock("@/lib/supabase/server", () => ({
   getCurrentUser: vi.fn(),
 }));
 
+import { deleteClient } from "./deleteClient";
 import { editClient } from "./editClient";
 import { editPet } from "./editPet";
 import { saveIntake } from "./intake";
@@ -221,6 +222,92 @@ describe("editClient", () => {
         phone: expect.any(String),
         email: expect.any(String),
       },
+    });
+    expect(getClientRecordMock).not.toHaveBeenCalled();
+    expectNoWrites();
+  });
+});
+
+describe("deleteClient", () => {
+  it("deletes a household with no appointment history when the gate is on", async () => {
+    vi.stubEnv("TIDYTAILS_ENABLE_DELETE_CLIENT_WRITE", "on");
+    getClientRecordMock.mockResolvedValue(clientRecord({ appointments: [] }));
+
+    const result = await deleteClient(
+      { status: "idle" },
+      form({ client_id: "client-1" }),
+    );
+
+    expect(result).toMatchObject({ status: "deleted", ownerName: "Mary Jones" });
+    expect(supabase.operations).toEqual([
+      {
+        table: "booking_requests",
+        action: "delete",
+        filters: [{ method: "eq", column: "client_id", value: "client-1" }],
+        orders: [],
+      },
+      {
+        table: "clients",
+        action: "delete",
+        filters: [{ method: "eq", column: "id", value: "client-1" }],
+        orders: [],
+      },
+    ]);
+  });
+
+  it("blocks deletion and writes nothing when the household has appointment history", async () => {
+    vi.stubEnv("TIDYTAILS_ENABLE_DELETE_CLIENT_WRITE", "on");
+    getClientRecordMock.mockResolvedValue(
+      clientRecord({ appointments: [appointment({ client_id: "client-1" })] }),
+    );
+
+    const result = await deleteClient(
+      { status: "idle" },
+      form({ client_id: "client-1" }),
+    );
+
+    expect(result).toMatchObject({ status: "error" });
+    expect(result).toMatchObject({
+      message: expect.stringContaining("history"),
+    });
+    expectNoWrites();
+  });
+
+  it("returns gated and writes nothing when the delete-client gate is off", async () => {
+    vi.stubEnv("TIDYTAILS_ENABLE_DELETE_CLIENT_WRITE", "true");
+    getClientRecordMock.mockResolvedValue(clientRecord({ appointments: [] }));
+
+    const result = await deleteClient(
+      { status: "idle" },
+      form({ client_id: "client-1" }),
+    );
+
+    expect(result).toMatchObject({ status: "gated" });
+    expectNoWrites();
+  });
+
+  it("returns an auth error and writes nothing without an operator", async () => {
+    getCurrentUserMock.mockResolvedValue(null);
+
+    const result = await deleteClient(
+      { status: "idle" },
+      form({ client_id: "client-1" }),
+    );
+
+    expect(result).toEqual({
+      status: "error",
+      message: "Your session ended. Sign in again.",
+    });
+    expect(getClientRecordMock).not.toHaveBeenCalled();
+    expectNoWrites();
+  });
+
+  it("returns validation feedback and writes nothing when the household id is missing", async () => {
+    const result = await deleteClient({ status: "idle" }, form({ client_id: "" }));
+
+    expect(result).toEqual({
+      status: "error",
+      message: "That household could not be found.",
     });
     expect(getClientRecordMock).not.toHaveBeenCalled();
     expectNoWrites();

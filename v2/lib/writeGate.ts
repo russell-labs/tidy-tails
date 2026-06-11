@@ -55,6 +55,11 @@ export function isEditClientWriteEnabled(): boolean {
   return isFlagEnabled(process.env.TIDYTAILS_ENABLE_EDIT_CLIENT_WRITE);
 }
 
+/** Delete Household (client) live writes — `TIDYTAILS_ENABLE_DELETE_CLIENT_WRITE`. */
+export function isDeleteClientWriteEnabled(): boolean {
+  return isFlagEnabled(process.env.TIDYTAILS_ENABLE_DELETE_CLIENT_WRITE);
+}
+
 /** Edit Appointment live writes — `TIDYTAILS_ENABLE_EDIT_APPOINTMENT_WRITE`. */
 export function isEditAppointmentWriteEnabled(): boolean {
   return isFlagEnabled(process.env.TIDYTAILS_ENABLE_EDIT_APPOINTMENT_WRITE);
