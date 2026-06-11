@@ -15,6 +15,7 @@ import type { ClientRecord } from "@/lib/data/types";
 import { createServerSupabase, getCurrentUser } from "@/lib/supabase/server";
 import { getTwilioConfig, sendTwilioSms, toTwilioPhone } from "@/lib/twilio";
 import { isReminderSendEnabled } from "@/lib/writeGate";
+import { isImpersonating } from "@/lib/admin/impersonation.server";
 
 export type InboxActionState =
   | { status: "idle" }
@@ -103,6 +104,10 @@ export async function sendInboxSmsReply(
   if (!validation.ok) return { status: "error", message: validation.error };
 
   if (!isReminderSendEnabled()) {
+    return { status: "error", message: "SMS sending is switched off. No text was sent." };
+  }
+  // TT-015: read-only support view — never write a tenant row while impersonating.
+  if (await isImpersonating()) {
     return { status: "error", message: "SMS sending is switched off. No text was sent." };
   }
 
@@ -208,6 +213,10 @@ export async function sendClientSmsMessage(
   if (!isReminderSendEnabled()) {
     return { status: "error", message: "SMS sending is switched off. No text was sent." };
   }
+  // TT-015: read-only support view — never write a tenant row while impersonating.
+  if (await isImpersonating()) {
+    return { status: "error", message: "SMS sending is switched off. No text was sent." };
+  }
 
   const record = await getClientRecord(validation.value.clientId);
   if (!record) return { status: "error", message: "That household could not be found." };
@@ -296,6 +305,10 @@ export async function sendMessageCenterSmsMessage(
     return { status: "error", message: "Choose a message thread first." };
   }
   if (!isReminderSendEnabled()) {
+    return { status: "error", message: "SMS sending is switched off. No text was sent." };
+  }
+  // TT-015: read-only support view — never write a tenant row while impersonating.
+  if (await isImpersonating()) {
     return { status: "error", message: "SMS sending is switched off. No text was sent." };
   }
 

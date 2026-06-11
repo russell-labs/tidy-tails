@@ -28,6 +28,7 @@ import {
 import { mapAppointmentRow, serviceLabel } from "@/lib/data/live";
 import { createServerSupabase, getCurrentUser } from "@/lib/supabase/server";
 import { isAddAppointmentWriteEnabled } from "@/lib/writeGate";
+import { isImpersonating } from "@/lib/admin/impersonation.server";
 import { loadOrgSettings } from "@/lib/orgSettings.server";
 import {
   checkGoogleCalendarAppointmentAvailability,
@@ -251,6 +252,14 @@ export async function createBooking(
   // Live mode. The server-side kill-switch decides whether this persists.
   // OFF (default) → return `gated` and run no insert — identical to pre-flip.
   if (!isAddAppointmentWriteEnabled()) {
+    return {
+      status: "gated",
+      summary,
+      message: "Booking writes aren't switched on yet. Nothing was saved.",
+    };
+  }
+  // TT-015: read-only support view — never write a tenant row while impersonating.
+  if (await isImpersonating()) {
     return {
       status: "gated",
       summary,

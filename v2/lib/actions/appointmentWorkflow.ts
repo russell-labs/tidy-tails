@@ -10,6 +10,7 @@ import {
 import { dataMode, getClientRecord } from "@/lib/data/repo";
 import { createServerSupabase, getCurrentUser } from "@/lib/supabase/server";
 import { isEditAppointmentWriteEnabled } from "@/lib/writeGate";
+import { isImpersonating } from "@/lib/admin/impersonation.server";
 import { fullName } from "@/lib/format";
 
 export type AppointmentWorkflowAction = "scheduled" | AppointmentWorkflowMarker;
@@ -73,6 +74,14 @@ export async function updateAppointmentWorkflow(
     return { status: "demo", label, message: `Demo only - marked ${label}.` };
   }
   if (!isEditAppointmentWriteEnabled()) {
+    return {
+      status: "gated",
+      label,
+      message: "Schedule status changes are not switched on yet. Nothing was saved.",
+    };
+  }
+  // TT-015: read-only support view — never write a tenant row while impersonating.
+  if (await isImpersonating()) {
     return {
       status: "gated",
       label,

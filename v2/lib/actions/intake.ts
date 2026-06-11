@@ -17,6 +17,7 @@ import { recordAuditEvent } from "@/lib/audit.server";
 import { dataMode, requireOrgId } from "@/lib/data/repo";
 import { createServerSupabase, getCurrentUser } from "@/lib/supabase/server";
 import { isAddHouseholdWriteEnabled } from "@/lib/writeGate";
+import { isImpersonating } from "@/lib/admin/impersonation.server";
 import {
   buildClientInsert,
   buildPetInserts,
@@ -145,6 +146,14 @@ export async function saveIntake(
   // Live mode. The server-side kill-switch decides whether this persists.
   // OFF (default) → return `gated` and run no insert.
   if (!isAddHouseholdWriteEnabled()) {
+    return {
+      status: "gated",
+      summary,
+      message: "Client and pet creation isn't switched on yet. Nothing was saved.",
+    };
+  }
+  // TT-015: read-only support view — never write a tenant row while impersonating.
+  if (await isImpersonating()) {
     return {
       status: "gated",
       summary,

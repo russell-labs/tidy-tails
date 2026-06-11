@@ -82,3 +82,15 @@ export function isAddHouseholdWriteEnabled(): boolean {
 export function isGoogleCalendarSyncEnabled(): boolean {
   return isFlagEnabled(process.env.TIDYTAILS_ENABLE_GOOGLE_CALENDAR_SYNC);
 }
+
+/**
+ * Admin "view-as" / support impersonation — `TIDYTAILS_ENABLE_ADMIN_VIEW_AS`.
+ *
+ * Not a write surface: view-as is read-only at the DB layer (TT-015). It reuses
+ * the same exact-match, default-off, server-only flag semantics so the entire
+ * feature — /admin, the impersonation RPCs' app entry points, the banner, and
+ * the read pivot — is inert unless this flag is exactly "on".
+ */
+export function isAdminViewAsEnabled(): boolean {
+  return isFlagEnabled(process.env.TIDYTAILS_ENABLE_ADMIN_VIEW_AS);
+}

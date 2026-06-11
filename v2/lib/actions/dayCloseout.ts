@@ -11,6 +11,7 @@ import {
 import { dataMode, requireOrgId } from "@/lib/data/repo";
 import { createServerSupabase, getCurrentUser } from "@/lib/supabase/server";
 import { isDayCloseoutWriteEnabled } from "@/lib/writeGate";
+import { isImpersonating } from "@/lib/admin/impersonation.server";
 
 export type DayCloseoutState =
   | { status: "idle" }
@@ -47,6 +48,13 @@ export async function saveDayCloseoutOverride(
     };
   }
   if (!isDayCloseoutWriteEnabled()) {
+    return {
+      status: "gated",
+      message: "Day closeout writes are not switched on yet. Nothing was saved.",
+    };
+  }
+  // TT-015: read-only support view — never write a tenant row while impersonating.
+  if (await isImpersonating()) {
     return {
       status: "gated",
       message: "Day closeout writes are not switched on yet. Nothing was saved.",

@@ -6,7 +6,7 @@ import {
   type AuditEvent,
   type AuditEventInput,
 } from "@/lib/audit";
-import { currentGroomerId, dataMode, requireOrgId } from "@/lib/data/repo";
+import { dataMode, liveReadScope, requireOrgId } from "@/lib/data/repo";
 import { createServerSupabase, getCurrentUser } from "@/lib/supabase/server";
 
 export async function recordAuditEvent(
@@ -44,17 +44,18 @@ export async function loadRecentAuditEvents(limit = 20): Promise<AuditEvent[]> {
   noStore();
   if (dataMode() !== "live") return [];
 
-  // Scope to the signed-in operator and fail closed with no session, matching
-  // the `groomer_id = auth.uid()` RLS SELECT policy on audit_events.
-  const groomerId = await currentGroomerId();
-  if (!groomerId) return [];
+  // Scope by liveReadScope: the signed-in operator normally, or the impersonated
+  // org while a platform admin holds an active session (TT-015) — support needs
+  // the tenant's activity trail. Fail closed with no scope.
+  const scope = await liveReadScope();
+  if (!scope) return [];
 
   try {
     const supabase = await createServerSupabase();
     const { data, error } = await supabase
       .from("audit_events")
       .select("*")
-      .eq("groomer_id", groomerId)
+      .eq(scope.column, scope.value)
       .order("created_at", { ascending: false })
       .limit(limit);
     if (error) return [];

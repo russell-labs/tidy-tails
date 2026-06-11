@@ -4,7 +4,7 @@
 // cutover org has no org_settings row) and fixtures/e2e always resolve to
 // batched, and a one_to_one org is opt-in via a real row.
 
-import { currentOrgId, dataMode } from "./data/repo";
+import { dataMode, effectiveOrgId } from "./data/repo";
 import {
   DEFAULT_ORG_SETTINGS,
   normalizeOrgSettings,
@@ -14,7 +14,11 @@ import { createServerSupabase } from "./supabase/server";
 
 export async function loadOrgSettings(): Promise<OrgSettings> {
   if (dataMode() !== "live") return DEFAULT_ORG_SETTINGS;
-  const orgId = await currentOrgId();
+  // Display read, so it follows the effective (view-as-aware) org. org_settings
+  // IS in the TT-015 admin-read OR-term scope, so while impersonating this
+  // returns the tenant's real scheduling style + economics (not the batched
+  // default) — a faithful support view.
+  const orgId = await effectiveOrgId();
   if (!orgId) return DEFAULT_ORG_SETTINGS;
   const supabase = await createServerSupabase();
   const { data, error } = await supabase

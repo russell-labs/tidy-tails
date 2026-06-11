@@ -36,6 +36,7 @@ import {
 import { parseTimeToMinutes } from "@/lib/scheduling/time";
 import { createServerSupabase, getCurrentUser } from "@/lib/supabase/server";
 import { isAddAppointmentWriteEnabled } from "@/lib/writeGate";
+import { isImpersonating } from "@/lib/admin/impersonation.server";
 
 // Conservative fallback length for an existing block whose duration_minutes is
 // null (legacy row): assume a long block so overlap math fails TOWARD conflict.
@@ -120,6 +121,14 @@ export async function createOneToOneBooking(
   if (dataMode() === "fixtures") return { status: "demo", summary };
 
   if (!isAddAppointmentWriteEnabled()) {
+    return {
+      status: "gated",
+      summary,
+      message: "Booking writes aren't switched on yet. Nothing was saved.",
+    };
+  }
+  // TT-015: read-only support view — never write a tenant row while impersonating.
+  if (await isImpersonating()) {
     return {
       status: "gated",
       summary,

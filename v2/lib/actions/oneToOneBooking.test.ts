@@ -15,7 +15,12 @@ vi.mock("@/lib/supabase/server", () => ({
   createServerSupabase: vi.fn(),
   getCurrentUser: vi.fn(),
 }));
-vi.mock("@/lib/writeGate", () => ({ isAddAppointmentWriteEnabled: vi.fn() }));
+vi.mock("@/lib/writeGate", () => ({
+  isAddAppointmentWriteEnabled: vi.fn(),
+  // TT-015 write guard calls isImpersonating() -> activeImpersonation(), which
+  // reads this flag. Off keeps the read-only guard inert in these tests.
+  isAdminViewAsEnabled: vi.fn(() => false),
+}));
 
 import { createOneToOneBooking } from "./oneToOneBooking";
 import {

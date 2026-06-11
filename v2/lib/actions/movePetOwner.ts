@@ -13,6 +13,7 @@ import {
 } from "@/lib/movePetOwner";
 import { createServerSupabase, getCurrentUser } from "@/lib/supabase/server";
 import { isEditPetWriteEnabled } from "@/lib/writeGate";
+import { isImpersonating } from "@/lib/admin/impersonation.server";
 
 export type MovePetOwnerSummary = {
   petName: string;
@@ -127,6 +128,14 @@ export async function movePetOwner(
   if (dataMode() === "fixtures") return { status: "demo", summary };
 
   if (!isEditPetWriteEnabled()) {
+    return {
+      status: "gated",
+      summary,
+      message: "Pet owner changes are not switched on yet. Nothing was moved.",
+    };
+  }
+  // TT-015: read-only support view — never write a tenant row while impersonating.
+  if (await isImpersonating()) {
     return {
       status: "gated",
       summary,

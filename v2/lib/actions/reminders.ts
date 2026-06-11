@@ -20,6 +20,7 @@ import { dataMode, getClientRecord, requireOrgId } from "@/lib/data/repo";
 import { resolveHouseholdSendNumber } from "@/lib/householdNumbers";
 import { createServerSupabase, getCurrentUser } from "@/lib/supabase/server";
 import { isReminderSendEnabled } from "@/lib/writeGate";
+import { isImpersonating } from "@/lib/admin/impersonation.server";
 import {
   buildReminderDraft,
   buildReminderTarget,
@@ -133,6 +134,14 @@ export async function prepareReminder(
   // automatic send. This code path only runs after the operator submits the
   // review step's "Confirm & send" button.
   if (!isReminderSendEnabled()) {
+    return {
+      status: "gated",
+      summary,
+      message: "Reminder sending isn't switched on yet. No text was sent.",
+    };
+  }
+  // TT-015: read-only support view — never write a tenant row while impersonating.
+  if (await isImpersonating()) {
     return {
       status: "gated",
       summary,

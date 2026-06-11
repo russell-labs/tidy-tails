@@ -1,5 +1,5 @@
 import { unstable_noStore as noStore } from "next/cache";
-import { currentGroomerId, dataMode } from "@/lib/data/repo";
+import { dataMode, liveReadScope } from "@/lib/data/repo";
 import { createServerSupabase } from "@/lib/supabase/server";
 import type { Row } from "@/lib/data/live";
 import type { BookingRequestInboxRow } from "@/lib/inbox";
@@ -10,17 +10,18 @@ export async function loadRecentBookingRequests(
   noStore();
   if (dataMode() !== "live") return [];
 
-  // Scope to the signed-in operator and fail closed with no session, matching
-  // the `groomer_id = auth.uid()` RLS SELECT policy on booking_requests.
-  const groomerId = await currentGroomerId();
-  if (!groomerId) return [];
+  // Scope by liveReadScope: the signed-in operator normally, or the impersonated
+  // org while a platform admin holds an active session (TT-015). Fail closed
+  // with no scope. Either column is RLS-backed (member or admin-read OR-term).
+  const scope = await liveReadScope();
+  if (!scope) return [];
 
   try {
     const supabase = await createServerSupabase();
     const { data, error } = await supabase
       .from("booking_requests")
       .select("*")
-      .eq("groomer_id", groomerId)
+      .eq(scope.column, scope.value)
       .order("created_at", { ascending: false })
       .limit(limit);
     if (error) return [];

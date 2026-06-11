@@ -14,6 +14,7 @@ import {
 import { scheduledAppointmentGroupFor } from "@/lib/schedule";
 import { createServerSupabase, getCurrentUser } from "@/lib/supabase/server";
 import { isEditAppointmentWriteEnabled } from "@/lib/writeGate";
+import { isImpersonating } from "@/lib/admin/impersonation.server";
 
 export type AppointmentPaymentState =
   | { status: "idle" }
@@ -94,6 +95,14 @@ export async function markAppointmentPaid(
     };
   }
   if (!isEditAppointmentWriteEnabled()) {
+    return {
+      status: "gated",
+      petLabel,
+      message: "Payment updates are not switched on yet. Nothing was saved.",
+    };
+  }
+  // TT-015: read-only support view — never write a tenant row while impersonating.
+  if (await isImpersonating()) {
     return {
       status: "gated",
       petLabel,

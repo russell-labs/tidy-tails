@@ -5,6 +5,7 @@ import { recordAuditEvent } from "@/lib/audit.server";
 import { dataMode, getClientRecord } from "@/lib/data/repo";
 import { createServerSupabase, getCurrentUser } from "@/lib/supabase/server";
 import { isEditClientWriteEnabled } from "@/lib/writeGate";
+import { isImpersonating } from "@/lib/admin/impersonation.server";
 import {
   buildEditClientUpdate,
   validateEditClient,
@@ -75,6 +76,14 @@ export async function editClient(
   if (dataMode() === "fixtures") return { status: "demo", summary };
 
   if (!isEditClientWriteEnabled()) {
+    return {
+      status: "gated",
+      summary,
+      message: "Household editing is not switched on yet. Nothing was saved.",
+    };
+  }
+  // TT-015: read-only support view — never write a tenant row while impersonating.
+  if (await isImpersonating()) {
     return {
       status: "gated",
       summary,
