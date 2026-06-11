@@ -92,21 +92,25 @@ begin
     insert into public.clients (org_id, groomer_id, first_name) values (own, me, 'SelfProbe');
   exception when insufficient_privilege then raise exception 'FAIL t1 A4: own-org insert was wrongly blocked'; end;
 
-  -- daily_income (TT-014): read scoped, cross-org write blocked, own insert allowed
-  if (select count(*) from public.daily_income where org_id <> own) <> 0 then raise exception 'FAIL t1 read: daily_income leaked from another org'; end if;
+  -- daily_income (TT-014): read scoped, cross-org write blocked, own insert allowed.
+  -- Guarded on table existence — this test is shared with the cutover-rehearsal
+  -- job, whose schema (baseline + cutover script) has no daily_income table.
+  if to_regclass('public.daily_income') is not null then
+    if (select count(*) from public.daily_income where org_id <> own) <> 0 then raise exception 'FAIL t1 read: daily_income leaked from another org'; end if;
 
-  update public.daily_income set amount = 9999 where org_id = foreign_org;
-  get diagnostics n = row_count;
-  if n <> 0 then raise exception 'FAIL t1 daily_income: updated % foreign row(s)', n; end if;
+    update public.daily_income set amount = 9999 where org_id = foreign_org;
+    get diagnostics n = row_count;
+    if n <> 0 then raise exception 'FAIL t1 daily_income: updated % foreign row(s)', n; end if;
 
-  begin
-    insert into public.daily_income (org_id, groomer_id, date, location, amount) values (foreign_org, me, '2026-06-20', 'gina', 100);
-    raise exception 'FAIL t1 daily_income: inserted into the foreign org';
-  exception when insufficient_privilege then null; end;
+    begin
+      insert into public.daily_income (org_id, groomer_id, date, location, amount) values (foreign_org, me, '2026-06-20', 'gina', 100);
+      raise exception 'FAIL t1 daily_income: inserted into the foreign org';
+    exception when insufficient_privilege then null; end;
 
-  begin
-    insert into public.daily_income (org_id, groomer_id, date, location, amount) values (own, me, '2026-06-21', 'gina', 120);
-  exception when insufficient_privilege then raise exception 'FAIL t1 daily_income: own-org insert wrongly blocked'; end;
+    begin
+      insert into public.daily_income (org_id, groomer_id, date, location, amount) values (own, me, '2026-06-21', 'gina', 120);
+    exception when insufficient_privilege then raise exception 'FAIL t1 daily_income: own-org insert wrongly blocked'; end;
+  end if;
 
   raise notice 'tenant 1 OK: read scoped; cross-org update/reassign/insert blocked; own insert allowed';
 end $$;
@@ -143,21 +147,25 @@ begin
     insert into public.clients (org_id, groomer_id, first_name) values (own, me, 'SelfProbe');
   exception when insufficient_privilege then raise exception 'FAIL t2 A4: own-org insert was wrongly blocked'; end;
 
-  -- daily_income (TT-014): read scoped, cross-org write blocked, own insert allowed
-  if (select count(*) from public.daily_income where org_id <> own) <> 0 then raise exception 'FAIL t2 read: daily_income leaked from another org'; end if;
+  -- daily_income (TT-014): read scoped, cross-org write blocked, own insert allowed.
+  -- Guarded on table existence — this test is shared with the cutover-rehearsal
+  -- job, whose schema (baseline + cutover script) has no daily_income table.
+  if to_regclass('public.daily_income') is not null then
+    if (select count(*) from public.daily_income where org_id <> own) <> 0 then raise exception 'FAIL t2 read: daily_income leaked from another org'; end if;
 
-  update public.daily_income set amount = 9999 where org_id = foreign_org;
-  get diagnostics n = row_count;
-  if n <> 0 then raise exception 'FAIL t2 daily_income: updated % foreign row(s)', n; end if;
+    update public.daily_income set amount = 9999 where org_id = foreign_org;
+    get diagnostics n = row_count;
+    if n <> 0 then raise exception 'FAIL t2 daily_income: updated % foreign row(s)', n; end if;
 
-  begin
-    insert into public.daily_income (org_id, groomer_id, date, location, amount) values (foreign_org, me, '2026-06-20', 'annette', 100);
-    raise exception 'FAIL t2 daily_income: inserted into the foreign org';
-  exception when insufficient_privilege then null; end;
+    begin
+      insert into public.daily_income (org_id, groomer_id, date, location, amount) values (foreign_org, me, '2026-06-20', 'annette', 100);
+      raise exception 'FAIL t2 daily_income: inserted into the foreign org';
+    exception when insufficient_privilege then null; end;
 
-  begin
-    insert into public.daily_income (org_id, groomer_id, date, location, amount) values (own, me, '2026-06-21', 'annette', 120);
-  exception when insufficient_privilege then raise exception 'FAIL t2 daily_income: own-org insert wrongly blocked'; end;
+    begin
+      insert into public.daily_income (org_id, groomer_id, date, location, amount) values (own, me, '2026-06-21', 'annette', 120);
+    exception when insufficient_privilege then raise exception 'FAIL t2 daily_income: own-org insert wrongly blocked'; end;
+  end if;
 
   raise notice 'tenant 2 OK: read scoped; cross-org update/reassign/insert blocked; own insert allowed';
 end $$;
