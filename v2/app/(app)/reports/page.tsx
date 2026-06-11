@@ -3,8 +3,14 @@ import Link from "next/link";
 import { AddHousehold } from "@/components/AddHousehold";
 import { FirstRunEmptyState } from "@/components/FirstRunEmptyState";
 import { collapseLoggedGroomDuplicates } from "@/lib/appointmentLedger";
-import { dataMode, loadDataset, loadDayCloseoutOverrides } from "@/lib/data/repo";
+import {
+  dataMode,
+  loadDataset,
+  loadDailyIncome,
+  loadDayCloseoutOverrides,
+} from "@/lib/data/repo";
 import { lapsedClients, revenueInRange, vaccinationState } from "@/lib/derive";
+import { sumDailyIncomeInRange } from "@/lib/dailyIncome";
 import {
   formatDate,
   formatMoney,
@@ -59,12 +65,13 @@ export default async function ReportsPage({
     lapsed: lapsedParam,
   } = await searchParams;
   const { year, month } = parseMonth(monthParam);
-  const [operatorSettings, orgSettings, dataset, closeoutOverrides] =
+  const [operatorSettings, orgSettings, dataset, closeoutOverrides, dailyIncome] =
     await Promise.all([
       readOperatorSettings(),
       loadOrgSettings(),
       loadDataset(),
       loadDayCloseoutOverrides(),
+      loadDailyIncome(),
     ]);
   const { clients, pets, appointments: rawAppointments, vaccinations } = dataset;
 
@@ -124,12 +131,22 @@ export default async function ReportsPage({
         ? `${new Date().getFullYear()} year to date`
         : monthLabel;
   const revenue = revenueInRange(appointments, from, to);
+  // TT-014: lump-sum cash from rented-chair days rolls into Total collected
+  // (gross) alongside appointment fees + tips. Fees/Tips/Visits stay
+  // appointment-only — daily income has no per-dog breakdown.
+  const dailyIncomeGross = sumDailyIncomeInRange(dailyIncome, from, to);
+  const totalCollected = revenue.total + dailyIncomeGross;
   const rangeDates = Array.from(
     new Set(appointments.filter((a) => a.date >= from && a.date <= to).map((a) => a.date)),
   ).sort();
   for (const override of closeoutOverrides) {
     if (override.date >= from && override.date <= to && !rangeDates.includes(override.date)) {
       rangeDates.push(override.date);
+    }
+  }
+  for (const income of dailyIncome) {
+    if (income.date >= from && income.date <= to && !rangeDates.includes(income.date)) {
+      rangeDates.push(income.date);
     }
   }
   rangeDates.sort();
@@ -139,6 +156,7 @@ export default async function ReportsPage({
       date,
       operatorSettings.locationSettings,
       closeoutOverrides,
+      dailyIncome,
     ),
   );
   const closeoutCalculated = closeoutRows.reduce(
@@ -239,7 +257,7 @@ export default async function ReportsPage({
         <div className="mt-2 grid grid-cols-2 gap-2">
           <StatTile
             label="Total collected"
-            value={formatMoney(revenue.total)}
+            value={formatMoney(totalCollected)}
             className="col-span-2"
             valueClassName="text-[clamp(1.9rem,9vw,2.4rem)]"
           />
@@ -247,12 +265,22 @@ export default async function ReportsPage({
           <StatTile label="Tips" value={formatMoney(revenue.tips)} />
           <StatTile label="Visits" value={String(revenue.count)} />
           <StatTile label="Avg total" value={formatMoney(revenue.averageTotal)} />
+          {dailyIncomeGross > 0 ? (
+            <StatTile
+              label="Daily cash days"
+              value={formatMoney(dailyIncomeGross)}
+              className="col-span-2"
+            />
+          ) : null}
         </div>
         <p className="mt-2 text-xs text-ink-faint">
           Showing {rangeLabel}.{" "}
-          {revenue.count === 0
+          {revenue.count === 0 && dailyIncomeGross === 0
             ? "No appointments are recorded in this range; try All or Year."
             : "Collected totals exclude visits marked waiting on payment; active card clients are still being added."}
+          {dailyIncomeGross > 0
+            ? " Total collected includes daily cash totals from rented-chair days (no per-dog breakdown)."
+            : ""}
         </p>
       </section>
 

@@ -63,6 +63,7 @@ vi.mock("@/lib/twilio", () => ({
 
 import { createBooking } from "./appointments";
 import { markAppointmentPaid } from "./appointmentPayment";
+import { saveDailyIncome } from "./dailyIncome";
 import { saveDayCloseoutOverride } from "./dayCloseout";
 import { editAppointment } from "./editAppointment";
 import { logGroom } from "./grooms";
@@ -552,6 +553,87 @@ describe("saveDayCloseoutOverride", () => {
         final_payout: expect.any(String),
         calculated_payout: expect.any(String),
         note: expect.any(String),
+      },
+    });
+    expectNoSupabaseWrites();
+  });
+});
+
+describe("saveDailyIncome", () => {
+  it("upserts the gross lump-sum payload when the daily-income gate is on", async () => {
+    vi.stubEnv("TIDYTAILS_ENABLE_DAILY_INCOME_WRITE", "on");
+
+    const result = await saveDailyIncome(
+      { status: "idle" },
+      form({
+        date: isoDate(0),
+        location: "gina",
+        amount: "240.50",
+        note: "Rented chair day",
+      }),
+    );
+
+    expect(result).toEqual({ status: "saved", message: "Daily income saved." });
+    expect(supabaseOperations).toHaveLength(1);
+    expect(supabaseOperations[0]).toMatchObject({
+      table: "daily_income",
+      action: "upsert",
+      payload: {
+        date: isoDate(0),
+        location: "gina",
+        amount: 240.5,
+        note: "Rented chair day",
+        groomer_id: "operator-1",
+        org_id: "org-1",
+      },
+      options: { onConflict: "groomer_id,date,location" },
+      filters: [],
+    });
+    expect(supabaseOperations[0].payload).toEqual(
+      expect.objectContaining({ updated_at: expect.any(String) }),
+    );
+  });
+
+  it("returns gated and writes nothing when the daily-income gate is not exactly on", async () => {
+    vi.stubEnv("TIDYTAILS_ENABLE_DAILY_INCOME_WRITE", "true");
+
+    const result = await saveDailyIncome(
+      { status: "idle" },
+      form({ date: isoDate(0), location: "annette", amount: "180", note: "" }),
+    );
+
+    expect(result).toMatchObject({ status: "gated" });
+    expectNoSupabaseWrites();
+  });
+
+  it("returns an auth error and writes nothing when there is no operator user", async () => {
+    getCurrentUserMock.mockResolvedValue(null);
+
+    const result = await saveDailyIncome(
+      { status: "idle" },
+      form({ date: isoDate(0), location: "gina", amount: "240.50", note: "" }),
+    );
+
+    expect(result).toEqual({
+      status: "error",
+      errors: {},
+      formError: "Your session ended. Sign in again.",
+    });
+    expectNoSupabaseWrites();
+  });
+
+  it("returns field errors and writes nothing for invalid daily-income input", async () => {
+    const result = await saveDailyIncome(
+      { status: "idle" },
+      form({ date: "tomorrow", location: "mobile", amount: "-1", note: " " }),
+    );
+
+    expect(result).toMatchObject({
+      status: "error",
+      errors: {
+        date: expect.any(String),
+        location: expect.any(String),
+        amount: expect.any(String),
       },
     });
     expectNoSupabaseWrites();

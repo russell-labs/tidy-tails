@@ -6,7 +6,7 @@ import {
 } from "./booking";
 import { collapseLoggedGroomDuplicates } from "./appointmentLedger";
 import { isScheduleSlateAppointment } from "./appointmentWorkflow";
-import type { Appointment, DayCloseoutOverride } from "./data/types";
+import type { Appointment, DailyIncome, DayCloseoutOverride } from "./data/types";
 import type { LocationSettingsMap } from "./operatorSettings";
 import { parseSalonPayoutOverride } from "./payoutOverride";
 
@@ -145,8 +145,15 @@ export function calculateDayMoney(
   date: string,
   settings: LocationSettingsMap,
   overrides: DayCloseoutOverride[] = [],
+  dailyIncomes: DailyIncome[] = [],
 ): DayMoney {
-  const locations = calculateDayLocationMoney(appointments, date, settings, overrides);
+  const locations = calculateDayLocationMoney(
+    appointments,
+    date,
+    settings,
+    overrides,
+    dailyIncomes,
+  );
   const unassigned = daySlateAppointments(appointments, date).filter(
     (appointment) => !bookingLocation(appointment.location),
   );
@@ -183,6 +190,7 @@ export function calculateDayLocationMoney(
   date: string,
   settings: LocationSettingsMap,
   overrides: DayCloseoutOverride[] = [],
+  dailyIncomes: DailyIncome[] = [],
 ): DayLocationMoney[] {
   const booked = daySlateAppointments(appointments, date);
   const locations = new Set<string>();
@@ -194,13 +202,20 @@ export function calculateDayLocationMoney(
       locations.add(override.location);
     }
   }
+  // TT-014: a lump-sum daily-income entry creates a location row even on a day
+  // with no individual bookings (a rented-chair day Sam grooms with someone).
+  for (const income of dailyIncomes) {
+    if (income.date === date && bookingLocation(income.location)) {
+      locations.add(income.location);
+    }
+  }
 
   return Array.from(locations).sort().map((location) => {
     const code = bookingLocation(location)!;
     const locationAppointments = booked.filter(
       (appointment) => bookingLocation(appointment.location) === code,
     );
-    const gross = roundMoney(
+    const appointmentGross = roundMoney(
       locationAppointments.reduce(
         (sum, appointment) => sum + calculateAppointmentMoney(appointment, settings).gross,
         0,
@@ -213,11 +228,25 @@ export function calculateDayLocationMoney(
         0,
       ),
     );
+    // TT-014: daily income is GROSS cash at this location; the existing cut
+    // derives take-home. It adds to gross, and (for percent locations) the cut
+    // scales with it. For a daily-rate location the rent is flat, so daily
+    // income lifts gross and net without changing the payout.
     const setting = settings[code];
+    const dailyIncomeGross = roundMoney(
+      dailyIncomes
+        .filter((income) => income.date === date && income.location === code)
+        .reduce((sum, income) => sum + income.amount, 0),
+    );
+    const gross = roundMoney(appointmentGross + dailyIncomeGross);
+    const dailyIncomePercentPayout =
+      setting.payoutType === "daily_rate"
+        ? 0
+        : roundMoney(dailyIncomeGross * (setting.salonKeepsPercent / 100));
     const calculatedSalonPayout = roundMoney(
       setting.payoutType === "daily_rate" && setting.dailyRate != null
         ? setting.dailyRate
-        : percentPayout,
+        : percentPayout + dailyIncomePercentPayout,
     );
     const override =
       overrides.find(
