@@ -9,6 +9,7 @@ import {
   isEditClientWriteEnabled,
   isDeleteClientWriteEnabled,
   isEditAppointmentWriteEnabled,
+  isDailyIncomeWriteEnabled,
   isGoogleCalendarSyncEnabled,
 } from "./writeGate";
 
@@ -43,6 +44,11 @@ const SURFACES = [
     "Add Household",
     isAddHouseholdWriteEnabled,
     "TIDYTAILS_ENABLE_ADD_HOUSEHOLD_WRITE",
+  ],
+  [
+    "Daily Income",
+    isDailyIncomeWriteEnabled,
+    "TIDYTAILS_ENABLE_DAILY_INCOME_WRITE",
   ],
   [
     "Google Calendar sync",
@@ -109,6 +115,7 @@ describe("write-gate isolation — one flag never enables another", () => {
     expect(isEditAppointmentWriteEnabled()).toBe(false);
     expect(isReminderSendEnabled()).toBe(false);
     expect(isAddHouseholdWriteEnabled()).toBe(false);
+    expect(isDailyIncomeWriteEnabled()).toBe(false);
     expect(isGoogleCalendarSyncEnabled()).toBe(false);
   });
 
@@ -123,6 +130,7 @@ describe("write-gate isolation — one flag never enables another", () => {
     expect(isEditAppointmentWriteEnabled()).toBe(false);
     expect(isReminderSendEnabled()).toBe(false);
     expect(isAddHouseholdWriteEnabled()).toBe(false);
+    expect(isDailyIncomeWriteEnabled()).toBe(false);
     expect(isGoogleCalendarSyncEnabled()).toBe(false);
   });
 });

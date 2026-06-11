@@ -23,6 +23,7 @@ import type {
   Appointment,
   Client,
   ClientRecord,
+  DailyIncome,
   DayCloseoutOverride,
   Pet,
   Vaccination,
@@ -37,6 +38,7 @@ import {
   fetchAllRows,
   mapAppointmentRow,
   mapClientRow,
+  mapDailyIncomeRow,
   mapDayCloseoutOverrideRow,
   mapPetRow,
   type Row,
@@ -129,7 +131,8 @@ async function liveSelectOptional(
     if (
       error instanceof Error &&
       (error.message.includes("Could not find the table") ||
-        error.message.includes("day_closeout_overrides"))
+        error.message.includes("day_closeout_overrides") ||
+        error.message.includes("daily_income"))
     ) {
       return { rows: [], ready: false };
     }
@@ -190,6 +193,24 @@ export async function loadDayCloseoutOverrideState(groomerId?: string | null): P
   if (!gid) return { overrides: [], ready: true };
   const { rows, ready } = await liveSelectOptional("day_closeout_overrides", gid);
   return { overrides: rows.map(mapDayCloseoutOverrideRow), ready };
+}
+
+export async function loadDailyIncome(
+  groomerId?: string | null,
+): Promise<DailyIncome[]> {
+  return (await loadDailyIncomeState(groomerId)).income;
+}
+
+export async function loadDailyIncomeState(groomerId?: string | null): Promise<{
+  income: DailyIncome[];
+  ready: boolean;
+}> {
+  if (dataMode() !== "live") return { income: [], ready: true };
+  const gid = groomerId ?? (await currentGroomerId());
+  // Fail closed: no session means no rows. The table itself is still "ready".
+  if (!gid) return { income: [], ready: true };
+  const { rows, ready } = await liveSelectOptional("daily_income", gid);
+  return { income: rows.map(mapDailyIncomeRow), ready };
 }
 
 export type Dataset = {

@@ -80,6 +80,19 @@ export type DayCloseoutOverride = {
   updated_at: string;
 };
 
+// TT-014: a lump-sum gross cash total for a rented-chair day with no individual
+// bookings, attached to the rented location for that date. The location cut
+// derives take-home (see lib/locationFinance.ts).
+export type DailyIncome = {
+  id: string;
+  date: string; // ISO date (YYYY-MM-DD)
+  location: string;
+  amount: number;
+  note: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 // Convenience shape: a client with their pets and appointment history attached.
 export type ClientRecord = {
   client: Client;
