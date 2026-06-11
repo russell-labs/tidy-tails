@@ -19,7 +19,12 @@ import type { Client, Pet } from "@/lib/data/types";
 import { inferSizeClass } from "@/lib/dayCapacity";
 import { ONE_TO_ONE_SERVICE_TYPES } from "@/lib/oneToOneBooking";
 import type { OrgLocation } from "@/lib/orgSettings";
-import { suggestedDurationMinutes, type DurationDefaults } from "@/lib/scheduling/oneToOne";
+import {
+  oneToOneLoadStripText,
+  suggestedDurationMinutes,
+  type DurationDefaults,
+  type OneToOneDaySummary,
+} from "@/lib/scheduling/oneToOne";
 import { todayISO } from "@/lib/dates";
 import { Sheet } from "./Sheet";
 import { SubmitDogOverlay } from "./SubmitDog";
@@ -119,13 +124,16 @@ function OneToOneForm({
   );
   const suggested = suggestFor(petId, service);
 
-  // Open blocks fetched from the server (advisory; the action is the authority).
+  // Open blocks fetched from the server (advisory; the action is the authority),
+  // plus the day's existing load for the non-blocking strip (TT-013).
   const [slots, setSlots] = useState<string[] | null>(null);
+  const [dayLoad, setDayLoad] = useState<OneToOneDaySummary | null>(null);
   const [slot, setSlot] = useState("");
   const [loadingSlots, startSlots] = useTransition();
 
   function resetSlots() {
     setSlots(null);
+    setDayLoad(null);
     setSlot("");
   }
 
@@ -135,6 +143,7 @@ function OneToOneForm({
     startSlots(async () => {
       const result = await getOneToOneAvailability(date, minutes);
       setSlots(result.slots);
+      setDayLoad(result.dayLoad);
     });
   }
 
@@ -278,6 +287,7 @@ function OneToOneForm({
             {loadingSlots ? "Finding…" : "Find open times"}
           </button>
         </div>
+        {dayLoad ? <OneToOneDayLoadStrip dayLoad={dayLoad} /> : null}
         {slots == null ? (
           <p className="mt-2 text-xs text-ink-soft">
             Pick a date and length, then find open {duration}-minute blocks.
@@ -325,6 +335,26 @@ function OneToOneForm({
         {pending ? "Booking…" : slot ? `Book ${slot}` : "Pick an open time"}
       </button>
     </form>
+  );
+}
+
+// TT-013: a non-blocking, one-line read on the day's existing load (booked time
+// vs the working-day window + large-dog count). It informs the booking — it
+// never disables an open slot. Warns in the heaviness tone only when the day is
+// getting full; otherwise a quiet advisory line.
+export function OneToOneDayLoadStrip({
+  dayLoad,
+}: {
+  dayLoad: OneToOneDaySummary;
+}) {
+  return (
+    <p
+      className={`mt-2 text-xs leading-relaxed ${
+        dayLoad.gettingHeavy ? "font-medium text-warn" : "text-ink-soft"
+      }`}
+    >
+      {oneToOneLoadStripText(dayLoad)}
+    </p>
   );
 }
 

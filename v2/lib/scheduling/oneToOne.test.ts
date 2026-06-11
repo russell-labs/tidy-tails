@@ -5,6 +5,8 @@ import {
   hasUnplaceableBlock,
   oneToOneDaySummary,
   oneToOneHeavinessNote,
+  oneToOneLoadStripText,
+  oneToOneLoadSummaryText,
   resolveExistingBlock,
   suggestedDurationMinutes,
   type ExistingBlock,
@@ -167,11 +169,22 @@ describe("oneToOneDaySummary", () => {
       date: "2026-06-20",
       totalDogs: 2,
       bookedMinutes: 90,
+      workingDayMinutes: 600, // default 8am–6pm window
       softTarget: 7,
       overTarget: false,
       largeDogs: 0,
       gettingHeavy: false,
     });
+  });
+
+  it("carries the working-day window length for the booking-flow strip", () => {
+    const summary = oneToOneDaySummary({
+      date: "d",
+      blocks: [{ durationMinutes: 60 }],
+      softTarget: 7,
+      workingDay: { startMinutes: 9 * 60, endMinutes: 17 * 60 }, // 8h
+    });
+    expect(summary.workingDayMinutes).toBe(480);
   });
 
   it("marks overTarget when dogs exceed the soft target", () => {
@@ -281,5 +294,62 @@ describe("oneToOneHeavinessNote (TT-010)", () => {
       gettingHeavy: true,
     });
     expect(note).toBe("8h booked — your day's getting full.");
+  });
+});
+
+describe("oneToOneLoadSummaryText (TT-013 booking-flow strip)", () => {
+  const base = {
+    date: "d",
+    totalDogs: 3,
+    softTarget: 7,
+    overTarget: false,
+    bookedMinutes: 225,
+    workingDayMinutes: 600,
+    largeDogs: 2,
+    gettingHeavy: false,
+  };
+
+  it("states booked time against the working-day window and the large-dog count", () => {
+    expect(oneToOneLoadSummaryText(base)).toBe("3h 45m of ~10h booked · 2 large");
+  });
+
+  it("reads naturally with no large dogs on a light day", () => {
+    expect(
+      oneToOneLoadSummaryText({ ...base, bookedMinutes: 90, largeDogs: 0 }),
+    ).toBe("1h 30m of ~10h booked · 0 large");
+  });
+});
+
+describe("oneToOneLoadStripText (TT-013 booking-flow strip)", () => {
+  const base = {
+    date: "d",
+    totalDogs: 3,
+    softTarget: 7,
+    overTarget: false,
+    bookedMinutes: 225,
+    workingDayMinutes: 600,
+    largeDogs: 2,
+    gettingHeavy: false,
+  };
+
+  it("is just the load summary on a light day (no caution tail)", () => {
+    expect(oneToOneLoadStripText(base)).toBe("3h 45m of ~10h booked · 2 large");
+  });
+
+  it("appends the shared heaviness caution when the day is getting heavy", () => {
+    expect(oneToOneLoadStripText({ ...base, gettingHeavy: true })).toBe(
+      "3h 45m of ~10h booked · 2 large — your day's getting full. Check coat types before adding another large dog.",
+    );
+  });
+
+  it("omits the coat-type sentence on a heavy day with no large dogs", () => {
+    expect(
+      oneToOneLoadStripText({
+        ...base,
+        largeDogs: 0,
+        bookedMinutes: 480,
+        gettingHeavy: true,
+      }),
+    ).toBe("8h of ~10h booked · 0 large — your day's getting full.");
   });
 });
