@@ -16,8 +16,11 @@ import {
   dataMode,
   getClientRecord,
   loadAppointments,
+  loadDataset,
   requireOrgId,
 } from "@/lib/data/repo";
+import { appointmentsForDay } from "@/lib/schedule";
+import { inferSizeClass } from "@/lib/dayCapacity";
 import { serviceLabel } from "@/lib/data/live";
 import { findOwnedPet } from "@/lib/booking";
 import { fullName } from "@/lib/format";
@@ -31,7 +34,9 @@ import {
 import {
   availableBlocks,
   hasOverlapConflict,
+  oneToOneDaySummary,
   resolveExistingBlock,
+  type OneToOneDaySummary,
 } from "@/lib/scheduling/oneToOne";
 import { parseTimeToMinutes } from "@/lib/scheduling/time";
 import { createServerSupabase, getCurrentUser } from "@/lib/supabase/server";
@@ -182,17 +187,25 @@ export async function createOneToOneBooking(
 export type OneToOneAvailability = {
   slots: string[];
   bufferMinutes: number;
+  // TT-013: the day's existing load (booked minutes vs the working-day window +
+  // large-dog count), so the booking sheet can surface a non-blocking strip.
+  // Advisory only — it never removes a slot.
+  dayLoad: OneToOneDaySummary;
 };
 
 // Open blocks of `durationMinutes` on `date` for the current org, for the 1:1
-// booking picker. Advisory — the createOneToOneBooking action is the authority.
+// booking picker, plus the day's existing load for the advisory strip. Advisory
+// throughout — the createOneToOneBooking action is the booking authority.
 export async function getOneToOneAvailability(
   date: string,
   durationMinutes: number,
 ): Promise<OneToOneAvailability> {
   const orgSettings = await loadOrgSettings();
-  const allAppointments = await loadAppointments();
-  const existing = allAppointments
+  const { clients, pets, appointments } = await loadDataset();
+
+  // Slots: exclusive open blocks against the same slate the booking action
+  // checks (unchanged conflict basis — overlap detection is untouched).
+  const existing = appointments
     .filter((a) => a.date === date && isScheduleSlateAppointment(a))
     .map((a) =>
       resolveExistingBlock(a.time_slot, a.duration_minutes ?? null, FALLBACK_BLOCK_MINUTES),
@@ -203,5 +216,20 @@ export async function getOneToOneAvailability(
     bufferMinutes: orgSettings.bufferMinutes,
     workingDay: orgSettings.workingDay,
   });
-  return { slots, bufferMinutes: orgSettings.bufferMinutes };
+
+  // Day load: built from the SAME resolved rows the day card renders
+  // (appointmentsForDay collapses logged-groom duplicates and joins pets), so
+  // the strip, the day card, and the week card all show one identical number.
+  const dayRows = appointmentsForDay({ appointments, clients, pets, date });
+  const dayLoad = oneToOneDaySummary({
+    date,
+    blocks: dayRows.map((row) => ({
+      durationMinutes: row.appointment.duration_minutes ?? 0,
+      size: row.pet ? inferSizeClass(row.pet) : "unknown",
+    })),
+    softTarget: orgSettings.softTarget,
+    workingDay: orgSettings.workingDay,
+  });
+
+  return { slots, bufferMinutes: orgSettings.bufferMinutes, dayLoad };
 }
