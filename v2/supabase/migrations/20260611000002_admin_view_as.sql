@@ -92,6 +92,17 @@ as $$
   );
 $$;
 
+-- Admin-only RPC: revoke EXECUTE from anon (and public) so it is NOT callable
+-- without signing in, then grant authenticated. Supabase auto-grants EXECUTE
+-- directly to the `anon` role (schema default privileges), so revoking `public`
+-- alone is insufficient — `anon` must be named explicitly. Defense in depth: the
+-- function already fails closed for anon (auth.uid() null -> false) and is called
+-- internally only via SECURITY DEFINER functions (which don't need the caller's
+-- grant). This just removes it from the anon-exposed REST API. NOTE:
+-- active_impersonated_org_ids() below is deliberately NOT hardened — it is
+-- referenced in `to public` SELECT policies, so anon must keep EXECUTE (it
+-- returns ∅ for anon regardless).
+revoke execute on function public.is_platform_admin() from public, anon;
 grant execute on function public.is_platform_admin() to authenticated;
 
 -- The org_ids the caller is CURRENTLY allowed to view-as: target orgs of their
@@ -164,6 +175,7 @@ begin
 end;
 $$;
 
+revoke execute on function public.admin_start_impersonation(uuid, text) from public, anon;
 grant execute on function public.admin_start_impersonation(uuid, text) to authenticated;
 
 -- End the admin's active session(s). Idempotent.
@@ -184,6 +196,7 @@ begin
 end;
 $$;
 
+revoke execute on function public.admin_end_impersonation() from public, anon;
 grant execute on function public.admin_end_impersonation() to authenticated;
 
 -- The admin's current active session with the target org NAME resolved. Returns
@@ -211,6 +224,7 @@ as $$
   limit 1;
 $$;
 
+revoke execute on function public.admin_active_impersonation() from public, anon;
 grant execute on function public.admin_active_impersonation() to authenticated;
 
 -- Enumerate orgs for the /admin picker. Admin-only; the admin has no membership
@@ -233,6 +247,7 @@ as $$
   order by o.name asc;
 $$;
 
+revoke execute on function public.admin_list_orgs() from public, anon;
 grant execute on function public.admin_list_orgs() to authenticated;
 
 -- ---------------------------------------------------------------------------

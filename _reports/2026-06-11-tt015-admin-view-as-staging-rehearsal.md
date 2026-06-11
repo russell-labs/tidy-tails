@@ -90,11 +90,26 @@ Net: the admin can **read** the target org while a session is active and can
 - `rls_enabled_no_policy` on `sam_review_responses` and leaked-password — both
   **pre-existing**, unrelated to TT-015.
 
-**Optional hardening (recommended, not required):** revoke `EXECUTE … FROM PUBLIC`
-on the admin-only RPCs (`is_platform_admin`, `admin_start/end_impersonation`,
-`admin_active_impersonation`, `admin_list_orgs`), keeping `authenticated`. Trims
-attack surface and silences 5 warnings; behaviorally a no-op (they already fail
-closed). Leave `active_impersonated_org_ids` as-is (policy dependency).
+**Hardening — APPLIED & verified (Russell approved 2026-06-11).** Revoked
+`EXECUTE` from `anon` on the 5 admin-only RPCs (`is_platform_admin`,
+`admin_start/end_impersonation`, `admin_active_impersonation`, `admin_list_orgs`),
+keeping `authenticated`. `active_impersonated_org_ids` left anon-executable (it
+is referenced in `to public` SELECT policies).
+- **Gotcha caught:** Supabase grants EXECUTE *directly to the `anon` role* (schema
+  default privileges), not via `PUBLIC` — the admin RPCs' ACL had no PUBLIC grant
+  at all. So `revoke … from public` was a no-op; the migration revokes
+  `from public, anon` (anon named explicitly). Confirmed via `pg_proc.proacl`.
+- **Verified on staging:** authenticated admin path still works (start OK,
+  active=1, reads 3 target clients); `anon` now gets `insufficient_privilege` on
+  both `is_platform_admin` and `admin_start_impersonation`; `anon` still executes
+  `active_impersonated_org_ids` (returns ∅, no error). `get_advisors(security)`
+  re-run: the 5 admin-RPC **anon** warnings are gone; remaining anon warnings are
+  only `active_impersonated_org_ids` (intentional) + pre-existing `user_org_ids`/
+  `org_created_by_me`. The `authenticated`-executable warnings remain by design
+  (the app calls these as authenticated; same accepted baseline as user_org_ids).
+- Staging got the hardening as a follow-on (`admin_view_as_rpc_hardening` +
+  corrected `from anon` delta); the committed migration file folds it inline
+  (`revoke … from public, anon`), so a fresh prod apply is hardened in one shot.
 
 ## 6. Cleanup — verified clean
 All probe transactions rolled back. Post-rehearsal staging state:
@@ -103,7 +118,8 @@ All probe transactions rolled back. Post-rehearsal staging state:
 `platform_admins` table present (migration persisted). **No residue.** The
 feature is inert on staging (no real admin seeded) until the flag + a real seed.
 
-## 7. Remaining pre-enable gates (unchanged)
-Legal disclosure live in ToS/Privacy; capture + seed the real staging admin uid;
-(optional) the §5 hardening; then gated prod apply. Flag stays OFF until a real
-support session.
+## 7. Remaining pre-enable gates
+Legal disclosure live in ToS/Privacy; capture + seed the **real** staging admin
+uid (the probe used a throwaway, rolled back); then gated prod apply (the
+committed migration now folds in the §5 RPC hardening). Flag stays OFF until a
+real support session.
