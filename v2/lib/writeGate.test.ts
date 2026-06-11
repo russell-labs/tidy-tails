@@ -7,6 +7,7 @@ import {
   isAddHouseholdWriteEnabled,
   isEditPetWriteEnabled,
   isEditClientWriteEnabled,
+  isDeleteClientWriteEnabled,
   isEditAppointmentWriteEnabled,
   isGoogleCalendarSyncEnabled,
 } from "./writeGate";
@@ -28,6 +29,11 @@ const SURFACES = [
   ["Add Pet", isAddPetWriteEnabled, "TIDYTAILS_ENABLE_ADD_PET_WRITE"],
   ["Edit Pet", isEditPetWriteEnabled, "TIDYTAILS_ENABLE_EDIT_PET_WRITE"],
   ["Edit Client", isEditClientWriteEnabled, "TIDYTAILS_ENABLE_EDIT_CLIENT_WRITE"],
+  [
+    "Delete Client",
+    isDeleteClientWriteEnabled,
+    "TIDYTAILS_ENABLE_DELETE_CLIENT_WRITE",
+  ],
   [
     "Edit Appointment",
     isEditAppointmentWriteEnabled,
@@ -99,6 +105,7 @@ describe("write-gate isolation — one flag never enables another", () => {
     expect(isAddPetWriteEnabled()).toBe(false);
     expect(isEditPetWriteEnabled()).toBe(false);
     expect(isEditClientWriteEnabled()).toBe(false);
+    expect(isDeleteClientWriteEnabled()).toBe(false);
     expect(isEditAppointmentWriteEnabled()).toBe(false);
     expect(isReminderSendEnabled()).toBe(false);
     expect(isAddHouseholdWriteEnabled()).toBe(false);
@@ -112,6 +119,7 @@ describe("write-gate isolation — one flag never enables another", () => {
     expect(isAddPetWriteEnabled()).toBe(false);
     expect(isEditPetWriteEnabled()).toBe(false);
     expect(isEditClientWriteEnabled()).toBe(false);
+    expect(isDeleteClientWriteEnabled()).toBe(false);
     expect(isEditAppointmentWriteEnabled()).toBe(false);
     expect(isReminderSendEnabled()).toBe(false);
     expect(isAddHouseholdWriteEnabled()).toBe(false);

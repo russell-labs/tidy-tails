@@ -8,6 +8,7 @@ export type AuditEventType =
   | "pet.viewed"
   | "client.created"
   | "client.updated"
+  | "client.deleted"
   | "pet.created"
   | "pet.updated"
   | "pet.merged"
@@ -89,6 +90,7 @@ const LABELS: Record<AuditEventType, string> = {
   "pet.viewed": "Viewed pet",
   "client.created": "Added household",
   "client.updated": "Edited household",
+  "client.deleted": "Deleted household",
   "pet.created": "Added pet",
   "pet.updated": "Edited pet",
   "pet.merged": "Merged pet profiles",

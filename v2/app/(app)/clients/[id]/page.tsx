@@ -16,6 +16,7 @@ import { digitsOnly, formatPhone, fullName } from "@/lib/format";
 import { loadOrgSettings } from "@/lib/orgSettings.server";
 import { readOperatorSettings } from "@/lib/operatorSettings.server";
 import { activePets } from "@/lib/petLifecycle";
+import { canDeleteHousehold } from "@/lib/householdLifecycle";
 import {
   isAddAppointmentWriteEnabled,
   isEditAppointmentWriteEnabled,
@@ -99,6 +100,7 @@ export default async function ClientDetailPage({
           client={client}
           mode={dataMode()}
           writesEnabled={isEditClientWriteEnabled()}
+          canDelete={canDeleteHousehold({ appointments })}
         />
       </header>
 

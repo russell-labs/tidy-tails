@@ -1,8 +1,13 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { parseAltContact } from "@/lib/altContact";
 import { editClient, type EditClientState } from "@/lib/actions/editClient";
+import {
+  deleteClient,
+  type DeleteClientState,
+} from "@/lib/actions/deleteClient";
 import type { Client } from "@/lib/data/types";
 import { validateEditClient, type EditClientErrors } from "@/lib/editClient";
 import { formatPhone } from "@/lib/format";
@@ -21,10 +26,12 @@ export function EditClient({
   client,
   mode,
   writesEnabled,
+  canDelete,
 }: {
   client: Client;
   mode: "fixtures" | "live";
   writesEnabled: boolean;
+  canDelete: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [formKey, setFormKey] = useState(0);
@@ -49,6 +56,7 @@ export function EditClient({
           client={client}
           mode={mode}
           writesEnabled={writesEnabled}
+          canDelete={canDelete}
           onDone={close}
         />
       </Sheet>
@@ -60,18 +68,33 @@ function EditClientForm({
   client,
   mode,
   writesEnabled,
+  canDelete,
   onDone,
 }: {
   client: Client;
   mode: "fixtures" | "live";
   writesEnabled: boolean;
+  canDelete: boolean;
   onDone: () => void;
 }) {
+  const router = useRouter();
   const [state, formAction, pending] = useActionState<EditClientState, FormData>(
     editClient,
     { status: "idle" },
   );
-  const [step, setStep] = useState<"form" | "review">("form");
+  const [deleteState, deleteAction, deletePending] = useActionState<
+    DeleteClientState,
+    FormData
+  >(deleteClient, { status: "idle" });
+  const [step, setStep] = useState<"form" | "review" | "confirmDelete">("form");
+
+  // A successful delete removes this household, so the detail page would 404 on
+  // re-render. Navigate back to the clients list instead of closing in place.
+  useEffect(() => {
+    if (deleteState.status === "deleted") {
+      router.push("/");
+    }
+  }, [deleteState.status, router]);
   const [errors, setErrors] = useState<EditClientErrors>({});
   const [firstName, setFirstName] = useState(client.first_name);
   const [lastName, setLastName] = useState(client.last_name);
@@ -113,6 +136,60 @@ function EditClientForm({
     state.status === "saved"
   ) {
     return <ResultScreen state={state} onDone={onDone} />;
+  }
+
+  if (step === "confirmDelete") {
+    const householdName = ownerLabel(client.first_name, client.last_name);
+    const deleteError =
+      deleteState.status === "error" ? deleteState.message : undefined;
+    const deleteNotice =
+      deleteState.status === "demo" || deleteState.status === "gated"
+        ? deleteState.message
+        : undefined;
+    return (
+      <form action={deleteAction} className="flex flex-col gap-3.5">
+        <SubmitDogOverlay label="Deleting household" show={deletePending} />
+        <input type="hidden" name="client_id" value={client.id} />
+        <div className="rounded-xl bg-danger-soft p-3.5">
+          <p className="text-sm font-semibold text-danger-ink">
+            Delete {householdName}?
+          </p>
+          <p className="mt-1 text-xs leading-relaxed text-danger-ink">
+            Are you sure you&apos;d like to delete{" "}
+            <span className="font-semibold">{householdName}</span> as a
+            household? This removes the household, its pets, and any bookings.
+            This can&apos;t be undone.
+          </p>
+        </div>
+        {deleteError ? (
+          <p className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger-ink">
+            {deleteError}
+          </p>
+        ) : null}
+        {deleteNotice ? (
+          <p className="rounded-lg bg-warn-soft px-3 py-2 text-sm text-warn">
+            {deleteNotice}
+          </p>
+        ) : null}
+        <div className="flex gap-2.5">
+          <button
+            type="button"
+            onClick={() => setStep("form")}
+            disabled={deletePending}
+            className="flex-1 rounded-xl border border-line bg-surface px-4 py-3 text-base font-semibold text-ink-soft active:bg-canvas disabled:opacity-50"
+          >
+            Keep household
+          </button>
+          <button
+            type="submit"
+            disabled={deletePending}
+            className="flex-1 rounded-xl bg-danger px-4 py-3 text-base font-semibold text-white active:bg-danger-ink disabled:opacity-50"
+          >
+            Delete household
+          </button>
+        </div>
+      </form>
+    );
   }
 
   const formError =
@@ -241,6 +318,27 @@ function EditClientForm({
           >
             Review changes
           </button>
+
+          <section className="mt-1 rounded-xl border border-danger/30 bg-danger-soft px-3.5 py-3 text-danger-ink">
+            <h3 className="text-sm font-semibold">Delete household</h3>
+            <p className="mt-1 text-xs leading-relaxed">
+              Removes the whole household and its pets. Only allowed when the
+              household has no groom history — for test or duplicate entries.
+            </p>
+            {canDelete ? (
+              <button
+                type="button"
+                onClick={() => setStep("confirmDelete")}
+                className="mt-3 w-full rounded-xl bg-danger-ink px-4 py-3 text-sm font-semibold text-white active:opacity-90"
+              >
+                Delete household
+              </button>
+            ) : (
+              <p className="mt-2 rounded-lg bg-white/60 px-3 py-2 text-xs font-medium">
+                This household has groom history, so deletion is blocked.
+              </p>
+            )}
+          </section>
         </>
       ) : (
         <>
