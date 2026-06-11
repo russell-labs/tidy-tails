@@ -13,6 +13,7 @@ import {
 } from "@/lib/googleCalendar.server";
 import { createServerSupabase, getCurrentUser } from "@/lib/supabase/server";
 import { isEditAppointmentWriteEnabled } from "@/lib/writeGate";
+import { isImpersonating } from "@/lib/admin/impersonation.server";
 import {
   googleAvailabilityBlocksBooking,
   hasBookedTimeConflict,
@@ -274,6 +275,14 @@ export async function editAppointment(
       message: "Visit editing is not switched on yet. Nothing was saved.",
     };
   }
+  // TT-015: read-only support view — never write a tenant row while impersonating.
+  if (await isImpersonating()) {
+    return {
+      status: "gated",
+      summary,
+      message: "Visit editing is not switched on yet. Nothing was saved.",
+    };
+  }
 
   const bookingSlotChanged =
     payload.date !== existing.date || payload.time_slot !== existing.time_slot;
@@ -465,6 +474,14 @@ export async function deleteAppointment(
     return { status: "demo", summary, message: "Demo data was not changed." };
   }
   if (!isEditAppointmentWriteEnabled()) {
+    return {
+      status: "gated",
+      summary,
+      message: "Booking deletion is not switched on yet. Nothing was deleted.",
+    };
+  }
+  // TT-015: read-only support view — never write a tenant row while impersonating.
+  if (await isImpersonating()) {
     return {
       status: "gated",
       summary,

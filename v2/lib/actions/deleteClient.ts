@@ -7,6 +7,7 @@ import { fullName } from "@/lib/format";
 import { canDeleteHousehold } from "@/lib/householdLifecycle";
 import { createServerSupabase, getCurrentUser } from "@/lib/supabase/server";
 import { isDeleteClientWriteEnabled } from "@/lib/writeGate";
+import { isImpersonating } from "@/lib/admin/impersonation.server";
 
 export type DeleteClientState =
   | { status: "idle" }
@@ -55,6 +56,14 @@ export async function deleteClient(
   }
 
   if (!isDeleteClientWriteEnabled()) {
+    return {
+      status: "gated",
+      ownerName,
+      message: "Deleting households is not switched on yet. Nothing was deleted.",
+    };
+  }
+  // TT-015: read-only support view — never write a tenant row while impersonating.
+  if (await isImpersonating()) {
     return {
       status: "gated",
       ownerName,

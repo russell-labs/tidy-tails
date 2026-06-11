@@ -25,6 +25,7 @@ import { dataMode, getClientRecord, requireOrgId } from "@/lib/data/repo";
 import { serviceLabel } from "@/lib/data/live";
 import { createServerSupabase, getCurrentUser } from "@/lib/supabase/server";
 import { isLogGroomWriteEnabled } from "@/lib/writeGate";
+import { isImpersonating } from "@/lib/admin/impersonation.server";
 import { findOwnedPet } from "@/lib/booking";
 import {
   buildGroomInsert,
@@ -129,6 +130,14 @@ export async function logGroom(
   // Live mode. The server-side kill-switch decides whether this persists.
   // OFF (default) → return `gated` and run no insert — identical to pre-flip.
   if (!isLogGroomWriteEnabled()) {
+    return {
+      status: "gated",
+      summary,
+      message: "Groom logging isn't switched on yet. Nothing was saved.",
+    };
+  }
+  // TT-015: read-only support view — never write a tenant row while impersonating.
+  if (await isImpersonating()) {
     return {
       status: "gated",
       summary,

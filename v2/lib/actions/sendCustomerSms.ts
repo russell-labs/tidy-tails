@@ -3,6 +3,7 @@ import { buildOutboundSmsInsert } from "@/lib/inboundSms";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { getTwilioConfig, sendTwilioSms, toTwilioPhone } from "@/lib/twilio";
 import { isReminderSendEnabled } from "@/lib/writeGate";
+import { isImpersonating } from "@/lib/admin/impersonation.server";
 
 export type CustomerSmsSendResult = {
   status: "skipped" | "sent" | "gated" | "failed";
@@ -32,6 +33,13 @@ export async function sendCustomerSms({
   label: string;
 }): Promise<CustomerSmsSendResult> {
   if (!isReminderSendEnabled()) {
+    return {
+      status: "gated",
+      message: `${label} text was not sent because SMS sending is switched off.`,
+    };
+  }
+  // TT-015: read-only support view — never write a tenant row while impersonating.
+  if (await isImpersonating()) {
     return {
       status: "gated",
       message: `${label} text was not sent because SMS sending is switched off.`,

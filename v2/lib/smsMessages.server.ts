@@ -1,5 +1,6 @@
 import { unstable_noStore as noStore } from "next/cache";
-import { currentGroomerId, dataMode } from "@/lib/data/repo";
+import { currentGroomerId, dataMode, liveReadScope } from "@/lib/data/repo";
+import { activeImpersonation } from "@/lib/admin/impersonation.server";
 import { FIXTURE_SMS_MESSAGES } from "@/lib/data/fixtures";
 import {
   buildTwilioStatusUpdate,
@@ -16,18 +17,20 @@ export async function loadRecentSmsMessages(limit = 12): Promise<SmsMessage[]> {
     return recentFixtureSmsMessages(limit);
   }
 
-  // Scope to the signed-in operator and fail closed with no session, matching
-  // the `groomer_id = auth.uid()` RLS SELECT policy on sms_messages. The
-  // per-client reads below stay client_id-filtered (still RLS-scoped).
-  const groomerId = await currentGroomerId();
-  if (!groomerId) return [];
+  // Scope by liveReadScope: the signed-in operator normally, or the impersonated
+  // org while a platform admin holds an active session (TT-015). sms_messages is
+  // SENSITIVE (bodies are PII) but in support scope, read-only. Fail closed with
+  // no scope. The per-client reads below stay client_id-filtered (still
+  // RLS-scoped, so they resolve to the impersonated org's client while viewing).
+  const scope = await liveReadScope();
+  if (!scope) return [];
 
   try {
     const supabase = await createServerSupabase();
     const { data, error } = await supabase
       .from("sms_messages")
       .select("*")
-      .eq("groomer_id", groomerId)
+      .eq(scope.column, scope.value)
       .neq("status", "hidden")
       .order("created_at", { ascending: false })
       .limit(limit);
@@ -105,6 +108,15 @@ function recentFixtureSmsMessages(limit: number): SmsMessage[] {
 async function refreshOutboundDeliveryStatuses(
   messages: SmsMessage[],
 ): Promise<SmsMessage[]> {
+  // READ-ONLY CONTRACT (TT-015): the status refresh persists via a service-role
+  // client that BYPASSES RLS — the one service-role write reachable from an
+  // interactive read path. While impersonating, a support view must not write
+  // ANY tenant row, so skip the refresh entirely and return stored statuses.
+  // (It is also naturally inert — the write below is scoped to the admin's own
+  // groomer_id, which owns no rows — but suppressing it makes read-only explicit
+  // rather than relying on an empty match.)
+  if (await activeImpersonation()) return messages;
+
   const candidates = messages
     .filter(
       (message) =>

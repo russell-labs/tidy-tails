@@ -10,6 +10,7 @@ import {
 } from "@/lib/petLifecycle";
 import { createServerSupabase, getCurrentUser } from "@/lib/supabase/server";
 import { isEditPetWriteEnabled } from "@/lib/writeGate";
+import { isImpersonating } from "@/lib/admin/impersonation.server";
 
 type LifecycleSummary = {
   clientId: string;
@@ -88,6 +89,14 @@ export async function markPetPassedAway(
       message: "Pet editing is not switched on yet. Nothing was saved.",
     };
   }
+  // TT-015: read-only support view — never write a tenant row while impersonating.
+  if (await isImpersonating()) {
+    return {
+      status: "gated",
+      summary,
+      message: "Pet editing is not switched on yet. Nothing was saved.",
+    };
+  }
 
   const supabase = await createServerSupabase();
   const { error } = await supabase
@@ -141,6 +150,14 @@ export async function deletePetProfile(
     return { status: "demo", summary, message: "Demo only - nothing was deleted." };
   }
   if (!isEditPetWriteEnabled()) {
+    return {
+      status: "gated",
+      summary,
+      message: "Pet editing is not switched on yet. Nothing was deleted.",
+    };
+  }
+  // TT-015: read-only support view — never write a tenant row while impersonating.
+  if (await isImpersonating()) {
     return {
       status: "gated",
       summary,
@@ -223,6 +240,14 @@ export async function mergeDuplicatePetProfiles(
     return { status: "demo", summary, message: "Demo only - nothing was merged." };
   }
   if (!isEditPetWriteEnabled()) {
+    return {
+      status: "gated",
+      summary,
+      message: "Pet editing is not switched on yet. Nothing was merged.",
+    };
+  }
+  // TT-015: read-only support view — never write a tenant row while impersonating.
+  if (await isImpersonating()) {
     return {
       status: "gated",
       summary,

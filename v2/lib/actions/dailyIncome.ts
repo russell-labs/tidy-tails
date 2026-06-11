@@ -9,6 +9,7 @@ import {
   type DailyIncomeErrors,
 } from "@/lib/dailyIncome";
 import { dataMode, requireOrgId } from "@/lib/data/repo";
+import { isImpersonating } from "@/lib/admin/impersonation.server";
 import { createServerSupabase, getCurrentUser } from "@/lib/supabase/server";
 import { isDailyIncomeWriteEnabled } from "@/lib/writeGate";
 
@@ -46,6 +47,13 @@ export async function saveDailyIncome(
     };
   }
   if (!isDailyIncomeWriteEnabled()) {
+    return {
+      status: "gated",
+      message: "Daily income is not switched on yet. Nothing was saved.",
+    };
+  }
+  // TT-015: read-only support view — never write a tenant row while impersonating.
+  if (await isImpersonating()) {
     return {
       status: "gated",
       message: "Daily income is not switched on yet. Nothing was saved.",

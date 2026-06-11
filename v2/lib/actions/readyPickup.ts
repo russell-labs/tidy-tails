@@ -11,6 +11,7 @@ import {
 import { createServerSupabase, getCurrentUser } from "@/lib/supabase/server";
 import { getTwilioConfig, sendTwilioSms, toTwilioPhone } from "@/lib/twilio";
 import { isReminderSendEnabled } from "@/lib/writeGate";
+import { isImpersonating } from "@/lib/admin/impersonation.server";
 import { fullName } from "@/lib/format";
 
 export type ReadyPickupSummary = {
@@ -83,6 +84,14 @@ export async function sendReadyPickupText(
   if (dataMode() === "fixtures") return { status: "demo", summary };
 
   if (!isReminderSendEnabled()) {
+    return {
+      status: "gated",
+      summary,
+      message: "SMS sending is switched off. No pickup text was sent.",
+    };
+  }
+  // TT-015: read-only support view — never write a tenant row while impersonating.
+  if (await isImpersonating()) {
     return {
       status: "gated",
       summary,

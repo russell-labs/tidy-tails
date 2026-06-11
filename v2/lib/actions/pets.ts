@@ -5,6 +5,7 @@ import { recordAuditEvent } from "@/lib/audit.server";
 import { dataMode, getClientRecord, requireOrgId } from "@/lib/data/repo";
 import { createServerSupabase, getCurrentUser } from "@/lib/supabase/server";
 import { isAddPetWriteEnabled } from "@/lib/writeGate";
+import { isImpersonating } from "@/lib/admin/impersonation.server";
 import {
   buildAddPetInsert,
   validateAddPet,
@@ -80,6 +81,14 @@ export async function addPet(
   if (dataMode() === "fixtures") return { status: "demo", summary };
 
   if (!isAddPetWriteEnabled()) {
+    return {
+      status: "gated",
+      summary,
+      message: "Adding pets is not switched on yet. Nothing was saved.",
+    };
+  }
+  // TT-015: read-only support view — never write a tenant row while impersonating.
+  if (await isImpersonating()) {
     return {
       status: "gated",
       summary,
