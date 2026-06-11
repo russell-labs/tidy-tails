@@ -18,6 +18,7 @@ import {
   effectiveOrgId,
   liveReadScope,
   loadClients,
+  loadDailyIncome,
   loadDataset,
 } from "./repo";
 import { createServerSupabase, getCurrentUser } from "@/lib/supabase/server";
@@ -105,6 +106,35 @@ describe("read pivot while impersonating", () => {
       expect.objectContaining({ column: "groomer_id" }),
     );
     expect(clients).toHaveLength(1);
+  });
+
+  it("loadDailyIncome filters by the impersonated org_id, not groomer_id", async () => {
+    const harness = fakeClient({
+      daily_income: [
+        {
+          id: "di1",
+          org_id: "org-7",
+          date: "2026-06-10",
+          location: "gina",
+          amount: 120,
+          created_at: "2026-06-10",
+          updated_at: "2026-06-10",
+        },
+      ],
+    });
+    createServerSupabaseMock.mockResolvedValue(harness.client);
+
+    const income = await loadDailyIncome();
+
+    expect(harness.captures[0].table).toBe("daily_income");
+    expect(harness.captures[0].filters).toContainEqual({
+      column: "org_id",
+      value: "org-7",
+    });
+    expect(harness.captures[0].filters).not.toContainEqual(
+      expect.objectContaining({ column: "groomer_id" }),
+    );
+    expect(income).toHaveLength(1);
   });
 
   it("loadDataset scopes every table by the impersonated org_id", async () => {

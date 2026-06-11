@@ -233,20 +233,23 @@ export async function loadDayCloseoutOverrideState(scope?: LiveReadScope | null)
 }
 
 export async function loadDailyIncome(
-  groomerId?: string | null,
+  scope?: LiveReadScope | null,
 ): Promise<DailyIncome[]> {
-  return (await loadDailyIncomeState(groomerId)).income;
+  return (await loadDailyIncomeState(scope)).income;
 }
 
-export async function loadDailyIncomeState(groomerId?: string | null): Promise<{
+export async function loadDailyIncomeState(scope?: LiveReadScope | null): Promise<{
   income: DailyIncome[];
   ready: boolean;
 }> {
   if (dataMode() !== "live") return { income: [], ready: true };
-  const gid = groomerId ?? (await currentGroomerId());
-  // Fail closed: no session means no rows. The table itself is still "ready".
-  if (!gid) return { income: [], ready: true };
-  const { rows, ready } = await liveSelectOptional("daily_income", gid);
+  // daily_income is in the TT-015 admin-read scope, so this follows
+  // liveReadScope(): the operator's groomer_id normally, the impersonated org
+  // while a platform admin views-as. Fail closed: no scope -> no rows (table
+  // still "ready").
+  const s = scope ?? (await liveReadScope());
+  if (!s) return { income: [], ready: true };
+  const { rows, ready } = await liveSelectOptional("daily_income", s);
   return { income: rows.map(mapDailyIncomeRow), ready };
 }
 
