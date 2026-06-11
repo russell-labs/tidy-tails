@@ -2,7 +2,7 @@
 --
 -- Proves that, under the per-org RLS policies, one tenant can never read or
 -- write another tenant's data. Two parts:
---   1. STRUCTURAL (covers ALL 10 tenant tables, populated or not): every
+--   1. STRUCTURAL (covers ALL 11 tenant tables, populated or not): every
 --      tenant-table policy must be org-scoped (references user_org_ids) and none
 --      may still be per-user (references groomer_id). This is what guarantees the
 --      seven empty tenant tables are switched.
@@ -30,8 +30,8 @@ begin
   select count(*) into per_user from pg_policies
   where schemaname='public'
     and tablename in ('clients','pets','appointments','booking_requests','client_accounts',
-                      'day_closeout_overrides','google_calendar_connections','sms_messages',
-                      'audit_events','automations_log')
+                      'day_closeout_overrides','daily_income','google_calendar_connections',
+                      'sms_messages','audit_events','automations_log')
     and ((qual like '%groomer_id%') or (with_check like '%groomer_id%'));
   if per_user <> 0 then
     raise exception 'ISOLATION FAIL (structural): % tenant policy(ies) still reference groomer_id (per-user RLS not switched)', per_user;
@@ -40,8 +40,8 @@ begin
   select count(*) into not_scoped from pg_policies
   where schemaname='public'
     and tablename in ('clients','pets','appointments','booking_requests','client_accounts',
-                      'day_closeout_overrides','google_calendar_connections','sms_messages',
-                      'audit_events','automations_log')
+                      'day_closeout_overrides','daily_income','google_calendar_connections',
+                      'sms_messages','audit_events','automations_log')
     and not ((qual like '%user_org_ids%') or (with_check like '%user_org_ids%'));
   if not_scoped <> 0 then
     raise exception 'ISOLATION FAIL (structural): % tenant policy(ies) are not org-scoped (missing user_org_ids)', not_scoped;
@@ -92,6 +92,22 @@ begin
     insert into public.clients (org_id, groomer_id, first_name) values (own, me, 'SelfProbe');
   exception when insufficient_privilege then raise exception 'FAIL t1 A4: own-org insert was wrongly blocked'; end;
 
+  -- daily_income (TT-014): read scoped, cross-org write blocked, own insert allowed
+  if (select count(*) from public.daily_income where org_id <> own) <> 0 then raise exception 'FAIL t1 read: daily_income leaked from another org'; end if;
+
+  update public.daily_income set amount = 9999 where org_id = foreign_org;
+  get diagnostics n = row_count;
+  if n <> 0 then raise exception 'FAIL t1 daily_income: updated % foreign row(s)', n; end if;
+
+  begin
+    insert into public.daily_income (org_id, groomer_id, date, location, amount) values (foreign_org, me, '2026-06-20', 'gina', 100);
+    raise exception 'FAIL t1 daily_income: inserted into the foreign org';
+  exception when insufficient_privilege then null; end;
+
+  begin
+    insert into public.daily_income (org_id, groomer_id, date, location, amount) values (own, me, '2026-06-21', 'gina', 120);
+  exception when insufficient_privilege then raise exception 'FAIL t1 daily_income: own-org insert wrongly blocked'; end;
+
   raise notice 'tenant 1 OK: read scoped; cross-org update/reassign/insert blocked; own insert allowed';
 end $$;
 
@@ -126,6 +142,22 @@ begin
   begin
     insert into public.clients (org_id, groomer_id, first_name) values (own, me, 'SelfProbe');
   exception when insufficient_privilege then raise exception 'FAIL t2 A4: own-org insert was wrongly blocked'; end;
+
+  -- daily_income (TT-014): read scoped, cross-org write blocked, own insert allowed
+  if (select count(*) from public.daily_income where org_id <> own) <> 0 then raise exception 'FAIL t2 read: daily_income leaked from another org'; end if;
+
+  update public.daily_income set amount = 9999 where org_id = foreign_org;
+  get diagnostics n = row_count;
+  if n <> 0 then raise exception 'FAIL t2 daily_income: updated % foreign row(s)', n; end if;
+
+  begin
+    insert into public.daily_income (org_id, groomer_id, date, location, amount) values (foreign_org, me, '2026-06-20', 'annette', 100);
+    raise exception 'FAIL t2 daily_income: inserted into the foreign org';
+  exception when insufficient_privilege then null; end;
+
+  begin
+    insert into public.daily_income (org_id, groomer_id, date, location, amount) values (own, me, '2026-06-21', 'annette', 120);
+  exception when insufficient_privilege then raise exception 'FAIL t2 daily_income: own-org insert wrongly blocked'; end;
 
   raise notice 'tenant 2 OK: read scoped; cross-org update/reassign/insert blocked; own insert allowed';
 end $$;
