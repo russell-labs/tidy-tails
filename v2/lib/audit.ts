@@ -20,6 +20,7 @@ export type AuditEventType =
   | "appointment.updated"
   | "appointment.deleted"
   | "day_closeout.updated"
+  | "daily_income.updated"
   | "groom.logged"
   | "sms.sent"
   | "sms.handled"
@@ -54,6 +55,7 @@ export type AuditEventInput = {
 };
 
 const SAFE_METADATA_KEYS = new Set([
+  "amount",
   "calendarStatus",
   "channel",
   "date",
@@ -102,6 +104,7 @@ const LABELS: Record<AuditEventType, string> = {
   "appointment.updated": "Edited visit",
   "appointment.deleted": "Deleted booking",
   "day_closeout.updated": "Saved day closeout",
+  "daily_income.updated": "Logged daily income",
   "groom.logged": "Logged groom",
   "sms.sent": "Sent SMS",
   "sms.handled": "Handled SMS",

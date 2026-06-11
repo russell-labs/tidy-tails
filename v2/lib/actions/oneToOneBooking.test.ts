@@ -8,6 +8,7 @@ vi.mock("@/lib/data/repo", () => ({
   dataMode: vi.fn(),
   getClientRecord: vi.fn(),
   loadAppointments: vi.fn(),
+  loadDataset: vi.fn(),
   requireOrgId: vi.fn(),
 }));
 vi.mock("@/lib/orgSettings.server", () => ({ loadOrgSettings: vi.fn() }));
@@ -22,11 +23,15 @@ vi.mock("@/lib/writeGate", () => ({
   isAdminViewAsEnabled: vi.fn(() => false),
 }));
 
-import { createOneToOneBooking } from "./oneToOneBooking";
+import {
+  createOneToOneBooking,
+  getOneToOneAvailability,
+} from "./oneToOneBooking";
 import {
   dataMode,
   getClientRecord,
   loadAppointments,
+  loadDataset,
   requireOrgId,
 } from "@/lib/data/repo";
 import { loadOrgSettings } from "@/lib/orgSettings.server";
@@ -73,6 +78,12 @@ beforeEach(() => {
     record() as unknown as Awaited<ReturnType<typeof getClientRecord>>,
   );
   vi.mocked(loadAppointments).mockResolvedValue([]);
+  vi.mocked(loadDataset).mockResolvedValue({
+    clients: [],
+    pets: [],
+    appointments: [],
+    vaccinations: [],
+  } as unknown as Awaited<ReturnType<typeof loadDataset>>);
   vi.mocked(requireOrgId).mockResolvedValue("org-1");
   vi.mocked(isAddAppointmentWriteEnabled).mockReturnValue(true);
   vi.mocked(createServerSupabase).mockResolvedValue(
@@ -160,5 +171,45 @@ describe("createOneToOneBooking", () => {
     );
     expect(result.status).toBe("error");
     expect(supabase.operations).toHaveLength(0);
+  });
+});
+
+describe("getOneToOneAvailability — day-load strip (TT-013)", () => {
+  function withExistingLargeBlock() {
+    vi.mocked(loadDataset).mockResolvedValue({
+      clients: [{ id: "c9", first_name: "Dana", last_name: "Ng" }],
+      pets: [{ id: "p9", client_id: "c9", name: "Rex", size: "large" }],
+      appointments: [
+        {
+          id: "x",
+          date: "2026-06-20",
+          time_slot: "10:30am",
+          duration_minutes: 90,
+          status: "booked",
+          client_id: "c9",
+          pet_id: "p9",
+        },
+      ],
+      vaccinations: [],
+    } as unknown as Awaited<ReturnType<typeof loadDataset>>);
+  }
+
+  it("returns the day's existing load (minutes + large-dog count) alongside open slots", async () => {
+    withExistingLargeBlock();
+    const result = await getOneToOneAvailability("2026-06-20", 60);
+
+    expect(result.dayLoad.bookedMinutes).toBe(90);
+    expect(result.dayLoad.largeDogs).toBe(1);
+    expect(result.dayLoad.totalDogs).toBe(1);
+    expect(result.dayLoad.workingDayMinutes).toBe(600); // default 8am–6pm
+    // Load is advisory: open slots are still offered around the booked block.
+    expect(result.slots.length).toBeGreaterThan(0);
+  });
+
+  it("reports an empty day as zero load", async () => {
+    const result = await getOneToOneAvailability("2026-06-20", 60);
+    expect(result.dayLoad.bookedMinutes).toBe(0);
+    expect(result.dayLoad.largeDogs).toBe(0);
+    expect(result.dayLoad.totalDogs).toBe(0);
   });
 });

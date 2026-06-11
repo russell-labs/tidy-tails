@@ -4,6 +4,7 @@ import type { ScheduledAppointment } from "@/lib/schedule";
 import {
   oneToOneDaySummary,
   oneToOneHeavinessNote,
+  oneToOneLoadSummaryText,
 } from "@/lib/scheduling/oneToOne";
 import {
   formatMinutes,
@@ -84,7 +85,7 @@ export function OneToOneOpenedDay({
       <div className="rounded-xl border border-line bg-surface px-3.5 py-3">
         <p className="text-sm font-semibold text-ink">
           {summary.totalDogs} {summary.totalDogs === 1 ? "dog" : "dogs"} ·{" "}
-          {formatDuration(summary.bookedMinutes)} booked
+          {oneToOneLoadSummaryText(summary)}
         </p>
         <p className="mt-0.5 text-xs text-ink-soft">
           {summary.overTarget

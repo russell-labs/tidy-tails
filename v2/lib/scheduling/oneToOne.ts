@@ -158,6 +158,9 @@ export type OneToOneDaySummary = {
   date: string;
   totalDogs: number;
   bookedMinutes: number;
+  // The working-day window length (minutes) the booked time is measured against,
+  // so a consumer can render "Xh of ~Yh booked" without re-deriving the window.
+  workingDayMinutes: number;
   softTarget: number;
   overTarget: boolean;
   // TT-010: heaviness from the day's STRUCTURE (1:1 has no load points). The
@@ -189,17 +192,18 @@ export function oneToOneDaySummary({
   workingDay?: WorkingDay;
 }): OneToOneDaySummary {
   const bookedMinutes = blocks.reduce((sum, b) => sum + b.durationMinutes, 0);
+  const workingDayMinutes = workingDay.endMinutes - workingDay.startMinutes;
   const largeDogs = blocks.filter(
     (b) => b.size === "large" || b.size === "xl",
   ).length;
-  const heavyMinutes =
-    (workingDay.endMinutes - workingDay.startMinutes) * HEAVY_MINUTES_FRACTION;
+  const heavyMinutes = workingDayMinutes * HEAVY_MINUTES_FRACTION;
   const gettingHeavy =
     bookedMinutes >= heavyMinutes || largeDogs >= HEAVY_LARGE_DOG_COUNT;
   return {
     date,
     totalDogs: blocks.length,
     bookedMinutes,
+    workingDayMinutes,
     softTarget,
     overTarget: blocks.length > softTarget,
     largeDogs,
@@ -213,6 +217,16 @@ function compactDuration(minutes: number): string {
   if (h > 0 && m > 0) return `${h}h ${m}m`;
   if (h > 0) return `${h}h`;
   return `${m}m`;
+}
+
+// The shared "getting full" caution phrase (TT-010). Lives in one place so the
+// day card, the heaviness note, and the booking-flow strip all speak the same
+// language: the day is filling, and — when large dogs are booked — check coat
+// types before piling on another big coat.
+function heavinessTail(largeDogs: number): string {
+  const coat =
+    largeDogs > 0 ? " Check coat types before adding another large dog." : "";
+  return `your day's getting full.${coat}`;
 }
 
 // TT-010: the operator-facing caution for a heavy 1:1 day, or null when the day
@@ -232,7 +246,33 @@ export function oneToOneHeavinessNote({
     largeDogs > 0
       ? `${largeDogs} large dog${largeDogs === 1 ? "" : "s"} and ${compactDuration(bookedMinutes)} booked`
       : `${compactDuration(bookedMinutes)} booked`;
-  const coat =
-    largeDogs > 0 ? " Check coat types before adding another large dog." : "";
-  return `${lead} — your day's getting full.${coat}`;
+  return `${lead} — ${heavinessTail(largeDogs)}`;
+}
+
+// TT-013: the one-line load summary for a 1:1 day — booked time against the
+// working-day window plus the large-dog count. The shared vocabulary the
+// booking-flow strip, the day card, and the week card all render from.
+export function oneToOneLoadSummaryText({
+  bookedMinutes,
+  workingDayMinutes,
+  largeDogs,
+}: Pick<
+  OneToOneDaySummary,
+  "bookedMinutes" | "workingDayMinutes" | "largeDogs"
+>): string {
+  return `${compactDuration(bookedMinutes)} of ~${compactDuration(workingDayMinutes)} booked · ${largeDogs} large`;
+}
+
+// TT-013: the non-blocking day-load strip for the 1:1 booking flow. The load
+// summary, with the shared heaviness caution appended only when the day is
+// getting heavy. Advisory copy — it never gates a slot.
+export function oneToOneLoadStripText(
+  summary: Pick<
+    OneToOneDaySummary,
+    "bookedMinutes" | "workingDayMinutes" | "largeDogs" | "gettingHeavy"
+  >,
+): string {
+  const base = oneToOneLoadSummaryText(summary);
+  if (!summary.gettingHeavy) return base;
+  return `${base} — ${heavinessTail(summary.largeDogs)}`;
 }

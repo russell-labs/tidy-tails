@@ -2,9 +2,15 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { AddHousehold } from "@/components/AddHousehold";
 import { DayCloseoutControls } from "@/components/DayCloseoutControls";
+import { DailyIncomeControls } from "@/components/DailyIncomeControls";
 import { FirstRunEmptyState } from "@/components/FirstRunEmptyState";
 import { OneToOneOpenedDay } from "@/components/OneToOneOpenedDay";
-import { dataMode, loadDataset, loadDayCloseoutOverrideState } from "@/lib/data/repo";
+import {
+  dataMode,
+  loadDataset,
+  loadDailyIncomeState,
+  loadDayCloseoutOverrideState,
+} from "@/lib/data/repo";
 import { loadOrgSettings } from "@/lib/orgSettings.server";
 import { bookingLocationLabel } from "@/lib/booking";
 import {
@@ -19,9 +25,17 @@ import {
 } from "@/lib/schedule";
 import {
   dogWorkProfile,
+  inferSizeClass,
   summarizeDayLoad,
   type DaySummary,
+  type SizeClass,
 } from "@/lib/dayCapacity";
+import {
+  oneToOneDaySummary,
+  oneToOneLoadSummaryText,
+  type OneToOneDaySummary,
+} from "@/lib/scheduling/oneToOne";
+import type { WorkingDay } from "@/lib/scheduling/time";
 import { formatMoney, formatPhone, fullName } from "@/lib/format";
 import {
   calculateAppointmentMoney,
@@ -142,6 +156,43 @@ function daySummaryMetrics(summary: DaySummary, money: DayMoney): string {
   )} · Net ${formatMoney(money.samNet)}`;
 }
 
+// TT-013: per-day 1:1 summaries for the week grid, built from the SAME resolved
+// rows the day card uses (so a week cell and the opened day agree exactly). Time
+// arithmetic only — no load points. Every day in the window gets a card, empty
+// days included.
+function oneToOneWeekSummaries({
+  rows,
+  dates,
+  softTarget,
+  workingDay,
+}: {
+  rows: ScheduledAppointment[];
+  dates: string[];
+  softTarget: number;
+  workingDay: WorkingDay;
+}): OneToOneDaySummary[] {
+  const blocksByDate = new Map<
+    string,
+    { durationMinutes: number; size: SizeClass }[]
+  >();
+  for (const row of rows) {
+    const list = blocksByDate.get(row.appointment.date) ?? [];
+    list.push({
+      durationMinutes: row.appointment.duration_minutes ?? 0,
+      size: row.pet ? inferSizeClass(row.pet) : "unknown",
+    });
+    blocksByDate.set(row.appointment.date, list);
+  }
+  return dates.map((date) =>
+    oneToOneDaySummary({
+      date,
+      blocks: blocksByDate.get(date) ?? [],
+      softTarget,
+      workingDay,
+    }),
+  );
+}
+
 function uniqueText(values: Array<string | null | undefined>): string | null {
   const unique = Array.from(
     new Set(values.map((value) => value?.trim()).filter(Boolean) as string[]),
@@ -160,10 +211,17 @@ export default async function SchedulePage({
   const view = scheduleView(params.view);
   const selectedDay = params.day ?? params.week ?? todayISO();
   const range = weekRangeForDate(params.week ?? selectedDay);
-  const [{ clients, pets, appointments }, closeoutState, settings, orgSettings] =
+  const [
+    { clients, pets, appointments },
+    closeoutState,
+    dailyIncomeState,
+    settings,
+    orgSettings,
+  ] =
     await Promise.all([
       loadDataset(),
       loadDayCloseoutOverrideState(),
+      loadDailyIncomeState(),
       readOperatorSettings(),
       loadOrgSettings(),
     ]);
@@ -193,6 +251,7 @@ export default async function SchedulePage({
   }
 
   const closeoutOverrides = closeoutState.overrides;
+  const dailyIncome = dailyIncomeState.income;
   const calibration = settings.scheduleCalibration;
   const rows =
     view === "day"
@@ -213,6 +272,7 @@ export default async function SchedulePage({
           selectedDay,
           settings.locationSettings,
           closeoutOverrides,
+          dailyIncome,
         )
       : rows.reduce(
           (sum, row) => {
@@ -346,17 +406,33 @@ export default async function SchedulePage({
               selectedDaySummary.date,
               settings.locationSettings,
               closeoutOverrides,
+              dailyIncome,
             )}
             closeouts={calculateDayLocationMoney(
               appointments,
               selectedDaySummary.date,
               settings.locationSettings,
               closeoutOverrides,
+              dailyIncome,
             )}
             closeoutReady={closeoutState.ready}
+            dailyIncomeReady={dailyIncomeState.ready}
             calibration={calibration}
             locationSettings={settings.locationSettings}
           />
+        ) : isOneToOne ? (
+          // 1:1 week grid: time-based day cards (booked minutes vs the working
+          // day + large-dog count), never the batched load-point/gross framing.
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {oneToOneWeekSummaries({
+              rows,
+              dates: weekDays(range.start),
+              softTarget: orgSettings.softTarget,
+              workingDay: orgSettings.workingDay,
+            }).map((summary) => (
+              <OneToOneDaySummaryCard key={summary.date} summary={summary} />
+            ))}
+          </div>
         ) : (
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             {daySummaries.map((summary) => (
@@ -368,6 +444,7 @@ export default async function SchedulePage({
                   summary.date,
                   settings.locationSettings,
                   closeoutOverrides,
+                  dailyIncome,
                 )}
               />
             ))}
@@ -385,6 +462,7 @@ export default async function SchedulePage({
             calibration={calibration}
             locationSettings={settings.locationSettings}
             empty="No scheduled dogs this week."
+            hideLoadPoints={isOneToOne}
           />
         </section>
       ) : null}
@@ -435,12 +513,51 @@ function DaySummaryCard({
   );
 }
 
+// TT-013: the week-grid day card for a 1:1 org. Time-based, not load-points:
+// dogs, booked minutes vs the working day, large-dog count, and a soft "getting
+// full" pill when the day is heavy. No gross/net (that finance surface is WS4b).
+function OneToOneDaySummaryCard({ summary }: { summary: OneToOneDaySummary }) {
+  return (
+    <Link
+      href={dayHref(summary.date)}
+      className={`block rounded-xl border px-3.5 py-3 shadow-sm active:scale-[0.99] active:bg-brand-soft ${
+        summary.gettingHeavy
+          ? "border-warn/40 bg-warn-soft text-warn"
+          : "border-line bg-surface text-ink"
+      }`}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-sm font-bold">{dayLabel(summary.date)}</p>
+          <p className="mt-1 text-xs opacity-80">
+            {summary.totalDogs} {summary.totalDogs === 1 ? "dog" : "dogs"} ·{" "}
+            {oneToOneLoadSummaryText(summary)}
+          </p>
+        </div>
+        {summary.gettingHeavy ? (
+          <span className="rounded-full bg-white/70 px-2 py-1 text-xs font-semibold">
+            Getting full
+          </span>
+        ) : (
+          <span
+            aria-hidden="true"
+            className="text-xl font-semibold leading-none text-ink-faint"
+          >
+            ›
+          </span>
+        )}
+      </div>
+    </Link>
+  );
+}
+
 function OpenedDay({
   summary,
   rows,
   money,
   closeouts,
   closeoutReady,
+  dailyIncomeReady,
   calibration,
   locationSettings,
 }: {
@@ -449,6 +566,7 @@ function OpenedDay({
   money: DayMoney;
   closeouts: DayLocationMoney[];
   closeoutReady: boolean;
+  dailyIncomeReady: boolean;
   calibration: ScheduleCalibration;
   locationSettings: LocationSettingsMap;
 }) {
@@ -494,6 +612,16 @@ function OpenedDay({
             }}
           />
         ) : null}
+        {dailyIncomeReady ? (
+          <DailyIncomeControls
+            date={summary.date}
+            locationLabels={{
+              gina: locationLabelFromSettings("gina", locationSettings) ?? "Gina",
+              annette:
+                locationLabelFromSettings("annette", locationSettings) ?? "Annette",
+            }}
+          />
+        ) : null}
       </div>
     </div>
   );
@@ -505,12 +633,16 @@ function AppointmentList({
   locationSettings,
   empty,
   compact = false,
+  hideLoadPoints = false,
 }: {
   rows: ScheduledAppointment[];
   calibration: ScheduleCalibration;
   locationSettings: LocationSettingsMap;
   empty: string;
   compact?: boolean;
+  // TT-013: load points are batched vocabulary; a 1:1 org hides the per-row
+  // "N pts" line so its week view stays time-based throughout.
+  hideLoadPoints?: boolean;
 }) {
   if (rows.length === 0) {
     return (
@@ -624,7 +756,7 @@ function AppointmentList({
               <p className="mt-1 text-xs font-semibold text-ink-soft">
                 {paymentSummaryText(paymentSummary)}
               </p>
-              {profilePoints > 0 ? (
+              {!hideLoadPoints && profilePoints > 0 ? (
                 <p className="mt-1 text-xs text-ink-faint">
                   {group.petCount} dog{group.petCount === 1 ? "" : "s"} ·{" "}
                   {profilePoints.toFixed(2).replace(/\.00$/, "")} pts

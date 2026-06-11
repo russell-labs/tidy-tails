@@ -78,6 +78,11 @@ export function isAddHouseholdWriteEnabled(): boolean {
   return isFlagEnabled(process.env.TIDYTAILS_ENABLE_ADD_HOUSEHOLD_WRITE);
 }
 
+/** Daily income (lump-sum rented-chair) live writes — `TIDYTAILS_ENABLE_DAILY_INCOME_WRITE`. */
+export function isDailyIncomeWriteEnabled(): boolean {
+  return isFlagEnabled(process.env.TIDYTAILS_ENABLE_DAILY_INCOME_WRITE);
+}
+
 /** Google Calendar event sync — `TIDYTAILS_ENABLE_GOOGLE_CALENDAR_SYNC`. */
 export function isGoogleCalendarSyncEnabled(): boolean {
   return isFlagEnabled(process.env.TIDYTAILS_ENABLE_GOOGLE_CALENDAR_SYNC);

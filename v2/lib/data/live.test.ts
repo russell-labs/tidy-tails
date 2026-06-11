@@ -4,6 +4,7 @@ import {
   fetchAllRows,
   mapAppointmentRow,
   mapClientRow,
+  mapDailyIncomeRow,
   mapDayCloseoutOverrideRow,
   mapPetRow,
   serviceCodeFromLabel,
@@ -228,6 +229,30 @@ describe("mapDayCloseoutOverrideRow — live closeout row → DayCloseoutOverrid
       note: "Rounded at end of day",
       created_at: "2026-06-01T20:00:00Z",
       updated_at: "2026-06-01T20:30:00Z",
+    });
+  });
+});
+
+describe("mapDailyIncomeRow — live daily_income row → DailyIncome", () => {
+  it("maps numeric-string amount, timestamp date, and a null note", () => {
+    expect(
+      mapDailyIncomeRow({
+        id: "i1",
+        date: "2026-06-12T00:00:00Z",
+        location: "gina",
+        amount: "240.50",
+        note: null,
+        created_at: "2026-06-12T20:00:00Z",
+        updated_at: "2026-06-12T20:30:00Z",
+      }),
+    ).toEqual({
+      id: "i1",
+      date: "2026-06-12",
+      location: "gina",
+      amount: 240.5,
+      note: null,
+      created_at: "2026-06-12T20:00:00Z",
+      updated_at: "2026-06-12T20:30:00Z",
     });
   });
 });
