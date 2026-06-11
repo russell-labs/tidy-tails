@@ -64,18 +64,35 @@ export async function deleteClient(
 
   const supabase = await createServerSupabase();
 
-  // booking_requests has a plain FK to clients (no ON DELETE CASCADE), so any
-  // pending request would otherwise block the client delete. Clear it first;
-  // pets and appointments cascade automatically when the client row is removed.
-  const { error: requestError } = await supabase
+  // booking_requests is the only table that references clients AND pets with a
+  // plain FK (no ON DELETE CASCADE), so a pending request would otherwise abort
+  // the cascade — either directly (client_id) or when pets cascade-delete
+  // (pet_id). Clear both axes first; pets and appointments then cascade
+  // automatically when the client row is removed, and audit_events survive via
+  // ON DELETE SET NULL.
+  const { error: clientRequestError } = await supabase
     .from("booking_requests")
     .delete()
     .eq("client_id", clientId);
-  if (requestError) {
+  if (clientRequestError) {
     return {
       status: "error",
       message: "That household could not be deleted. Nothing was removed.",
     };
+  }
+
+  const petIds = record.pets.map((pet) => pet.id);
+  if (petIds.length > 0) {
+    const { error: petRequestError } = await supabase
+      .from("booking_requests")
+      .delete()
+      .in("pet_id", petIds);
+    if (petRequestError) {
+      return {
+        status: "error",
+        message: "That household could not be deleted. Nothing was removed.",
+      };
+    }
   }
 
   const { error } = await supabase.from("clients").delete().eq("id", clientId);

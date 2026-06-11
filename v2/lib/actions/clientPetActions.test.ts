@@ -247,6 +247,40 @@ describe("deleteClient", () => {
         orders: [],
       },
       {
+        table: "booking_requests",
+        action: "delete",
+        filters: [{ method: "in", column: "pet_id", value: ["pet-1"] }],
+        orders: [],
+      },
+      {
+        table: "clients",
+        action: "delete",
+        filters: [{ method: "eq", column: "id", value: "client-1" }],
+        orders: [],
+      },
+    ]);
+  });
+
+  it("skips the pet-scoped request cleanup when the household has no pets", async () => {
+    vi.stubEnv("TIDYTAILS_ENABLE_DELETE_CLIENT_WRITE", "on");
+    getClientRecordMock.mockResolvedValue(
+      clientRecord({ pets: [], appointments: [] }),
+    );
+
+    const result = await deleteClient(
+      { status: "idle" },
+      form({ client_id: "client-1" }),
+    );
+
+    expect(result).toMatchObject({ status: "deleted" });
+    expect(supabase.operations).toEqual([
+      {
+        table: "booking_requests",
+        action: "delete",
+        filters: [{ method: "eq", column: "client_id", value: "client-1" }],
+        orders: [],
+      },
+      {
         table: "clients",
         action: "delete",
         filters: [{ method: "eq", column: "id", value: "client-1" }],
