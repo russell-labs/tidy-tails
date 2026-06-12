@@ -10,6 +10,12 @@ import {
 import { formatDateTime, formatPhone, fullName } from "@/lib/format";
 import type { SmsMessage } from "@/lib/inboundSms";
 import { type SmsThread } from "@/lib/inbox";
+import {
+  anyComposerBusy,
+  setComposerBusy,
+  shouldAutoRefresh,
+} from "@/lib/inboxAutoRefresh";
+import { clearDraft, loadDraft, saveDraft } from "@/lib/inboxDraftStore";
 import type { Appointment, Client, Pet } from "@/lib/data/types";
 import {
   getMessageTemplateAvailability,
@@ -58,9 +64,13 @@ export function InboxMessageCenter({
     standalone && initialActiveThreadKey
       ? initialActiveThreadKey
       : draftActiveThreadKey;
+  // TT-020: a stable per-thread key for this composer's draft.
+  const composerKey = `composer:${activeThreadKey}`;
   const [selectedNewClientId, setSelectedNewClientId] = useState(clients[0]?.id ?? "");
   const [clientSearch, setClientSearch] = useState("");
-  const [message, setMessage] = useState("");
+  // Seed from the draft store so a refresh-driven remount recovers typed text
+  // (empty on first load → no hydration divergence from the empty textarea).
+  const [message, setMessage] = useState(() => loadDraft(composerKey));
   const [templateKey, setTemplateKey] = useState<MessageCenterTemplateKey | "">("");
   const [showAllMessages, setShowAllMessages] = useState(false);
   const [statusThreadKey, setStatusThreadKey] = useState("");
@@ -70,8 +80,17 @@ export function InboxMessageCenter({
   );
 
   useEffect(() => {
+    // TT-020: never run the 10s auto-refresh over an in-use composer (here or in
+    // the per-message InboxSmsActions) — it would re-render and wipe typed text.
     const refreshWhenVisible = () => {
-      if (document.visibilityState === "visible") router.refresh();
+      if (
+        shouldAutoRefresh({
+          visible: document.visibilityState === "visible",
+          composerBusy: anyComposerBusy(),
+        })
+      ) {
+        router.refresh();
+      }
     };
     const interval = window.setInterval(refreshWhenVisible, 10000);
     document.addEventListener("visibilitychange", refreshWhenVisible);
@@ -80,6 +99,18 @@ export function InboxMessageCenter({
       document.removeEventListener("visibilitychange", refreshWhenVisible);
     };
   }, [router]);
+
+  // TT-020: persist this composer's draft per thread and pause the auto-refresh
+  // while it holds unsent text, so a refresh-driven remount can recover it.
+  // No setState here — only external-store writes from the latest state.
+  useEffect(() => {
+    saveDraft(composerKey, message);
+    setComposerBusy(composerKey, message.trim().length > 0);
+  }, [composerKey, message]);
+
+  // Release the busy flag on unmount so a torn-down composer never wedges the
+  // refresh off. Cleanup-only — no setState in the effect body.
+  useEffect(() => () => setComposerBusy(composerKey, false), [composerKey]);
 
   async function submitMessage(
     previousState: InboxActionState,
@@ -91,6 +122,8 @@ export function InboxMessageCenter({
     if (nextState.status === "sent") {
       setMessage("");
       setTemplateKey("");
+      clearDraft(composerKey);
+      setComposerBusy(composerKey, false);
       if (!activeThread && selectedNewClientId) {
         setDraftActiveThreadKey(`client:${selectedNewClientId}`);
       }
@@ -179,6 +212,7 @@ export function InboxMessageCenter({
                 templateKey={templateKey}
                 message={message}
                 setMessage={setMessage}
+                composerKey={composerKey}
                 ownerName={ownerName}
                 canSend={canSend}
                 tooLong={tooLong}
@@ -298,6 +332,7 @@ export function InboxMessageCenter({
                 templateKey={templateKey}
                 message={message}
                 setMessage={setMessage}
+                composerKey={composerKey}
                 ownerName={ownerName}
                 canSend={canSend}
                 tooLong={tooLong}
@@ -436,6 +471,7 @@ function ThreadComposer({
   templateKey,
   message,
   setMessage,
+  composerKey,
   ownerName,
   canSend,
   tooLong,
@@ -451,6 +487,7 @@ function ThreadComposer({
   templateKey: MessageCenterTemplateKey | "";
   message: string;
   setMessage: (message: string) => void;
+  composerKey: string;
   ownerName: string;
   canSend: boolean;
   tooLong: boolean;
@@ -488,6 +525,8 @@ function ThreadComposer({
           rows={4}
           value={message}
           onChange={(event) => setMessage(event.currentTarget.value)}
+          onFocus={() => setComposerBusy(composerKey, true)}
+          onBlur={() => setComposerBusy(composerKey, message.trim().length > 0)}
           maxLength={MESSAGE_MAX}
           className="w-full resize-none rounded-xl border border-line bg-surface px-3.5 py-2.5 text-base leading-relaxed text-ink outline-none placeholder:text-ink-faint focus:border-brand focus:ring-2 focus:ring-brand/20"
           placeholder={

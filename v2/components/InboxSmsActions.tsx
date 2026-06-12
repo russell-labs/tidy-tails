@@ -1,18 +1,41 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useState } from "react";
 import {
   hideSmsMessage,
   markSmsHandled,
   sendInboxSmsReply,
   type InboxActionState,
 } from "@/lib/actions/inbox";
+import { setComposerBusy } from "@/lib/inboxAutoRefresh";
+import { clearDraft, loadDraft, saveDraft } from "@/lib/inboxDraftStore";
 
 const INITIAL_STATE: InboxActionState = { status: "idle" };
 
 export function InboxSmsActions({ smsId }: { smsId: string }) {
+  // TT-020: the inbox auto-refresh can remount this composer mid-typing. Seeding
+  // the initial state from the per-thread draft store means a remount recovers
+  // an in-progress reply (the store is empty on first page load, so this never
+  // diverges from the server-rendered empty textarea).
+  const [message, setMessage] = useState(() => loadDraft(smsId));
+
+  // Clear the persisted draft once the reply actually sends. Done in the action
+  // wrapper (not an effect) so we never call setState from inside an effect.
+  async function replyAction(
+    previousState: InboxActionState,
+    formData: FormData,
+  ): Promise<InboxActionState> {
+    const nextState = await sendInboxSmsReply(previousState, formData);
+    if (nextState.status === "sent") {
+      setMessage("");
+      clearDraft(smsId);
+      setComposerBusy(smsId, false);
+    }
+    return nextState;
+  }
+
   const [replyState, sendReplyAction, replyPending] = useActionState(
-    sendInboxSmsReply,
+    replyAction,
     INITIAL_STATE,
   );
   const [handledState, markHandledAction, handledPending] = useActionState(
@@ -23,10 +46,21 @@ export function InboxSmsActions({ smsId }: { smsId: string }) {
     hideSmsMessage,
     INITIAL_STATE,
   );
-  const [message, setMessage] = useState("");
   const [confirmHide, setConfirmHide] = useState(false);
   const charCount = message.trim().length;
   const busy = replyPending || handledPending || hidePending;
+
+  // Release the "busy" flag on unmount so a torn-down composer never wedges the
+  // auto-refresh off. Cleanup-only effect — no setState in the effect body.
+  useEffect(() => () => setComposerBusy(smsId, false), [smsId]);
+
+  // Write-through on every keystroke (so a remount recovers it) and pause the
+  // auto-refresh while there's unsent text.
+  function updateMessage(next: string) {
+    setMessage(next);
+    saveDraft(smsId, next);
+    setComposerBusy(smsId, next.trim().length > 0);
+  }
 
   return (
     <div className="mt-4 space-y-3 rounded-xl border border-line bg-canvas p-3">
@@ -38,7 +72,9 @@ export function InboxSmsActions({ smsId }: { smsId: string }) {
         <textarea
           name="message"
           value={message}
-          onChange={(event) => setMessage(event.currentTarget.value)}
+          onChange={(event) => updateMessage(event.currentTarget.value)}
+          onFocus={() => setComposerBusy(smsId, true)}
+          onBlur={() => setComposerBusy(smsId, message.trim().length > 0)}
           rows={3}
           maxLength={480}
           className="w-full resize-none rounded-xl border border-line bg-surface px-3 py-2 text-sm text-ink outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
