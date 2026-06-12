@@ -24,6 +24,7 @@ export type AuditEventType =
   | "groom.logged"
   | "sms.sent"
   | "sms.handled"
+  | "sms.seen"
   | "sms.hidden"
   | "sms.failed"
   | "bookkeeper.exported"
@@ -108,6 +109,7 @@ const LABELS: Record<AuditEventType, string> = {
   "groom.logged": "Logged groom",
   "sms.sent": "Sent SMS",
   "sms.handled": "Handled SMS",
+  "sms.seen": "Opened SMS",
   "sms.hidden": "Hid SMS",
   "sms.failed": "SMS failed",
   "bookkeeper.exported": "Exported report",

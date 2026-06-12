@@ -2,9 +2,12 @@ import { describe, expect, it } from "vitest";
 import type { AuditEvent } from "./audit";
 import type { SmsMessage } from "./inboundSms";
 import {
+  bellNeedsActionCount,
   buildInboxItems,
   buildSmsThreads,
+  inboundSmsIdsForThread,
   inboxCounts,
+  seenSmsIdsFromAudit,
   type BookingRequestInboxRow,
 } from "./inbox";
 
@@ -282,5 +285,51 @@ describe("inboxCounts", () => {
       smsReplies: 2,
       bookingRequests: 1,
     });
+  });
+});
+
+describe("TT-018 — opening a message clears the header bell (seen)", () => {
+  it("seenSmsIdsFromAudit collects ids from sms.seen events only", () => {
+    const seen = seenSmsIdsFromAudit([
+      audit({ id: "e1", event_type: "sms.seen", metadata: { smsMessageId: "sms-1" } }),
+      audit({ id: "e2", event_type: "sms.handled", metadata: { smsMessageId: "sms-2" } }),
+      audit({ id: "e3", event_type: "sms.seen", metadata: {} }),
+    ]);
+    expect([...seen]).toEqual(["sms-1"]);
+  });
+
+  it("drops a seen SMS from the bell count while the inbox list still flags it", () => {
+    const items = buildInboxItems({
+      smsMessages: [sms({ id: "sms-1", body: "Can we change the time?" })],
+      bookingRequests: [request({ id: "req-1" })],
+      auditEvents: [],
+    });
+    // Both still need action in the LIST.
+    expect(inboxCounts(items).needsAction).toBe(2);
+    // The BELL: nothing seen yet → both count.
+    expect(bellNeedsActionCount(items, new Set())).toBe(2);
+    // Open the SMS thread → that SMS is seen → bell shows only the booking request.
+    expect(bellNeedsActionCount(items, new Set(["sms-1"]))).toBe(1);
+    // The list is unchanged.
+    expect(inboxCounts(items).needsAction).toBe(2);
+  });
+
+  it("a seen booking-request id never affects the count (seen is SMS-only)", () => {
+    const items = buildInboxItems({
+      smsMessages: [],
+      bookingRequests: [request({ id: "req-1" })],
+      auditEvents: [],
+    });
+    expect(bellNeedsActionCount(items, new Set(["req-1"]))).toBe(1);
+  });
+
+  it("inboundSmsIdsForThread returns the thread's inbound, non-hidden message ids", () => {
+    const messages = [
+      sms({ id: "a", client_id: "client-1", direction: "inbound" }),
+      sms({ id: "b", client_id: "client-1", direction: "outbound" }),
+      sms({ id: "c", client_id: "client-2", direction: "inbound" }),
+      sms({ id: "h", client_id: "client-1", direction: "inbound", status: "hidden" }),
+    ];
+    expect(inboundSmsIdsForThread(messages, "client:client-1")).toEqual(["a"]);
   });
 });

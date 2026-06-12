@@ -1,7 +1,11 @@
 import { loadRecentAuditEvents } from "@/lib/audit.server";
 import { loadRecentBookingRequests } from "@/lib/bookingRequests.server";
 import { loadAppointments } from "@/lib/data/repo";
-import { buildInboxItems, inboxCounts } from "@/lib/inbox";
+import {
+  bellNeedsActionCount,
+  buildInboxItems,
+  seenSmsIdsFromAudit,
+} from "@/lib/inbox";
 import {
   notificationBellCount,
   shouldShowTomorrowReviewNotification,
@@ -23,8 +27,13 @@ export async function loadNotificationCount(): Promise<number> {
     handledSmsIds: handledSmsIdsFromAudit(auditEvents),
   });
   const dailyReview = shouldShowTomorrowReviewNotification({ appointments }) ? 1 : 0;
+  // TT-018: a needs-action SMS that has been opened (seen) no longer lights the
+  // bell, even if it's still unreplied. The inbox list keeps flagging it.
   return notificationBellCount({
-    inboxNeedsAction: inboxCounts(inboxItems).needsAction,
+    inboxNeedsAction: bellNeedsActionCount(
+      inboxItems,
+      seenSmsIdsFromAudit(auditEvents),
+    ),
     tomorrowReviewDue: dailyReview > 0,
   });
 }

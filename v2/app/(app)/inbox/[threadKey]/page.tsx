@@ -1,9 +1,14 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { InboxMessageCenter } from "@/components/InboxMessageCenter";
+import { MarkThreadSeen } from "@/components/MarkThreadSeen";
 import { loadRecentAuditEvents } from "@/lib/audit.server";
 import { loadDataset } from "@/lib/data/repo";
-import { buildSmsThreads } from "@/lib/inbox";
+import {
+  buildSmsThreads,
+  inboundSmsIdsForThread,
+  seenSmsIdsFromAudit,
+} from "@/lib/inbox";
 import {
   buildFirstPlatformSentClientIds,
   isExistingHouseholdForPlatformIntro,
@@ -37,8 +42,19 @@ export default async function MessageThreadPage({
 
   if (!smsThreads.some((thread) => thread.key === threadKey)) notFound();
 
+  // TT-018: mark this thread's inbound messages "seen" on open (only those not
+  // already handled/sent/seen), so the header bell clears without a reply.
+  const cleared = new Set<string>([
+    ...handledSmsIdsFromAudit(auditEvents),
+    ...seenSmsIdsFromAudit(auditEvents),
+  ]);
+  const unseenInboundIds = inboundSmsIdsForThread(smsMessages, threadKey).filter(
+    (id) => !cleared.has(id),
+  );
+
   return (
     <main className="min-h-full px-5 py-6">
+      <MarkThreadSeen smsIds={unseenInboundIds} />
       <InboxMessageCenter
         standalone
         activeThreadKey={threadKey}

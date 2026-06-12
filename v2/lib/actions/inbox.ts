@@ -50,6 +50,31 @@ export async function markSmsHandled(
   return { status: "handled", message: "Marked handled." };
 }
 
+// TT-018 — record that the operator OPENED a customer text, so the header bell
+// clears even without a reply. Decoupled from "handled": the inbox list keeps
+// flagging unreplied messages. The caller (thread page) passes only ids not yet
+// seen/handled, so this emits at most once per message and never on the inbox
+// list render or the 10s auto-refresh. No schema change — audit events only.
+export async function markSmsSeen(smsIds: string[]): Promise<void> {
+  const user = await getCurrentUser();
+  if (!user) return;
+  const ids = Array.from(
+    new Set(smsIds.filter((id) => typeof id === "string" && id.length > 0)),
+  );
+  if (ids.length === 0) return;
+
+  for (const smsId of ids) {
+    await recordAuditEvent({
+      eventType: "sms.seen",
+      summary: "Opened a customer text.",
+      metadata: { channel: "sms", smsMessageId: smsId },
+    });
+  }
+
+  // Refresh the shared (app) layout so the header bell recomputes.
+  revalidatePath("/", "layout");
+}
+
 export async function hideSmsMessage(
   _prev: InboxActionState,
   formData: FormData,
