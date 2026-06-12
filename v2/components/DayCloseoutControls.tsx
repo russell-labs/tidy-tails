@@ -5,6 +5,10 @@ import {
   saveDayCloseoutOverride,
   type DayCloseoutState,
 } from "@/lib/actions/dayCloseout";
+import {
+  PAID_BY_SALON_NOTE,
+  paidBySalonCloseoutInput,
+} from "@/lib/dayCloseout";
 import { formatMoney } from "@/lib/format";
 import type { DayLocationMoney } from "@/lib/locationFinance";
 
@@ -53,8 +57,24 @@ function DayCloseoutForm({
   >(saveDayCloseoutOverride, { status: "idle" });
   const hasOverride = Boolean(row.override);
 
+  // TT-021: one-tap "paid by salon, I keep 100%". Submits a final_payout-0
+  // override through the same action, so the salon cut is 0 without Sam
+  // hand-entering a 0% override every rented-chair day.
+  const [paidState, paidAction, paidPending] = useActionState<
+    DayCloseoutState,
+    FormData
+  >(saveDayCloseoutOverride, { status: "idle" });
+  const paid = paidBySalonCloseoutInput({
+    date: row.date,
+    location: row.location,
+    calculatedPayout: row.calculatedSalonPayout,
+  });
+  const isPaidBySalon =
+    row.override?.final_payout === 0 && row.override?.note === PAID_BY_SALON_NOTE;
+
   return (
-    <form action={formAction} className="rounded-lg border border-line px-3 py-3">
+    <div className="rounded-lg border border-line px-3 py-3">
+      <form action={formAction}>
       <input type="hidden" name="date" value={row.date} />
       <input type="hidden" name="location" value={row.location} />
       <input
@@ -120,6 +140,41 @@ function DayCloseoutForm({
           {state.message}
         </p>
       ) : null}
-    </form>
+      </form>
+
+      <form action={paidAction} className="mt-3 border-t border-line pt-3">
+        <input type="hidden" name="date" value={paid.date} />
+        <input type="hidden" name="location" value={paid.location} />
+        <input type="hidden" name="calculated_payout" value={paid.calculated_payout} />
+        <input type="hidden" name="final_payout" value={paid.final_payout} />
+        <input type="hidden" name="note" value={paid.note} />
+        <button
+          type="submit"
+          disabled={pending || paidPending || isPaidBySalon}
+          className="min-h-11 w-full rounded-xl border border-brand bg-brand-soft px-3 text-sm font-semibold text-brand-ink active:bg-brand-soft/70 disabled:opacity-55"
+        >
+          {isPaidBySalon
+            ? "Paid by salon — keeping 100% ✓"
+            : paidPending
+              ? "Saving..."
+              : "Paid by salon — I keep 100%"}
+        </button>
+        <p className="mt-1 text-xs text-ink-soft">
+          No salon cut today — the salon is paying you directly.
+        </p>
+        {paidState.status === "error" ? (
+          <p className="mt-2 rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger-ink">
+            {paidState.formError ??
+              Object.values(paidState.errors)[0] ??
+              "Closeout could not be saved."}
+          </p>
+        ) : null}
+        {paidState.status === "saved" || paidState.status === "demo" || paidState.status === "gated" ? (
+          <p className="mt-2 rounded-lg bg-brand-soft px-3 py-2 text-sm font-medium text-brand-ink">
+            {paidState.message}
+          </p>
+        ) : null}
+      </form>
+    </div>
   );
 }

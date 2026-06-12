@@ -61,6 +61,29 @@ export function dayCloseoutKey(date: string, location: string): string {
   return `${date}::${location}`;
 }
 
+// TT-021 — "paid by salon, I keep 100%" days. On a rented-chair day where the
+// salon pays Sam directly, the configured percentage cut should not apply.
+// Instead of forcing her to hand-enter a 0% override every time, this builds a
+// closeout that zeroes the salon payout (final_payout 0) through the SAME
+// override path — keeping the would-be cut as calculated_payout for the record
+// and supplying the canned, NOT-NULL note the table requires. Percentage days
+// (no such closeout) are untouched.
+export const PAID_BY_SALON_NOTE = "Paid by salon — kept 100%";
+
+export function paidBySalonCloseoutInput(params: {
+  date: string;
+  location: string;
+  calculatedPayout: number;
+}): DayCloseoutInput {
+  return {
+    date: params.date,
+    location: params.location,
+    final_payout: "0",
+    calculated_payout: params.calculatedPayout.toFixed(2),
+    note: PAID_BY_SALON_NOTE,
+  };
+}
+
 export function validateDayCloseoutInput(
   raw: Partial<DayCloseoutInput>,
 ): DayCloseoutValidation {
