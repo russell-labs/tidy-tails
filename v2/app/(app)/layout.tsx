@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { AppHeader } from "@/components/AppHeader";
+import { InstallAppPrompt } from "@/components/InstallAppPrompt";
 import { BottomNav } from "@/components/BottomNav";
 import { DataModeBanner } from "@/components/DataModeBanner";
 import { SentryOrgTag } from "@/components/SentryOrgTag";
@@ -34,6 +35,7 @@ export default async function AppLayout({
       <SentryOrgTag orgId={orgId} />
       <DataModeBanner />
       <AppHeader />
+      <InstallAppPrompt />
       <div className="flex-1 pad-bottom-nav">{children}</div>
       <BottomNav />
     </div>
