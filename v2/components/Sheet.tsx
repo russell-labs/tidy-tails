@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
+import { getFocusable, resolveTabTarget } from "@/lib/focusTrap";
 
 // Bottom-sheet modal primitive. Mobile-first: slides from the bottom, keeps the
 // content above the keyboard, constrained to the app's phone-width column.
@@ -18,6 +19,30 @@ export function Sheet({
   variant?: "bottom" | "fullscreen";
   children: React.ReactNode;
 }) {
+  // Focus trap (M4): the dialog root is captured by ref; on open we move
+  // focus inside, Tab cycles within the sheet, and on close focus returns to
+  // the element that opened it.
+  const rootRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const opener =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+    // Move focus into the sheet: first focusable inside the panel (skipping
+    // the full-screen backdrop button), falling back to the close button.
+    const root = rootRef.current;
+    if (root) {
+      const panel = root.querySelector<HTMLElement>(".tidy-sheet-panel");
+      const target = panel ? getFocusable(panel)[0] : getFocusable(root)[0];
+      target?.focus();
+    }
+    return () => {
+      if (opener && document.contains(opener)) opener.focus();
+    };
+  }, [open]);
+
   useEffect(() => {
     if (!open) return;
     const scrollY = window.scrollY;
@@ -30,7 +55,27 @@ export function Sheet({
       width: document.body.style.width,
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") {
+        onClose();
+        return;
+      }
+      if (e.key === "Tab") {
+        const root = rootRef.current;
+        if (!root) return;
+        const active =
+          document.activeElement instanceof HTMLElement
+            ? document.activeElement
+            : null;
+        const target = resolveTabTarget(
+          getFocusable(root),
+          active && root.contains(active) ? active : null,
+          e.shiftKey,
+        );
+        if (target) {
+          e.preventDefault();
+          target.focus();
+        }
+      }
     };
     window.addEventListener("keydown", onKey);
     document.documentElement.style.overflow = "hidden";
@@ -64,6 +109,7 @@ export function Sheet({
 
   const sheet = (
     <div
+      ref={rootRef}
       className="tidy-sheet-root fixed inset-0 z-50 flex flex-col justify-end bg-ink/40"
       role="dialog"
       aria-modal="true"
