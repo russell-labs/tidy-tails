@@ -19,7 +19,7 @@
   --color-danger-ink: #9f1239;
   --color-danger-soft: #fff1f3;
 
-  --color-warn: #b45309;
+  --color-warn: #92400e; /* M4: was #b45309; ~4.0:1 on warn-soft failed AA, #92400e is ~6.3:1 */
   --color-warn-soft: #fdf3e2;
 
   --color-ok: #15803d;

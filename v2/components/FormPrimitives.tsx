@@ -1,6 +1,12 @@
 "use client";
 
-import { type ReactNode } from "react";
+import {
+  Children,
+  cloneElement,
+  isValidElement,
+  useId,
+  type ReactNode,
+} from "react";
 
 // Shared form primitives. These markup pieces and the label style constant were
 // redefined identically in seven form components; centralizing them keeps one
@@ -28,12 +34,45 @@ export function Field({
   hint?: string;
   children: ReactNode;
 }) {
+  // M4: hint and error text are programmatically associated with the control
+  // via aria-describedby (and aria-invalid on error). When the child is a
+  // single element (the common case: an input/select/textarea), it is cloned
+  // with the association; any other shape renders exactly as before.
+  const baseId = useId();
+  const hintId = hint ? `${baseId}-hint` : undefined;
+  const errorId = error ? `${baseId}-error` : undefined;
+  const describedBy =
+    [hintId, errorId].filter(Boolean).join(" ") || undefined;
+
+  let control = children;
+  if (describedBy && Children.count(children) === 1 && isValidElement(children)) {
+    const props = children.props as {
+      "aria-describedby"?: string;
+      "aria-invalid"?: boolean;
+    };
+    const merged = [props["aria-describedby"], describedBy]
+      .filter(Boolean)
+      .join(" ");
+    control = cloneElement(children, {
+      "aria-describedby": merged,
+      "aria-invalid": error ? true : props["aria-invalid"],
+    } as Partial<unknown>);
+  }
+
   return (
     <label className="flex flex-col gap-1.5">
       <span className={labelClass}>{label}</span>
-      {children}
-      {hint ? <span className="text-xs text-ink-faint">{hint}</span> : null}
-      {error ? <span className="text-xs text-danger-ink">{error}</span> : null}
+      {control}
+      {hint ? (
+        <span id={hintId} className="text-xs text-ink-faint">
+          {hint}
+        </span>
+      ) : null}
+      {error ? (
+        <span id={errorId} className="text-xs text-danger-ink">
+          {error}
+        </span>
+      ) : null}
     </label>
   );
 }
