@@ -110,6 +110,50 @@ export function inboxCounts(items: InboxItem[]) {
   };
 }
 
+// TT-018 — the per-message "seen" signal. Mirrors handledSmsIdsFromAudit but for
+// `sms.seen` events emitted when a thread is opened. Decoupled from "handled" so
+// merely opening a message clears the header bell without touching the inbox
+// list's needs-action state.
+export function seenSmsIdsFromAudit(events: AuditEvent[]): Set<string> {
+  return new Set(
+    events
+      .filter((event) => event.event_type === "sms.seen")
+      .map((event) => event.metadata?.smsMessageId)
+      .filter((id): id is string => typeof id === "string" && id.length > 0),
+  );
+}
+
+// The header bell's needs-action count: like inboxCounts(...).needsAction, but a
+// needs-action SMS that has been opened (seen) no longer lights the bell. The
+// inbox LIST still counts it (via inboxCounts) so unreplied messages stay
+// findable. Seen is SMS-only; booking-request actions are unaffected.
+export function bellNeedsActionCount(
+  items: InboxItem[],
+  seenSmsIds: Set<string>,
+): number {
+  return items.filter(
+    (item) =>
+      item.priority === "action" &&
+      !(item.kind === "sms" && seenSmsIds.has(item.sourceId)),
+  ).length;
+}
+
+// The inbound, non-hidden message ids that belong to a thread — used on thread
+// open to emit `sms.seen` for exactly those messages.
+export function inboundSmsIdsForThread(
+  messages: SmsMessage[],
+  threadKey: string,
+): string[] {
+  return messages
+    .filter(
+      (message) =>
+        message.status !== "hidden" &&
+        message.direction === "inbound" &&
+        smsThreadKey(message) === threadKey,
+    )
+    .map((message) => message.id);
+}
+
 export function smsActionLabel(message: SmsMessage): string {
   if (message.status === "handled") return "Handled";
   if (message.direction !== "inbound") return "Sent";
