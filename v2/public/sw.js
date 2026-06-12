@@ -1,13 +1,24 @@
-// Tidy Tails v2 — service worker (Ship 2.1 baseline).
+// Tidy Tails v2 — service worker (M2: PWA part 1).
 //
-// Scope: makes the app installable and gives offline read-through for the
-// shell and recently viewed pages. There is no background sync and no write
-// queue in this ship (design-lock spec §5.9 — full offline writes are v2.1).
+// Scope: installable app shell, offline read-through for recently viewed
+// pages, a tenant-neutral offline fallback, and a clear-caches message used
+// by sign-out. No background sync and no write queue (design-lock spec §5.9).
+//
+// VERSION is the cache-busting knob: bump it in any PR that changes cached
+// shell behavior; activate() then drops every older cache (including the
+// pre-M2 "tidy-tails-v2-shell-v1").
 
-const CACHE = "tidy-tails-v2-shell-v1";
+const VERSION = "v2";
+const CACHE = `tidy-tails-v2-shell-${VERSION}`;
+const OFFLINE_URL = "/offline.html";
 
-self.addEventListener("install", () => {
-  self.skipWaiting();
+self.addEventListener("install", (event) => {
+  event.waitUntil(
+    caches
+      .open(CACHE)
+      .then((cache) => cache.add(OFFLINE_URL))
+      .then(() => self.skipWaiting()),
+  );
 });
 
 self.addEventListener("activate", (event) => {
@@ -21,6 +32,18 @@ self.addEventListener("activate", (event) => {
   );
 });
 
+// Sign-out (and any future privacy surface) posts this to evict cached
+// authed pages — a shared device must not serve one tenant's cached HTML
+// to the next account. The page-side helper also deletes via the Cache
+// Storage API directly; this handler is the belt to that suspenders.
+self.addEventListener("message", (event) => {
+  if (event.data && event.data.type === "TIDY_CLEAR_CACHES") {
+    event.waitUntil(
+      caches.keys().then((keys) => Promise.all(keys.map((k) => caches.delete(k)))),
+    );
+  }
+});
+
 self.addEventListener("fetch", (event) => {
   const request = event.request;
   if (request.method !== "GET") return;
@@ -28,7 +51,10 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
 
-  // Page navigations: network-first so data stays fresh, cache as fallback.
+  // Page navigations: network-first so data stays fresh; cached copy of the
+  // same URL as fallback; the offline page when neither is available. Never
+  // fall back to "/" — serving a different (possibly stale, authed) page in
+  // place of the requested one confuses more than it helps.
   if (request.mode === "navigate") {
     event.respondWith(
       fetch(request)
@@ -38,7 +64,9 @@ self.addEventListener("fetch", (event) => {
           return response;
         })
         .catch(() =>
-          caches.match(request).then((cached) => cached || caches.match("/")),
+          caches
+            .match(request)
+            .then((cached) => cached || caches.match(OFFLINE_URL)),
         ),
     );
     return;

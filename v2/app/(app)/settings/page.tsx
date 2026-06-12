@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { signOut } from "@/lib/actions/auth";
+import { SignOutButton } from "@/components/SignOutButton";
 import { disconnectGoogleCalendarAction } from "@/lib/actions/googleCalendar";
 import { LocationSettingsForm } from "@/components/LocationSettingsForm";
 import { MessageDraftSettingsForm } from "@/components/MessageDraftSettingsForm";
@@ -472,14 +472,7 @@ export default async function SettingsPage({
         />
       </Card>
 
-      <form action={signOut} className="mt-6">
-        <button
-          type="submit"
-          className="w-full rounded-xl border border-line bg-surface px-4 py-3 text-base font-semibold text-danger-ink"
-        >
-          Sign out
-        </button>
-      </form>
+      <SignOutButton />
     </main>
   );
 }
