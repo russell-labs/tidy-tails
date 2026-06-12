@@ -242,3 +242,36 @@ describe("customerFacingLocationLabel", () => {
     ).toBeNull();
   });
 });
+
+describe("TT-021 — a paid-by-salon day keeps 100% (final payout 0)", () => {
+  const settings = DEFAULT_OPERATOR_SETTINGS.locationSettings;
+  const appts = [appointment({ date: "2026-06-11", location: "gina", price: 100 })];
+
+  it("deducts the configured salon cut on a normal percentage day (unchanged)", () => {
+    const [row] = calculateDayLocationMoney(appts, "2026-06-11", settings, []);
+    expect(row.calculatedSalonPayout).toBe(30); // Gina keeps 30%
+    expect(row.salonPayout).toBe(30);
+    expect(row.samNet).toBe(70);
+  });
+
+  it("zeroes the salon payout when a paid-by-salon override (final 0) exists", () => {
+    const override = {
+      id: "o1",
+      date: "2026-06-11",
+      location: "gina",
+      final_payout: 0,
+      calculated_payout: 30,
+      note: "Paid by salon — kept 100%",
+      created_at: "2026-06-11T20:00:00.000Z",
+      updated_at: "2026-06-11T20:00:00.000Z",
+    };
+    const [row] = calculateDayLocationMoney(appts, "2026-06-11", settings, [override]);
+    expect(row.salonPayout).toBe(0);
+    expect(row.samNet).toBe(100); // Sam keeps the full gross
+    expect(row.calculatedSalonPayout).toBe(30); // would-be cut still reported
+
+    const day = calculateDayMoney(appts, "2026-06-11", settings, [override]);
+    expect(day.salonPayout).toBe(0);
+    expect(day.samNet).toBe(100);
+  });
+});
