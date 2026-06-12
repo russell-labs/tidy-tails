@@ -18,6 +18,7 @@
 // authenticated insert; it is never set explicitly here.
 
 import { revalidatePath } from "next/cache";
+import * as Sentry from "@sentry/nextjs";
 import { recordAuditEvent } from "@/lib/audit.server";
 import {
   dataMode,
@@ -330,6 +331,14 @@ export async function createBooking(
     .insert(payloads.map((payload) => ({ ...payload, org_id: orgId })))
     .select("*");
   if (error) {
+    // TT-019: surface the real Postgres error (e.g. a CHECK violation). It is
+    // otherwise swallowed behind the generic banner below, which is why this S1
+    // needed DB archaeology instead of a Sentry line. Non-fatal — the customer
+    // still sees the safe message.
+    console.error("Appointment insert failed", error);
+    if (process.env.SENTRY_DSN ?? process.env.NEXT_PUBLIC_SENTRY_DSN) {
+      Sentry.captureException(error);
+    }
     return {
       status: "error",
       errors: {},

@@ -106,6 +106,13 @@ jobs:
       - name: Self-serve org bootstrap isolation test (WS3 Slice B)
         run: psql -v ON_ERROR_STOP=1 -f v2/supabase/tests/self_serve_bootstrap_isolation.sql
 
+      # TT-019: a 'puppy_groom' appointment must insert (the app offers it; the
+      # service_type CHECK must allow it). Lives here, where all migrations
+      # (incl. 0006) are applied — NOT in cutover-rehearsal, which stops at
+      # baseline and would not have the 0006 constraint fix.
+      - name: Puppy-groom service_type accepted (TT-019 regression)
+        run: psql -v ON_ERROR_STOP=1 -f v2/supabase/tests/service_type_puppy_groom.sql
+
   # Production cutover rehearsal (WS2.4). Stands up an ephemeral Postgres at
   # prod's TRUE starting state — the original baseline ONLY (migration 0001; no
   # 0002/0003/0004) — seeds a single-operator "Sam" book with null-org rows, then
