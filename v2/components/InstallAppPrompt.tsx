@@ -1,11 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import {
   detectInstallPlatform,
   INSTALL_PROMPT_DISMISSED_KEY,
   shouldShowInstallPrompt,
-  type InstallPlatform,
 } from "@/lib/installPrompt";
 
 type BeforeInstallPromptEvent = Event & {
@@ -16,30 +15,45 @@ type BeforeInstallPromptEvent = Event & {
 // install API, so it gets Share → Add to Home Screen instructions; Android
 // and desktop Chromium get a real Install button driven by the captured
 // beforeinstallprompt event. Renders nothing once installed (standalone),
-// after dismissal, or during SSR. Tenant-neutral by construction.
+// after dismissal, or during SSR/hydration. Tenant-neutral by construction.
+
+// Client detection without effect-driven state: the server snapshot renders
+// null, the client snapshot enables the real read-on-render values below.
+const emptySubscribe = () => () => {};
+
+function readDismissed(): boolean {
+  try {
+    return (
+      typeof window !== "undefined" &&
+      window.localStorage.getItem(INSTALL_PROMPT_DISMISSED_KEY) === "true"
+    );
+  } catch {
+    return false;
+  }
+}
+
+function isStandaloneDisplay(): boolean {
+  return (
+    window.matchMedia("(display-mode: standalone)").matches ||
+    ("standalone" in navigator &&
+      (navigator as { standalone?: boolean }).standalone === true)
+  );
+}
+
 export function InstallAppPrompt() {
-  const [platform, setPlatform] = useState<InstallPlatform>("other");
-  const [standalone, setStandalone] = useState(true);
-  const [dismissed, setDismissed] = useState(true);
+  const isClient = useSyncExternalStore(
+    emptySubscribe,
+    () => true,
+    () => false,
+  );
+  const [dismissed, setDismissed] = useState(readDismissed);
   const [installEvent, setInstallEvent] =
     useState<BeforeInstallPromptEvent | null>(null);
 
   useEffect(() => {
-    setPlatform(detectInstallPlatform(navigator.userAgent));
-    setStandalone(
-      window.matchMedia("(display-mode: standalone)").matches ||
-        ("standalone" in navigator &&
-          (navigator as { standalone?: boolean }).standalone === true),
-    );
-    try {
-      setDismissed(
-        window.localStorage.getItem(INSTALL_PROMPT_DISMISSED_KEY) === "true",
-      );
-    } catch {
-      setDismissed(false);
-    }
     const onBeforeInstall = (e: Event) => {
       e.preventDefault();
+      // setState inside a subscription callback — the supported pattern.
       setInstallEvent(e as BeforeInstallPromptEvent);
     };
     window.addEventListener("beforeinstallprompt", onBeforeInstall);
@@ -47,10 +61,13 @@ export function InstallAppPrompt() {
       window.removeEventListener("beforeinstallprompt", onBeforeInstall);
   }, []);
 
+  if (!isClient) return null;
+
+  const platform = detectInstallPlatform(navigator.userAgent);
   if (
     !shouldShowInstallPrompt({
       platform,
-      standalone,
+      standalone: isStandaloneDisplay(),
       dismissed,
       canNativeInstall: installEvent !== null,
     })
