@@ -87,3 +87,17 @@ export function isDailyIncomeWriteEnabled(): boolean {
 export function isGoogleCalendarSyncEnabled(): boolean {
   return isFlagEnabled(process.env.TIDYTAILS_ENABLE_GOOGLE_CALENDAR_SYNC);
 }
+
+// Feature-visibility gate (NOT a write surface).
+//
+// The agentic layer (Phase 1) is a READ-ONLY natural-language assistant. It
+// registers no write/send tools, so there is no data to kill-switch — this flag
+// only governs whether the assistant surface is reachable at all. It follows
+// the exact same `"on"`-means-on, default-OFF, server-only contract as the
+// write gates above so a flip stays a Vercel env change, never a code edit, and
+// so the whole feature is dark until Russell turns it on for Sam first.
+
+/** Agentic assistant surface (read-only, Phase 1) — `TIDYTAILS_ENABLE_AGENT`. */
+export function isAgentEnabled(): boolean {
+  return isFlagEnabled(process.env.TIDYTAILS_ENABLE_AGENT);
+}
