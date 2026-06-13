@@ -11,6 +11,7 @@ import {
   isEditAppointmentWriteEnabled,
   isDailyIncomeWriteEnabled,
   isGoogleCalendarSyncEnabled,
+  isAgentEnabled,
 } from "./writeGate";
 
 // The post-cutover write kill-switches. Each of v2's four write surfaces is
@@ -132,5 +133,27 @@ describe("write-gate isolation — one flag never enables another", () => {
     expect(isAddHouseholdWriteEnabled()).toBe(false);
     expect(isDailyIncomeWriteEnabled()).toBe(false);
     expect(isGoogleCalendarSyncEnabled()).toBe(false);
+  });
+});
+
+describe("agent feature gate — default OFF, exact-match ON", () => {
+  it("is OFF when the flag is unset", () => {
+    expect(isAgentEnabled()).toBe(false);
+  });
+
+  it('is ON for the exact value "on"', () => {
+    vi.stubEnv("TIDYTAILS_ENABLE_AGENT", "on");
+    expect(isAgentEnabled()).toBe(true);
+  });
+
+  it.each(NON_ENABLING)("is OFF for the non-enabling value %j", (value) => {
+    vi.stubEnv("TIDYTAILS_ENABLE_AGENT", value);
+    expect(isAgentEnabled()).toBe(false);
+  });
+
+  it("does not turn on when any write surface is enabled", () => {
+    vi.stubEnv("TIDYTAILS_ENABLE_ADD_APPOINTMENT_WRITE", "on");
+    vi.stubEnv("TIDYTAILS_ENABLE_DAILY_INCOME_WRITE", "on");
+    expect(isAgentEnabled()).toBe(false);
   });
 });
