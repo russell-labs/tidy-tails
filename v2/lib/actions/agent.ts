@@ -11,6 +11,7 @@
 
 import { isAgentEnabled } from "@/lib/writeGate";
 import { getCurrentUser } from "@/lib/supabase/server";
+import { sanitizeAgentRequest } from "@/lib/agent/agentRequest";
 import {
   runAgent,
   AgentNotConfiguredError,
@@ -26,9 +27,6 @@ export type AgentChatState = {
   /** User-facing error text, when status is "error". */
   message?: string;
 };
-
-const MAX_MESSAGE_LENGTH = 2000;
-const MAX_HISTORY_TURNS = 12;
 
 /**
  * Answer one operator message. `history` is the recent transcript the chat
@@ -53,30 +51,13 @@ export async function askAgent(
     };
   }
 
-  const trimmed = typeof message === "string" ? message.trim() : "";
-  if (!trimmed) {
-    return { status: "error", message: "Type a question to get started." };
+  const sanitized = sanitizeAgentRequest(message, history);
+  if (!sanitized.ok) {
+    return { status: "error", message: sanitized.message };
   }
-  if (trimmed.length > MAX_MESSAGE_LENGTH) {
-    return {
-      status: "error",
-      message: "That message is too long. Try a shorter question.",
-    };
-  }
-
-  const safeHistory: AgentTurn[] = Array.isArray(history)
-    ? history
-        .filter(
-          (turn): turn is AgentTurn =>
-            !!turn &&
-            (turn.role === "user" || turn.role === "assistant") &&
-            typeof turn.text === "string",
-        )
-        .slice(-MAX_HISTORY_TURNS)
-    : [];
 
   try {
-    const result = await runAgent(trimmed, safeHistory);
+    const result = await runAgent(sanitized.message, sanitized.history);
     return {
       status: "answered",
       answer: result.text,

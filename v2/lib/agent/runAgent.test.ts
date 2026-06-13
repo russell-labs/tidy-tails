@@ -1,17 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { appointment, client, pet } from "@/lib/actions/actionTestSupport";
 import { DEFAULT_OPERATOR_SETTINGS } from "@/lib/operatorSettings";
+import type {
+  ModelProvider,
+  ProviderRequest,
+  ProviderResponse,
+} from "./provider/types";
 
-// Mock the Anthropic SDK so the manual tool-use loop can be driven without the
-// network or an API key. `create` is the scripted Messages endpoint.
-const { create } = vi.hoisted(() => ({ create: vi.fn() }));
-vi.mock("@anthropic-ai/sdk", () => ({
-  default: class {
-    messages = { create };
-  },
-}));
-
-// Real read tools run against mocked org-scoped loaders.
+// The runner is provider-agnostic: it drives any ModelProvider. We inject a
+// scripted fake provider so the loop is tested without any vendor SDK or network.
+// The read tools still run against mocked org-scoped loaders.
 vi.mock("@/lib/data/repo", async () => {
   const actual = await vi.importActual<typeof import("@/lib/data/repo")>(
     "@/lib/data/repo",
@@ -32,57 +30,74 @@ vi.mock("@/lib/operatorSettings.server", () => ({
 }));
 
 import { runAgent, AgentNotConfiguredError } from "./runAgent";
+import { AGENT_READ_TOOL_NAMES } from "./tools";
 
-const textTurn = (text: string) => ({
-  stop_reason: "end_turn",
-  content: [{ type: "text", text }],
+const endTurn = (text: string): ProviderResponse => ({
+  text,
+  toolCalls: [],
+  stopReason: "end",
 });
 
-const toolTurn = (id: string, name: string, input: Record<string, unknown>) => ({
-  stop_reason: "tool_use",
-  content: [{ type: "tool_use", id, name, input }],
+const toolTurn = (name: string, input: Record<string, unknown>): ProviderResponse => ({
+  text: "",
+  toolCalls: [{ id: `${name}-0`, name, input }],
+  stopReason: "tool_use",
 });
+
+/** A scripted provider that returns the given turns in order (repeating the last). */
+function fakeProvider(turns: ProviderResponse[]): {
+  provider: ModelProvider;
+  calls: ProviderRequest[];
+} {
+  const calls: ProviderRequest[] = [];
+  let index = 0;
+  return {
+    calls,
+    provider: {
+      id: "fake",
+      async createMessage(req) {
+        calls.push(req);
+        const turn = turns[Math.min(index, turns.length - 1)];
+        index += 1;
+        return turn;
+      },
+    },
+  };
+}
 
 beforeEach(() => {
   vi.clearAllMocks();
-  vi.stubEnv("ANTHROPIC_API_KEY", "test-key");
 });
 
-describe("runAgent — manual read-only tool loop", () => {
-  it("throws AgentNotConfiguredError when the API key is missing", async () => {
-    vi.stubEnv("ANTHROPIC_API_KEY", "");
+describe("runAgent — provider-agnostic read-only tool loop", () => {
+  it("throws AgentNotConfiguredError when the default provider has no key", async () => {
+    vi.stubEnv("TIDYTAILS_AGENT_PROVIDER", "");
+    vi.stubEnv("GOOGLE_API_KEY", "");
     await expect(runAgent("hi")).rejects.toBeInstanceOf(AgentNotConfiguredError);
-    expect(create).not.toHaveBeenCalled();
+    vi.unstubAllEnvs();
   });
 
   it("offers ONLY the read tools to the model — no write/send tool", async () => {
-    create.mockResolvedValueOnce(textTurn("Hello!"));
-    await runAgent("hi");
-    const toolNames = (create.mock.calls[0][0].tools as { name: string }[]).map(
-      (tool) => tool.name,
-    );
-    expect(toolNames.sort()).toEqual([
-      "find_household",
-      "get_day_income",
-      "get_pet_history",
-      "get_schedule",
-      "list_lapsed_clients",
-    ]);
+    const { provider, calls } = fakeProvider([endTurn("Hello!")]);
+    await runAgent("hi", [], { provider });
+    const toolNames = calls[0].tools.map((tool) => tool.name).sort();
+    expect(toolNames).toEqual([...AGENT_READ_TOOL_NAMES].sort());
   });
 
   it("returns the model's text directly when no tool is needed", async () => {
-    create.mockResolvedValueOnce(textTurn("Your day is light."));
-    const result = await runAgent("what's my day look like");
+    const { provider } = fakeProvider([endTurn("Your day is light.")]);
+    const result = await runAgent("what's my day look like", [], { provider });
     expect(result.text).toBe("Your day is light.");
     expect(result.toolCalls).toEqual([]);
   });
 
   it("executes a tool call, feeds the result back, and returns the final answer", async () => {
-    create
-      .mockResolvedValueOnce(toolTurn("tu_1", "get_schedule", { date: "2026-06-13" }))
-      .mockResolvedValueOnce(textTurn("You have one appointment at 10:30am."));
+    const { provider, calls } = fakeProvider([
+      toolTurn("get_schedule", { date: "2026-06-13" }),
+      endTurn("You have one appointment at 10:30am."),
+    ]);
 
-    const result = await runAgent("what's my day look like");
+    const result = await runAgent("what's my day look like", [], { provider });
 
     expect(result.toolCalls).toEqual([
       { name: "get_schedule", input: { date: "2026-06-13" } },
@@ -90,35 +105,46 @@ describe("runAgent — manual read-only tool loop", () => {
     expect(result.text).toBe("You have one appointment at 10:30am.");
 
     // The second model call carries the tool result back as a non-error result.
-    const followupMessages = create.mock.calls[1][0].messages;
-    const toolResult = followupMessages
-      .flatMap((m: { content: unknown }) => (Array.isArray(m.content) ? m.content : []))
-      .find((block: { type?: string }) => block.type === "tool_result");
-    expect(toolResult).toBeTruthy();
-    expect(toolResult.is_error).toBeFalsy();
-    expect(String(toolResult.content)).toContain("10:30am");
+    const toolMessage = calls[1].messages.find((m) => m.role === "tool");
+    expect(toolMessage).toBeTruthy();
+    const toolResult = toolMessage?.role === "tool" ? toolMessage.results[0] : undefined;
+    expect(toolResult?.isError).toBeFalsy();
+    expect(String(toolResult?.content)).toContain("10:30am");
   });
 
   it("returns a tool error to the model (never fabricates) on bad input", async () => {
-    create
-      .mockResolvedValueOnce(toolTurn("tu_1", "get_pet_history", { pet_id: "nope" }))
-      .mockResolvedValueOnce(textTurn("I couldn't find that pet — which dog did you mean?"));
+    const { provider, calls } = fakeProvider([
+      toolTurn("get_pet_history", { pet_id: "nope" }),
+      endTurn("I couldn't find that pet — which dog did you mean?"),
+    ]);
 
-    const result = await runAgent("show that dog's history");
+    const result = await runAgent("show that dog's history", [], { provider });
 
-    const followupMessages = create.mock.calls[1][0].messages;
-    const toolResult = followupMessages
-      .flatMap((m: { content: unknown }) => (Array.isArray(m.content) ? m.content : []))
-      .find((block: { type?: string }) => block.type === "tool_result");
-    expect(toolResult.is_error).toBe(true);
+    const toolMessage = calls[1].messages.find((m) => m.role === "tool");
+    const toolResult = toolMessage?.role === "tool" ? toolMessage.results[0] : undefined;
+    expect(toolResult?.isError).toBe(true);
     expect(result.text).toContain("which dog");
   });
 
   it("stops at the loop cap if the model never finishes", async () => {
-    // Model keeps asking for tools forever — the backstop must end the loop.
-    create.mockResolvedValue(toolTurn("tu_x", "get_schedule", { date: "2026-06-13" }));
-    const result = await runAgent("loop please");
-    expect(create.mock.calls.length).toBeLessThanOrEqual(8);
+    const { provider, calls } = fakeProvider([toolTurn("get_schedule", { date: "2026-06-13" })]);
+    const result = await runAgent("loop please", [], { provider });
+    expect(calls.length).toBeLessThanOrEqual(8);
     expect(result.text.toLowerCase()).toContain("rephrase");
+  });
+
+  it("emits live status events: thinking before each turn, tool before each tool runs", async () => {
+    const { provider } = fakeProvider([
+      toolTurn("get_schedule", { date: "2026-06-13" }),
+      endTurn("You have one appointment at 10:30am."),
+    ]);
+    const events: string[] = [];
+
+    await runAgent("what's my day look like", [], {
+      provider,
+      onEvent: (event) => events.push(event.type === "tool" ? `tool:${event.name}` : event.type),
+    });
+
+    expect(events).toEqual(["thinking", "tool:get_schedule", "thinking"]);
   });
 });

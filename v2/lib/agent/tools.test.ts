@@ -280,13 +280,108 @@ describe("dispatch", () => {
     await expect(runAgentTool("send_text", {})).rejects.toBeInstanceOf(AgentToolError);
   });
 
-  it("only knows the five read tools", () => {
+  it("only knows the six read tools", () => {
     expect([...AGENT_READ_TOOL_NAMES].sort()).toEqual([
       "find_household",
       "get_day_income",
+      "get_groom_detail",
       "get_pet_history",
       "get_schedule",
       "list_lapsed_clients",
     ]);
+  });
+});
+
+describe("get_pet_history — operator groom detail", () => {
+  it("exposes the operator's own per-visit groom notes and standing pet notes", async () => {
+    loadDatasetMock.mockResolvedValue(
+      dataset({
+        pets: [pet({ id: "pet-1", grooming_notes: "Clipper #4 all over; matted behind ears." })],
+        appointments: [
+          appointment({
+            id: "a1",
+            date: "2026-05-10",
+            service: "Full groom",
+            status: "completed",
+            notes: "Used clipper #5 on the legs; nervous about the dryer.",
+          }),
+        ],
+      }),
+    );
+
+    const result = (await runAgentTool("get_pet_history", { pet_id: "pet-1" })) as {
+      pet: { groomingNotes: string | null };
+      visits: { date: string; notes: string | null }[];
+    };
+
+    expect(result.pet.groomingNotes).toBe("Clipper #4 all over; matted behind ears.");
+    expect(result.visits[0].notes).toBe("Used clipper #5 on the legs; nervous about the dryer.");
+  });
+});
+
+describe("get_groom_detail", () => {
+  it("returns the most recent completed groom's operator notes (the 'what clipper last time' answer)", async () => {
+    loadDatasetMock.mockResolvedValue(
+      dataset({
+        pets: [pet({ id: "pet-1", grooming_notes: "Sensitive skin — oatmeal shampoo." })],
+        appointments: [
+          appointment({
+            id: "old",
+            date: "2026-01-10",
+            status: "completed",
+            notes: "Clipper #3.",
+          }),
+          appointment({
+            id: "recent",
+            date: "2026-05-10",
+            service: "Full groom",
+            status: "completed",
+            notes: "Clipper #4; used the de-shedding tool.",
+          }),
+        ],
+      }),
+    );
+
+    const result = (await runAgentTool("get_groom_detail", { pet_id: "pet-1" })) as {
+      pet: { name: string; groomingNotes: string | null };
+      groom: { date: string; notes: string | null } | null;
+    };
+
+    expect(result.groom?.date).toBe("2026-05-10");
+    expect(result.groom?.notes).toBe("Clipper #4; used the de-shedding tool.");
+    expect(result.pet.groomingNotes).toBe("Sensitive skin — oatmeal shampoo.");
+  });
+
+  it("targets a specific visit when a date is given", async () => {
+    loadDatasetMock.mockResolvedValue(
+      dataset({
+        appointments: [
+          appointment({ id: "old", date: "2026-01-10", status: "completed", notes: "Clipper #3." }),
+          appointment({ id: "recent", date: "2026-05-10", status: "completed", notes: "Clipper #4." }),
+        ],
+      }),
+    );
+
+    const result = (await runAgentTool("get_groom_detail", {
+      pet_id: "pet-1",
+      date: "2026-01-10",
+    })) as { groom: { date: string; notes: string | null } | null };
+
+    expect(result.groom?.date).toBe("2026-01-10");
+    expect(result.groom?.notes).toBe("Clipper #3.");
+  });
+
+  it("rejects an unknown pet id", async () => {
+    loadDatasetMock.mockResolvedValue(dataset());
+    await expect(
+      runAgentTool("get_groom_detail", { pet_id: "nope" }),
+    ).rejects.toBeInstanceOf(AgentToolError);
+  });
+
+  it("rejects a non-ISO date", async () => {
+    loadDatasetMock.mockResolvedValue(dataset());
+    await expect(
+      runAgentTool("get_groom_detail", { pet_id: "pet-1", date: "last week" }),
+    ).rejects.toBeInstanceOf(AgentToolError);
   });
 });

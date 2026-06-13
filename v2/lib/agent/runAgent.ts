@@ -1,31 +1,39 @@
-// Agentic layer — Phase 1 runner.
+// Agentic layer — read-only runner (provider-agnostic).
 //
-// A small server-side agent: it takes Sam's message plus light context (today's
-// date and any recent turns) and answers by calling the READ-ONLY tools in
-// ./tools through a manual Claude tool-use loop. It has no write/send tools, so
-// it physically cannot book, text, log, or delete — it can only read and
-// report. The whole loop runs inside the calling server action's request scope,
-// so every tool inherits that operator's Supabase session (RLS + org_id guard).
+// Takes Sam's message plus light context (today's date and any recent turns) and
+// answers by calling the READ-ONLY tools in ./tools through a manual tool-use
+// loop. It has no write/send tools, so it physically cannot book, text, log, or
+// delete — it can only read and report. The whole loop runs inside the calling
+// server action's request scope, so every tool inherits that operator's Supabase
+// session (RLS + org_id guard).
 //
-// A fast model (Sonnet) is used for latency/cost. The API key comes from the
-// ANTHROPIC_API_KEY env var — referenced from the environment, never hardcoded
-// or committed. Russell must set it in staging/prod env before the feature is
-// enabled.
+// The model is reached through the ModelProvider seam (./provider): Gemini 2.5
+// Flash by default, Anthropic as an alternate, selected by env. The runner does
+// not know or care which — it speaks the normalized provider types. API keys come
+// from the environment inside each adapter, never hardcoded or committed.
+//
+// Live status: the optional onEvent callback emits "thinking" before each model
+// call and "tool" before each tool runs, so a streaming UI can show what the
+// assistant is doing. It changes nothing about the answer or the read-only model.
 
-import Anthropic from "@anthropic-ai/sdk";
 import { todayISO } from "@/lib/dates";
+import { selectProvider } from "./provider";
+import {
+  type ModelProvider,
+  type ProviderMessage,
+  type ProviderToolDef,
+  type ToolResult,
+} from "./provider/types";
 import {
   AgentToolError,
   agentToolDefinitions,
   runAgentTool,
 } from "./tools";
 
-/** Thrown when ANTHROPIC_API_KEY is absent — surfaced as a friendly UI message. */
-export class AgentNotConfiguredError extends Error {}
-
-// Fast model for a snappy, low-cost assistant. Overridable via env so staging
-// can tune without a code change; defaults to Sonnet.
-const MODEL = process.env.TIDYTAILS_AGENT_MODEL?.trim() || "claude-sonnet-4-6";
+// Re-export the not-configured error under the runner's name so the server action
+// keeps catching it by the same import. Adapters throw this when their API key is
+// absent; the action turns it into a friendly "not set up yet" message.
+export { ProviderNotConfiguredError as AgentNotConfiguredError } from "./provider/types";
 
 // Hard cap on the tool-use loop. Each pass is one model call; a read answer
 // needs only a few. The cap is a backstop against a pathological loop.
@@ -38,9 +46,23 @@ export type AgentTurn = { role: "user" | "assistant"; text: string };
 /** A tool the agent invoked during this run — surfaced for transparency. */
 export type AgentToolCall = { name: string; input: Record<string, unknown> };
 
+/** A live status event for a streaming UI: the model is thinking, or a tool is running. */
+export type AgentEvent =
+  | { type: "thinking" }
+  | { type: "tool"; name: string };
+
 export type AgentRunResult = {
   text: string;
   toolCalls: AgentToolCall[];
+};
+
+export type RunAgentOptions = {
+  /** Inject a provider (tests / advanced callers). Defaults to selectProvider(). */
+  provider?: ModelProvider;
+  /** Model id when a provider is injected. Ignored when selectProvider() is used. */
+  model?: string;
+  /** Live status callback for streaming UIs. */
+  onEvent?: (event: AgentEvent) => void;
 };
 
 function systemPrompt(): string {
@@ -57,11 +79,12 @@ function systemPrompt(): string {
     "guessing.",
     "",
     "You are READ-ONLY. You can look up the schedule, find a household, read a",
-    "pet's history, total a day's income, and list clients due for rebooking.",
-    "You CANNOT book appointments, send texts, log grooms, change settings, or",
-    "delete anything — there are no tools for those actions. If the operator",
-    "asks you to do one of them, say plainly that you can't do that yet and",
-    "that you can only look things up for now, then offer the relevant lookup.",
+    "pet's history (including the operator's own groom notes), total a day's",
+    "income, and list clients due for rebooking. You CANNOT book appointments,",
+    "send texts, log grooms, change settings, or delete anything — there are no",
+    "tools for those actions. If the operator asks you to do one of them, say",
+    "plainly that you can't do that yet and that you can only look things up for",
+    "now, then offer the relevant lookup.",
     "",
     "Disambiguate, never guess. If a name matches more than one household or pet",
     "(two dogs named 'Coco'), present the options and ask which one before",
@@ -77,22 +100,13 @@ function systemPrompt(): string {
   ].join("\n");
 }
 
-function lazyClient(): Anthropic {
-  const apiKey = process.env.ANTHROPIC_API_KEY?.trim();
-  if (!apiKey) {
-    throw new AgentNotConfiguredError(
-      "The assistant is not configured: ANTHROPIC_API_KEY is not set.",
-    );
-  }
-  return new Anthropic({ apiKey });
-}
-
-function textFromContent(content: Anthropic.ContentBlock[]): string {
-  return content
-    .filter((block): block is Anthropic.TextBlock => block.type === "text")
-    .map((block) => block.text)
-    .join("\n")
-    .trim();
+/** Read tool defs in the normalized provider shape. */
+function providerTools(): ProviderToolDef[] {
+  return agentToolDefinitions().map((tool) => ({
+    name: tool.name,
+    description: tool.description,
+    inputSchema: tool.input_schema,
+  }));
 }
 
 /**
@@ -103,49 +117,54 @@ function textFromContent(content: Anthropic.ContentBlock[]): string {
 export async function runAgent(
   message: string,
   history: AgentTurn[] = [],
+  options: RunAgentOptions = {},
 ): Promise<AgentRunResult> {
-  const client = lazyClient();
-  const tools = agentToolDefinitions();
+  const { provider, model } = options.provider
+    ? { provider: options.provider, model: options.model ?? "" }
+    : selectProvider();
 
-  const messages: Anthropic.MessageParam[] = [
-    ...history.map((turn) => ({ role: turn.role, content: turn.text })),
-    { role: "user" as const, content: message },
+  const tools = providerTools();
+  const system = systemPrompt();
+
+  const messages: ProviderMessage[] = [
+    ...history.map((turn): ProviderMessage =>
+      turn.role === "user"
+        ? { role: "user", text: turn.text }
+        : { role: "assistant", text: turn.text, toolCalls: [] },
+    ),
+    { role: "user", text: message },
   ];
 
   const toolCalls: AgentToolCall[] = [];
 
   for (let turn = 0; turn < MAX_TURNS; turn += 1) {
-    const response = await client.messages.create({
-      model: MODEL,
-      max_tokens: MAX_TOKENS,
-      thinking: { type: "disabled" },
-      system: systemPrompt(),
+    options.onEvent?.({ type: "thinking" });
+    const response = await provider.createMessage({
+      system,
       tools,
       messages,
+      model,
+      maxTokens: MAX_TOKENS,
     });
 
-    if (response.stop_reason !== "tool_use") {
-      return { text: textFromContent(response.content), toolCalls };
+    if (response.stopReason !== "tool_use") {
+      return { text: response.text, toolCalls };
     }
 
-    // Record the assistant turn (text + tool_use blocks) before answering tools.
-    messages.push({ role: "assistant", content: response.content });
+    // Record the assistant turn (text + tool calls) before answering tools.
+    messages.push({
+      role: "assistant",
+      text: response.text,
+      toolCalls: response.toolCalls,
+    });
 
-    const toolUses = response.content.filter(
-      (block): block is Anthropic.ToolUseBlock => block.type === "tool_use",
-    );
-
-    const toolResults: Anthropic.ToolResultBlockParam[] = [];
-    for (const toolUse of toolUses) {
-      const input = (toolUse.input ?? {}) as Record<string, unknown>;
-      toolCalls.push({ name: toolUse.name, input });
+    const results: ToolResult[] = [];
+    for (const call of response.toolCalls) {
+      toolCalls.push({ name: call.name, input: call.input });
+      options.onEvent?.({ type: "tool", name: call.name });
       try {
-        const result = await runAgentTool(toolUse.name, input);
-        toolResults.push({
-          type: "tool_result",
-          tool_use_id: toolUse.id,
-          content: JSON.stringify(result),
-        });
+        const result = await runAgentTool(call.name, call.input);
+        results.push({ id: call.id, name: call.name, content: JSON.stringify(result) });
       } catch (error) {
         // Caller-correctable errors (bad id, ambiguous input) go back to the
         // model as a tool error so it can ask or adjust — it never fabricates.
@@ -153,16 +172,11 @@ export async function runAgent(
           error instanceof AgentToolError
             ? error.message
             : "The lookup failed unexpectedly. Tell the operator you could not retrieve that.";
-        toolResults.push({
-          type: "tool_result",
-          tool_use_id: toolUse.id,
-          content: messageText,
-          is_error: true,
-        });
+        results.push({ id: call.id, name: call.name, content: messageText, isError: true });
       }
     }
 
-    messages.push({ role: "user", content: toolResults });
+    messages.push({ role: "tool", results });
   }
 
   // Backstop: the loop ran long without a final answer. Fail safe with a
