@@ -16,6 +16,7 @@
 
 import { revalidatePath } from "next/cache";
 import { recordAuditEvent } from "@/lib/audit.server";
+import { agentOriginMetadata } from "@/lib/auditSource";
 import { dataMode, getClientRecord, requireOrgId } from "@/lib/data/repo";
 import { resolveHouseholdSendNumber } from "@/lib/householdNumbers";
 import { createServerSupabase, getCurrentUser } from "@/lib/supabase/server";
@@ -206,6 +207,7 @@ export async function prepareReminder(
       date: summary.appointmentDate,
       time: summary.appointmentTime,
       appointmentIds: target?.groupAppointmentIds ?? [],
+      ...agentOriginMetadata(formData),
     },
   });
   return {

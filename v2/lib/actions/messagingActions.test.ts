@@ -49,8 +49,10 @@ import { prepareReminder } from "./reminders";
 import { getClientRecord } from "@/lib/data/repo";
 import { createServerSupabase, getCurrentUser } from "@/lib/supabase/server";
 import { getTwilioConfig, sendTwilioSms, toTwilioPhone } from "@/lib/twilio";
+import { recordAuditEvent } from "@/lib/audit.server";
 
 const supabase = createSupabaseHarness();
+const recordAuditEventMock = vi.mocked(recordAuditEvent);
 const createServerSupabaseMock = vi.mocked(createServerSupabase);
 const getCurrentUserMock = vi.mocked(getCurrentUser);
 const getClientRecordMock = vi.mocked(getClientRecord);
@@ -776,5 +778,52 @@ describe("inbox SMS reply actions", () => {
       message: "Write a text before sending.",
     });
     expectNoWritesOrSms();
+  });
+});
+
+// Agent-initiated sends route through these SAME gated send actions (on Sam's
+// confirm tap) with audit_source=agent. The sms.sent audit must carry
+// source:"agent" then, and nothing when the field is absent (Sam's own sends
+// stay byte-identical).
+describe("agent-originated audit tagging (messaging sends)", () => {
+  function sentAuditMetadata(): Record<string, unknown> {
+    const call = recordAuditEventMock.mock.calls.find(
+      ([e]) => e.eventType === "sms.sent",
+    );
+    return (call?.[0]?.metadata ?? {}) as Record<string, unknown>;
+  }
+
+  it("prepareReminder tags the send audit source=agent only when audit_source=agent", async () => {
+    vi.stubEnv("TIDYTAILS_ENABLE_REMINDER_SEND", "on");
+    await prepareReminder(
+      { status: "idle" },
+      form({ client_id: "client-1", appointment_id: "appt-1", message: "Reminder.", audit_source: "agent" }),
+    );
+    expect(sentAuditMetadata()).toMatchObject({ source: "agent" });
+
+    recordAuditEventMock.mockClear();
+    await prepareReminder(
+      { status: "idle" },
+      form({ client_id: "client-1", appointment_id: "appt-1", message: "Reminder." }),
+    );
+    expect(sentAuditMetadata()).not.toHaveProperty("source");
+  });
+
+  it("sendInboxSmsReply tags the send audit source=agent only when audit_source=agent", async () => {
+    vi.stubEnv("TIDYTAILS_ENABLE_REMINDER_SEND", "on");
+    supabase.queueResult({ data: smsRow(), error: null });
+    await sendInboxSmsReply(
+      { status: "idle" },
+      form({ sms_id: "sms-1", message: "On my way.", audit_source: "agent" }),
+    );
+    expect(sentAuditMetadata()).toMatchObject({ source: "agent" });
+
+    recordAuditEventMock.mockClear();
+    supabase.queueResult({ data: smsRow(), error: null });
+    await sendInboxSmsReply(
+      { status: "idle" },
+      form({ sms_id: "sms-1", message: "On my way." }),
+    );
+    expect(sentAuditMetadata()).not.toHaveProperty("source");
   });
 });

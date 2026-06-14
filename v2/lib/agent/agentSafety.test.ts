@@ -105,14 +105,26 @@ describe("the READ tool registry stays read-only", () => {
 // tap. These tests pin the propose-only surface and assert, structurally, that
 // nothing on the agent path can reach a write/send/mutation — so the model is
 // physically unable to do anything but propose.
+// Phase 4 completes the write surface. Every entry STILL only proposes (the
+// real write is the confirm action, outside this path). Adding a tool here is a
+// deliberate surface-area declaration — and the structural invariants below
+// still forbid this path from reaching any write/send/mutation.
 const EXPECTED_WRITE_TOOLS = [
+  "propose_add_household",
+  "propose_add_pet",
   "propose_add_tip",
   "propose_book_appointment",
+  "propose_delete_household",
+  "propose_edit_appointment",
+  "propose_edit_household",
+  "propose_edit_pet",
+  "propose_log_daily_income",
   "propose_log_groom",
+  "propose_send_text",
 ] as const;
 
 describe("the WRITE tools only PROPOSE (confirm-gated, never auto-executed)", () => {
-  it("registers exactly the three intended propose tools", () => {
+  it("registers exactly the intended propose tools", () => {
     expect([...AGENT_WRITE_TOOL_NAMES].sort()).toEqual([...EXPECTED_WRITE_TOOLS]);
   });
 

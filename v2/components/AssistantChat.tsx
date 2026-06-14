@@ -21,6 +21,8 @@ import { useEffect, useRef, useState } from "react";
 import type { AgentTurn } from "@/lib/agent/runAgent";
 import type { AgentProposal } from "@/lib/agent/proposals";
 import { confirmAgentProposal } from "@/lib/actions/agentConfirm";
+import { recordAgentFeedback } from "@/lib/actions/agentFeedback";
+import { AnswerFeedback, type FeedbackRating } from "@/components/AnswerFeedback";
 import { AssistantStatus, type AssistantStatusPhase } from "@/components/AssistantStatus";
 import {
   AssistantConfirmCard,
@@ -42,7 +44,7 @@ import {
 
 type Entry =
   | { kind: "user"; text: string }
-  | { kind: "assistant"; text: string; toolsUsed: string[] }
+  | { kind: "assistant"; text: string; toolsUsed: string[]; rated?: FeedbackRating }
   | { kind: "error"; text: string }
   // A prepared write awaiting Sam's confirm tap. The model never executes it;
   // Confirm calls the gated confirm action, Cancel writes nothing.
@@ -285,6 +287,32 @@ export function AssistantChat() {
     updateProposal(id, { status: "cancelled" });
   }
 
+  // Thumbs up/down under an answer → record one audit event (best-effort). The
+  // question is the operator's nearest preceding turn; toolsUsed comes off the
+  // answer. Rating once is enough — the control collapses to a thank-you after.
+  async function onRateAnswer(index: number, rating: FeedbackRating) {
+    const entry = entries[index];
+    if (!entry || entry.kind !== "assistant" || entry.rated) return;
+    let question = "";
+    for (let i = index - 1; i >= 0; i -= 1) {
+      const prior = entries[i];
+      if (prior.kind === "user") {
+        question = prior.text;
+        break;
+      }
+    }
+    setEntries((current) =>
+      current.map((item, i) =>
+        i === index && item.kind === "assistant" ? { ...item, rated: rating } : item,
+      ),
+    );
+    try {
+      await recordAgentFeedback({ rating, question, toolsUsed: entry.toolsUsed });
+    } catch {
+      // Feedback is best-effort telemetry — never surface an error to the operator.
+    }
+  }
+
   function send(text: string) {
     const trimmed = text.trim();
     if (!trimmed || pending || recording) return;
@@ -451,6 +479,16 @@ export function AssistantChat() {
                 onConfirm={() => onConfirmProposal(entry.id, entry.proposal)}
                 onCancel={() => onCancelProposal(entry.id)}
               />
+            </div>
+          ) : entry.kind === "assistant" ? (
+            <div key={index} className="flex flex-col items-start gap-1">
+              <Bubble entry={entry} />
+              {entry.text.trim() ? (
+                <AnswerFeedback
+                  rated={entry.rated ?? null}
+                  onRate={(rating) => onRateAnswer(index, rating)}
+                />
+              ) : null}
             </div>
           ) : (
             <Bubble key={index} entry={entry} />
