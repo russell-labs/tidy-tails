@@ -1,6 +1,12 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { describeProposal, type BookAppointmentProposal } from "@/lib/agent/proposals";
+import {
+  describeProposal,
+  type BookAppointmentProposal,
+  type DeleteHouseholdProposal,
+  type EditAppointmentProposal,
+  type SendTextProposal,
+} from "@/lib/agent/proposals";
 import {
   AssistantConfirmCard,
   confirmCardShowsActions,
@@ -73,6 +79,63 @@ describe("AssistantConfirmCard", () => {
       expect(html).toContain("Booked Kiwi.");
       expect(html).not.toContain(">Confirm<");
     }
+  });
+});
+
+const DELETE: DeleteHouseholdProposal = {
+  kind: "delete_household",
+  clientId: "c1",
+  ownerName: "Rosanne Adams",
+  petNames: "Kiwi",
+  petCount: 1,
+  appointmentCount: 0,
+  hasHistory: false,
+};
+
+const CANCEL: EditAppointmentProposal = {
+  kind: "edit_appointment",
+  mode: "cancel",
+  clientId: "c1",
+  appointmentId: "a1",
+  ownerName: "Rosanne Adams",
+  petName: "Kiwi",
+  date: "2026-07-11",
+  service: "Full groom",
+};
+
+const REPLY: SendTextProposal = {
+  kind: "send_text",
+  mode: "reply",
+  smsId: "sms-1",
+  recipientLabel: "Rosanne Adams",
+  message: "Yes, 2pm works!",
+};
+
+describe("AssistantConfirmCard — Phase 4 kinds", () => {
+  it("renders the exact resolved action text for a reply (the full message verbatim)", () => {
+    const html = renderToStaticMarkup(
+      <AssistantConfirmCard proposal={REPLY} status="pending" onConfirm={noop} onCancel={noop} />,
+    );
+    expect(html).toContain(describeProposal(REPLY));
+    expect(html).toContain("Yes, 2pm works!");
+  });
+
+  it("a destructive DELETE card says DELETE, uses a Delete/Keep button pair, and is danger-styled", () => {
+    const html = renderToStaticMarkup(
+      <AssistantConfirmCard proposal={DELETE} status="pending" onConfirm={noop} onCancel={noop} />,
+    );
+    expect(html).toContain("DELETE"); // describeProposal makes the permanence explicit
+    expect(html).toContain(">Delete<");
+    expect(html).toContain(">Keep<");
+    expect(html).toContain("bg-danger"); // destructive confirm button styling
+  });
+
+  it("a cancel-booking card labels the confirm 'Cancel booking' and the dismiss 'Keep'", () => {
+    const html = renderToStaticMarkup(
+      <AssistantConfirmCard proposal={CANCEL} status="pending" onConfirm={noop} onCancel={noop} />,
+    );
+    expect(html).toContain("Cancel booking");
+    expect(html).toContain(">Keep<");
   });
 });
 

@@ -45,12 +45,22 @@ import {
 } from "./petLifecycle";
 import { getClientRecord, loadDataset } from "@/lib/data/repo";
 import { createServerSupabase, getCurrentUser } from "@/lib/supabase/server";
+import { recordAuditEvent } from "@/lib/audit.server";
 
 const supabase = createSupabaseHarness();
 const createServerSupabaseMock = vi.mocked(createServerSupabase);
 const getCurrentUserMock = vi.mocked(getCurrentUser);
 const getClientRecordMock = vi.mocked(getClientRecord);
 const loadDatasetMock = vi.mocked(loadDataset);
+const recordAuditEventMock = vi.mocked(recordAuditEvent);
+
+/** The metadata of the most recent recordAuditEvent call. */
+function lastAuditMetadata(): Record<string, unknown> {
+  return (recordAuditEventMock.mock.calls.at(-1)?.[0]?.metadata ?? {}) as Record<
+    string,
+    unknown
+  >;
+}
 
 function expectNoWrites(): void {
   expect(createServerSupabaseMock).not.toHaveBeenCalled();
@@ -1028,5 +1038,72 @@ describe("mergeDuplicatePetProfiles", () => {
     });
     expect(loadDatasetMock).not.toHaveBeenCalled();
     expectNoWrites();
+  });
+});
+
+// The agentic layer calls these SAME gated actions on Sam's confirm tap, adding
+// one field — audit_source=agent. Each action must forward that into its audit
+// metadata as source:"agent" (so an agent-initiated write is traceable) and emit
+// NOTHING when the field is absent (so Sam's own submissions stay byte-identical).
+describe("agent-originated audit tagging", () => {
+  it("editClient tags the audit source=agent only when audit_source=agent", async () => {
+    vi.stubEnv("TIDYTAILS_ENABLE_EDIT_CLIENT_WRITE", "on");
+
+    await editClient({ status: "idle" }, validClientForm({ audit_source: "agent" }));
+    expect(lastAuditMetadata()).toMatchObject({ source: "agent" });
+
+    recordAuditEventMock.mockClear();
+    await editClient({ status: "idle" }, validClientForm());
+    expect(lastAuditMetadata()).not.toHaveProperty("source");
+  });
+
+  it("editPet tags the audit source=agent only when audit_source=agent", async () => {
+    vi.stubEnv("TIDYTAILS_ENABLE_EDIT_PET_WRITE", "on");
+
+    await editPet({ status: "idle" }, validEditPetForm({ audit_source: "agent" }));
+    expect(lastAuditMetadata()).toMatchObject({ source: "agent" });
+
+    recordAuditEventMock.mockClear();
+    await editPet({ status: "idle" }, validEditPetForm());
+    expect(lastAuditMetadata()).not.toHaveProperty("source");
+  });
+
+  it("addPet tags the audit source=agent only when audit_source=agent", async () => {
+    vi.stubEnv("TIDYTAILS_ENABLE_ADD_PET_WRITE", "on");
+    supabase.queueResult({ data: { id: "pet-new" }, error: null });
+
+    await addPet({ status: "idle" }, validAddPetForm({ audit_source: "agent" }));
+    expect(lastAuditMetadata()).toMatchObject({ source: "agent" });
+
+    recordAuditEventMock.mockClear();
+    supabase.queueResult({ data: { id: "pet-new" }, error: null });
+    await addPet({ status: "idle" }, validAddPetForm());
+    expect(lastAuditMetadata()).not.toHaveProperty("source");
+  });
+
+  it("saveIntake tags the audit source=agent only when audit_source=agent", async () => {
+    vi.stubEnv("TIDYTAILS_ENABLE_ADD_HOUSEHOLD_WRITE", "on");
+    supabase.queueResult({ data: { id: "new-client-1" }, error: null });
+
+    await saveIntake({ status: "idle" }, validIntakeForm({ audit_source: "agent" }));
+    expect(lastAuditMetadata()).toMatchObject({ source: "agent" });
+
+    recordAuditEventMock.mockClear();
+    supabase.queueResult({ data: { id: "new-client-2" }, error: null });
+    await saveIntake({ status: "idle" }, validIntakeForm());
+    expect(lastAuditMetadata()).not.toHaveProperty("source");
+  });
+
+  it("deleteClient tags the audit source=agent only when audit_source=agent", async () => {
+    vi.stubEnv("TIDYTAILS_ENABLE_DELETE_CLIENT_WRITE", "on");
+    getClientRecordMock.mockResolvedValue(clientRecord({ appointments: [] }));
+
+    await deleteClient({ status: "idle" }, form({ client_id: "client-1", audit_source: "agent" }));
+    expect(lastAuditMetadata()).toMatchObject({ source: "agent" });
+
+    recordAuditEventMock.mockClear();
+    getClientRecordMock.mockResolvedValue(clientRecord({ appointments: [] }));
+    await deleteClient({ status: "idle" }, form({ client_id: "client-1" }));
+    expect(lastAuditMetadata()).not.toHaveProperty("source");
   });
 });

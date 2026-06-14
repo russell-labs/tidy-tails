@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { recordAuditEvent } from "@/lib/audit.server";
+import { agentOriginMetadata } from "@/lib/auditSource";
 import { buildOutboundSmsInsert, mapSmsMessageRow } from "@/lib/inboundSms";
 import {
   buildSmsHandledUpdate,
@@ -203,7 +204,11 @@ export async function sendInboxSmsReply(
     eventType: "sms.sent",
     clientId: inbound.client_id,
     summary: "Sent an Inbox reply text.",
-    metadata: { channel: "sms", smsMessageId: validation.value.smsId },
+    metadata: {
+      channel: "sms",
+      smsMessageId: validation.value.smsId,
+      ...agentOriginMetadata(formData),
+    },
   });
   await recordAuditEvent({
     eventType: "sms.handled",

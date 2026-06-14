@@ -27,20 +27,39 @@ import {
   type ServiceType,
 } from "@/lib/booking";
 import { isOrgLocation, orgLocationAddress } from "@/lib/orgSettings";
-import { serviceLabel } from "@/lib/data/live";
-import { fullName } from "@/lib/format";
+import { serviceCodeFromLabel, serviceLabel } from "@/lib/data/live";
+import { formatDate, fullName } from "@/lib/format";
 import {
   isPaymentMethod,
   isPaymentStatus,
   parsePaymentInfo,
+  stripPaymentInfo,
 } from "@/lib/payments";
+import { parseSalonPayoutOverride, stripSalonPayoutOverride } from "@/lib/payoutOverride";
 import { validateGroomLog } from "@/lib/groom";
+import { validateIntake } from "@/lib/intake";
+import { validateAddPet } from "@/lib/addPet";
+import { parseAltContact } from "@/lib/altContact";
+import { validateEditClient } from "@/lib/editClient";
+import { validateEditPet } from "@/lib/editPet";
+import { validateEditAppointment } from "@/lib/editAppointment";
+import { canDeleteHousehold } from "@/lib/householdLifecycle";
+import { validateDayCloseoutInput } from "@/lib/dayCloseout";
+import { buildReminderTarget, validateReminderInput } from "@/lib/reminders";
 import { AgentToolError, petVisits } from "./tools";
 import type {
+  AddHouseholdProposal,
+  AddPetProposal,
   AddTipProposal,
   AgentProposal,
   BookAppointmentProposal,
+  DeleteHouseholdProposal,
+  EditAppointmentProposal,
+  EditHouseholdProposal,
+  EditPetProposal,
+  LogDailyIncomeProposal,
   LogGroomProposal,
+  SendTextProposal,
 } from "./proposals";
 
 // Re-export so the runner and tests share one error type / dispatch surface.
@@ -423,6 +442,810 @@ const proposeLogGroom: AgentWriteTool = {
   },
 };
 
+// --- shared helpers for the Phase 4 tools ----------------------------------
+
+function optionalString(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function nullableString(value: unknown): string | null {
+  const s = optionalString(value);
+  return s === "" ? null : s;
+}
+
+/** A boolean|null allergy flag → the form's yes/no/unknown choice. */
+function allergyChoice(allergies: boolean | null): string {
+  return allergies === true ? "yes" : allergies === false ? "no" : "unknown";
+}
+
+function firstValidationError(
+  errors: Record<string, string | undefined>,
+  fallback: string,
+): string {
+  return Object.values(errors).find((v) => typeof v === "string") ?? fallback;
+}
+
+/** True when the input names at least one of the given editable fields. */
+function namesAField(input: Record<string, unknown>, fields: string[]): boolean {
+  return fields.some((field) => optionalString(input[field]) !== "" || field in input);
+}
+
+// ---------------------------------------------------------------------------
+// propose_add_household — a new household + its first pet (via saveIntake).
+// ---------------------------------------------------------------------------
+
+const proposeAddHousehold: AgentWriteTool = {
+  name: "propose_add_household",
+  description:
+    "Propose creating a NEW household and its first pet (does NOT save it — the operator " +
+    "confirms a card first). Use only for a household not already on file (check with " +
+    "find_household first). Pass owner `first_name`, `last_name`, `phone`, and the first " +
+    "pet's `pet_name`; optional `email`, `address`, `notes`, `secondary_contact_name`, " +
+    "`secondary_cell`, `landline`, `sms_consent` (true only if the owner agreed to texts), " +
+    "and pet `breed`, `size` (small/medium/large), `allergy_state` (yes/no/unknown), " +
+    "`allergies_detail`, `vaccination_state` (yes/no/unknown), `vaccination_detail`, " +
+    "`date_of_birth` (YYYY-MM-DD), `grooming_notes`, `typical_fee`.",
+  input_schema: {
+    type: "object",
+    properties: {
+      first_name: { type: "string" },
+      last_name: { type: "string" },
+      phone: { type: "string" },
+      email: { type: "string" },
+      address: { type: "string" },
+      notes: { type: "string" },
+      secondary_contact_name: { type: "string" },
+      secondary_cell: { type: "string" },
+      landline: { type: "string" },
+      sms_consent: { type: "boolean" },
+      pet_name: { type: "string" },
+      breed: { type: "string" },
+      size: { type: "string", enum: ["small", "medium", "large"] },
+      allergy_state: { type: "string", enum: ["yes", "no", "unknown"] },
+      allergies_detail: { type: "string" },
+      vaccination_state: { type: "string", enum: ["yes", "no", "unknown"] },
+      vaccination_detail: { type: "string" },
+      date_of_birth: { type: "string" },
+      grooming_notes: { type: "string" },
+      typical_fee: { type: "number" },
+    },
+    required: ["first_name", "last_name", "phone", "pet_name"],
+    additionalProperties: false,
+  },
+  propose: async (input): Promise<AddHouseholdProposal> => {
+    const smsConsent = input.sms_consent === true;
+    const validation = validateIntake({
+      first_name: optionalString(input.first_name),
+      last_name: optionalString(input.last_name),
+      phone: optionalString(input.phone),
+      secondary_contact_name: optionalString(input.secondary_contact_name),
+      secondary_cell: optionalString(input.secondary_cell),
+      landline: optionalString(input.landline),
+      email: optionalString(input.email),
+      address: optionalString(input.address),
+      notes: optionalString(input.notes),
+      sms_consent: smsConsent ? "on" : "",
+      pet_name: optionalString(input.pet_name),
+      breed: optionalString(input.breed),
+      size: optionalString(input.size),
+      allergy_state: optionalString(input.allergy_state) || "unknown",
+      allergies_detail: optionalString(input.allergies_detail),
+      vaccination_state: optionalString(input.vaccination_state) || "unknown",
+      vaccination_detail: optionalString(input.vaccination_detail),
+      age: "",
+      date_of_birth: optionalString(input.date_of_birth),
+      grooming_notes: optionalString(input.grooming_notes),
+      typical_fee: input.typical_fee == null ? "" : String(input.typical_fee),
+    });
+    if (!validation.ok) {
+      throw new AgentToolError(
+        firstValidationError(validation.errors, "That household isn't valid."),
+      );
+    }
+    const v = validation.value;
+    const pet = v.pets[0];
+    if (!pet) throw new AgentToolError("A new household needs at least one pet.");
+
+    return {
+      kind: "add_household",
+      ownerName: fullName(v.client.first_name, v.client.last_name ?? ""),
+      firstName: v.client.first_name,
+      lastName: v.client.last_name ?? "",
+      phone: v.client.phone,
+      secondaryContactName: nullableString(input.secondary_contact_name),
+      secondaryCell: nullableString(input.secondary_cell),
+      landline: nullableString(input.landline),
+      email: v.client.email,
+      address: v.client.address,
+      notes: v.client.notes,
+      smsConsent: v.client.sms_consent,
+      pet: {
+        name: pet.name,
+        breed: pet.breed,
+        size: pet.size,
+        allergies: pet.allergies,
+        allergiesDetail: pet.allergies_detail,
+        vaccinationState: pet.vaccination_state,
+        vaccinationDetail: pet.vaccination_detail,
+        dateOfBirth: pet.date_of_birth,
+        groomingNotes: pet.grooming_notes,
+        typicalFee: pet.typical_fee,
+      },
+    };
+  },
+};
+
+// ---------------------------------------------------------------------------
+// propose_add_pet — a pet on an EXISTING household (via addPet).
+// ---------------------------------------------------------------------------
+
+const proposeAddPet: AgentWriteTool = {
+  name: "propose_add_pet",
+  description:
+    "Propose adding a pet to an EXISTING household (does NOT save it — the operator confirms " +
+    "a card first). Pass `client_id` (from find_household) and `name`; optional `breed`, " +
+    "`size` (small/medium/large), `allergy_state` (yes/no/unknown), `allergies_detail`, " +
+    "`grooming_notes`, `typical_fee`. Resolve the household first; never guess the id.",
+  input_schema: {
+    type: "object",
+    properties: {
+      client_id: { type: "string" },
+      name: { type: "string" },
+      breed: { type: "string" },
+      size: { type: "string", enum: ["small", "medium", "large"] },
+      allergy_state: { type: "string", enum: ["yes", "no", "unknown"] },
+      allergies_detail: { type: "string" },
+      grooming_notes: { type: "string" },
+      typical_fee: { type: "number" },
+    },
+    required: ["client_id", "name"],
+    additionalProperties: false,
+  },
+  propose: async (input): Promise<AddPetProposal> => {
+    const clientId = requireString(input.client_id, "client_id");
+    const dataset = await loadDataset();
+    const client = dataset.clients.find((c) => c.id === clientId);
+    if (!client) {
+      throw new AgentToolError(
+        `No client with id ${JSON.stringify(clientId)}. Use find_household to look one up.`,
+      );
+    }
+    const validation = validateAddPet({
+      client_id: clientId,
+      name: optionalString(input.name),
+      breed: optionalString(input.breed),
+      size: optionalString(input.size),
+      allergy_state: optionalString(input.allergy_state) || "unknown",
+      allergies_detail: optionalString(input.allergies_detail),
+      grooming_notes: optionalString(input.grooming_notes),
+      typical_fee: input.typical_fee == null ? "" : String(input.typical_fee),
+    });
+    if (!validation.ok) {
+      throw new AgentToolError(
+        firstValidationError(validation.errors, "That pet isn't valid."),
+      );
+    }
+    const v = validation.value;
+    return {
+      kind: "add_pet",
+      clientId,
+      ownerName: fullName(client.first_name, client.last_name),
+      name: v.name,
+      breed: v.breed,
+      size: v.size,
+      allergies: v.allergies,
+      allergiesDetail: v.allergies_detail,
+      groomingNotes: v.grooming_notes,
+      typicalFee: v.typical_fee,
+    };
+  },
+};
+
+// ---------------------------------------------------------------------------
+// propose_edit_household — change contact details (via editClient).
+// Full-replace action: merge the requested change onto the CURRENT record so an
+// untouched field (incl. the secondary contact, parsed back from alt_contact)
+// is preserved, never wiped.
+// ---------------------------------------------------------------------------
+
+const EDIT_HOUSEHOLD_FIELDS = [
+  "first_name",
+  "last_name",
+  "phone",
+  "secondary_contact_name",
+  "secondary_cell",
+  "landline",
+  "email",
+  "address",
+  "notes",
+];
+
+const proposeEditHousehold: AgentWriteTool = {
+  name: "propose_edit_household",
+  description:
+    "Propose editing a household's contact details (does NOT save it — the operator confirms " +
+    "a card first). Pass `client_id` (from find_household) and ONLY the fields to change: " +
+    "`first_name`, `last_name`, `phone`, `email`, `address`, `notes`, `secondary_contact_name`, " +
+    "`secondary_cell`, `landline`. Untouched fields are kept as-is. Resolve the household first.",
+  input_schema: {
+    type: "object",
+    properties: {
+      client_id: { type: "string" },
+      first_name: { type: "string" },
+      last_name: { type: "string" },
+      phone: { type: "string" },
+      email: { type: "string" },
+      address: { type: "string" },
+      notes: { type: "string" },
+      secondary_contact_name: { type: "string" },
+      secondary_cell: { type: "string" },
+      landline: { type: "string" },
+    },
+    required: ["client_id"],
+    additionalProperties: false,
+  },
+  propose: async (input): Promise<EditHouseholdProposal> => {
+    const clientId = requireString(input.client_id, "client_id");
+    if (!namesAField(input, EDIT_HOUSEHOLD_FIELDS)) {
+      throw new AgentToolError(
+        "Tell me which detail to change (phone, email, address, name, notes, or secondary contact).",
+      );
+    }
+    const dataset = await loadDataset();
+    const client = dataset.clients.find((c) => c.id === clientId);
+    if (!client) {
+      throw new AgentToolError(
+        `No client with id ${JSON.stringify(clientId)}. Use find_household to look one up.`,
+      );
+    }
+    const altParsed = parseAltContact(client.alt_contact);
+    const current = {
+      first_name: client.first_name,
+      last_name: client.last_name ?? "",
+      phone: client.phone,
+      secondary_contact_name: altParsed.secondaryName ?? "",
+      secondary_cell: altParsed.secondaryCell ?? "",
+      landline: altParsed.landline ?? "",
+      email: client.email ?? "",
+      address: client.address ?? "",
+      notes: client.notes ?? "",
+    };
+    const changes: string[] = [];
+    const merged = { ...current };
+    for (const field of EDIT_HOUSEHOLD_FIELDS) {
+      if (field in input) {
+        const next = optionalString(input[field]);
+        if (next !== (current as Record<string, string>)[field]) {
+          (merged as Record<string, string>)[field] = next;
+          changes.push(`${field.replace(/_/g, " ")} → ${next || "(cleared)"}`);
+        }
+      }
+    }
+    if (changes.length === 0) {
+      throw new AgentToolError("Those details already match — nothing to change.");
+    }
+
+    const validation = validateEditClient({ client_id: clientId, ...merged });
+    if (!validation.ok) {
+      throw new AgentToolError(
+        firstValidationError(validation.errors, "That edit isn't valid."),
+      );
+    }
+
+    return {
+      kind: "edit_household",
+      clientId,
+      ownerName: fullName(client.first_name, client.last_name),
+      firstName: merged.first_name,
+      lastName: merged.last_name,
+      phone: merged.phone,
+      secondaryContactName: merged.secondary_contact_name || null,
+      secondaryCell: merged.secondary_cell || null,
+      landline: merged.landline || null,
+      email: merged.email || null,
+      address: merged.address || null,
+      notes: merged.notes || null,
+      changes,
+    };
+  },
+};
+
+// ---------------------------------------------------------------------------
+// propose_edit_pet — change a pet's profile (via editPet). Full-replace; merged.
+// ---------------------------------------------------------------------------
+
+const EDIT_PET_FIELDS = [
+  "name",
+  "breed",
+  "size",
+  "color",
+  "date_of_birth",
+  "allergy_state",
+  "allergies_detail",
+  "grooming_notes",
+  "typical_fee",
+];
+
+const proposeEditPet: AgentWriteTool = {
+  name: "propose_edit_pet",
+  description:
+    "Propose editing a pet's profile (does NOT save it — the operator confirms a card first). " +
+    "Pass `client_id` and `pet_id` (from find_household) and ONLY the fields to change: " +
+    "`name`, `breed`, `size` (small/medium/large), `color`, `date_of_birth` (YYYY-MM-DD), " +
+    "`allergy_state` (yes/no/unknown), `allergies_detail`, `grooming_notes`, `typical_fee`. " +
+    "Untouched fields are kept. Resolve the pet first.",
+  input_schema: {
+    type: "object",
+    properties: {
+      client_id: { type: "string" },
+      pet_id: { type: "string" },
+      name: { type: "string" },
+      breed: { type: "string" },
+      size: { type: "string", enum: ["small", "medium", "large"] },
+      color: { type: "string" },
+      date_of_birth: { type: "string" },
+      allergy_state: { type: "string", enum: ["yes", "no", "unknown"] },
+      allergies_detail: { type: "string" },
+      grooming_notes: { type: "string" },
+      typical_fee: { type: "number" },
+    },
+    required: ["client_id", "pet_id"],
+    additionalProperties: false,
+  },
+  propose: async (input): Promise<EditPetProposal> => {
+    const clientId = requireString(input.client_id, "client_id");
+    const petId = requireString(input.pet_id, "pet_id");
+    if (!namesAField(input, EDIT_PET_FIELDS)) {
+      throw new AgentToolError(
+        "Tell me what to change on the pet (breed, size, allergies, notes, fee, etc.).",
+      );
+    }
+    const dataset = await loadDataset();
+    const pet = findOwnedPet(dataset.pets, petId, clientId);
+    if (!pet) {
+      throw new AgentToolError(
+        "That pet isn't on this client's file. Re-check with find_household.",
+      );
+    }
+    const current = {
+      name: pet.name,
+      breed: pet.breed ?? "",
+      size: pet.size ?? "",
+      color: pet.color ?? "",
+      date_of_birth: pet.date_of_birth ?? "",
+      allergy_state: allergyChoice(pet.allergies),
+      allergies_detail: pet.allergies_detail ?? "",
+      grooming_notes: pet.grooming_notes ?? "",
+      typical_fee: pet.typical_fee != null ? String(pet.typical_fee) : "",
+    };
+    const changes: string[] = [];
+    const merged = { ...current };
+    for (const field of EDIT_PET_FIELDS) {
+      if (field in input) {
+        const next =
+          field === "typical_fee"
+            ? input.typical_fee == null
+              ? ""
+              : String(input.typical_fee)
+            : optionalString(input[field]);
+        if (next !== (current as Record<string, string>)[field]) {
+          (merged as Record<string, string>)[field] = next;
+          changes.push(`${field.replace(/_/g, " ")} → ${next || "(cleared)"}`);
+        }
+      }
+    }
+    if (changes.length === 0) {
+      throw new AgentToolError("That already matches — nothing to change.");
+    }
+
+    const validation = validateEditPet({ client_id: clientId, pet_id: petId, ...merged });
+    if (!validation.ok) {
+      throw new AgentToolError(
+        firstValidationError(validation.errors, "That edit isn't valid."),
+      );
+    }
+    const v = validation.value;
+    return {
+      kind: "edit_pet",
+      clientId,
+      petId,
+      petName: pet.name,
+      name: v.name,
+      breed: v.breed,
+      size: v.size,
+      color: v.color,
+      dateOfBirth: v.date_of_birth,
+      allergies: v.allergies,
+      allergiesDetail: v.allergies_detail,
+      groomingNotes: v.grooming_notes,
+      typicalFee: v.typical_fee,
+      changes,
+    };
+  },
+};
+
+// ---------------------------------------------------------------------------
+// propose_edit_appointment — reschedule/change (editAppointment) or cancel
+// (deleteAppointment), both behind EDIT_APPOINTMENT_WRITE. Batched surface only:
+// the gated edit action refuses one_to_one orgs, so we refuse here too rather
+// than show a card for a write that will bounce. No-show is NOT supported — no
+// gated action sets that status (flagged in the PR).
+// ---------------------------------------------------------------------------
+
+const proposeEditAppointment: AgentWriteTool = {
+  name: "propose_edit_appointment",
+  description:
+    "Propose changing or cancelling an existing appointment (does NOT save it — the operator " +
+    "confirms a card first). Pass `client_id` and `appointment_id` (from find_household / " +
+    "get_schedule) and `mode`: 'change' to reschedule or edit it (any of `date` YYYY-MM-DD, " +
+    "`time_slot`, `service_type`, `location` gina/annette, `fee`, `tip`, `payment_method`, " +
+    "`payment_status`, `notes` — untouched fields are kept), or 'cancel' to remove the " +
+    "booking. Only works on the batched (Gina/Annette) schedule. Resolve the visit first.",
+  input_schema: {
+    type: "object",
+    properties: {
+      client_id: { type: "string" },
+      appointment_id: { type: "string" },
+      mode: { type: "string", enum: ["change", "cancel"] },
+      date: { type: "string" },
+      time_slot: { type: "string" },
+      service_type: { type: "string", enum: [...SERVICE_TYPES] },
+      location: { type: "string", enum: [...BOOKING_LOCATIONS] },
+      fee: { type: "number" },
+      tip: { type: "number" },
+      payment_method: { type: "string", enum: ["cash", "interac", "other"] },
+      payment_status: { type: "string", enum: ["paid", "waiting"] },
+      notes: { type: "string" },
+    },
+    required: ["client_id", "appointment_id", "mode"],
+    additionalProperties: false,
+  },
+  propose: async (input): Promise<EditAppointmentProposal> => {
+    const clientId = requireString(input.client_id, "client_id");
+    const appointmentId = requireString(input.appointment_id, "appointment_id");
+    const mode = optionalString(input.mode);
+
+    const org = await loadOrgSettings();
+    if (org.schedulingStyle === "one_to_one") {
+      throw new AgentToolError(
+        "Editing one-at-a-time appointments isn't supported yet — tell the operator to change it on the schedule.",
+      );
+    }
+
+    const dataset = await loadDataset();
+    const client = dataset.clients.find((c) => c.id === clientId);
+    if (!client) {
+      throw new AgentToolError(
+        `No client with id ${JSON.stringify(clientId)}. Use find_household to look one up.`,
+      );
+    }
+    const existing = dataset.appointments.find(
+      (a) => a.id === appointmentId && a.client_id === clientId,
+    );
+    if (!existing) {
+      throw new AgentToolError(
+        "That visit isn't on this household. Re-check with get_schedule / find_household.",
+      );
+    }
+    const petName =
+      dataset.pets.find((p) => p.id === existing.pet_id)?.name ?? "the pet";
+    const ownerName = fullName(client.first_name, client.last_name);
+
+    if (mode === "cancel") {
+      return {
+        kind: "edit_appointment",
+        mode: "cancel",
+        clientId,
+        appointmentId,
+        ownerName,
+        petName,
+        date: existing.date,
+        service: existing.service,
+      };
+    }
+
+    // mode === "change": merge the requested fields onto the existing visit,
+    // mirroring how the edit screen pre-fills from a saved appointment so an
+    // untouched field is preserved exactly.
+    const payment = parsePaymentInfo(existing.notes);
+    const cleanNotes = stripSalonPayoutOverride(stripPaymentInfo(existing.notes)) ?? "";
+    const currentLocation =
+      existing.location === "gina" || existing.location === "annette"
+        ? existing.location
+        : "";
+    const merged = {
+      date: optionalString(input.date) || existing.date,
+      time_slot: optionalString(input.time_slot) || (existing.time_slot ?? ""),
+      service_type:
+        optionalString(input.service_type) || (serviceCodeFromLabel(existing.service) ?? ""),
+      location: optionalString(input.location) || currentLocation,
+      fee:
+        input.fee != null
+          ? String(input.fee)
+          : existing.price != null
+            ? String(existing.price)
+            : "",
+      tip:
+        input.tip != null
+          ? String(input.tip)
+          : existing.tip != null
+            ? String(existing.tip)
+            : "",
+      payment_method: optionalString(input.payment_method) || (payment.method ?? "cash"),
+      payment_status: optionalString(input.payment_status) || (payment.status ?? "paid"),
+      notes: "notes" in input ? optionalString(input.notes) : cleanNotes,
+    };
+    const salonOverride = parseSalonPayoutOverride(existing.notes);
+
+    const validation = validateEditAppointment({
+      client_id: clientId,
+      appointment_id: appointmentId,
+      date: merged.date,
+      time_slot: merged.time_slot,
+      service_type: merged.service_type,
+      location: merged.location,
+      fee: merged.fee,
+      tip: merged.tip,
+      payment_method: merged.payment_method,
+      payment_status: merged.payment_status,
+      notes: merged.notes,
+      salon_payout_override: salonOverride != null ? String(salonOverride) : "",
+      send_booking_update_text: "",
+      booking_update_message: "",
+    });
+    if (!validation.ok) {
+      throw new AgentToolError(
+        firstValidationError(validation.errors, "That change isn't valid."),
+      );
+    }
+    const v = validation.value;
+    if (!v.service_type || !v.location) {
+      throw new AgentToolError("That visit needs a service and a Gina/Annette location.");
+    }
+
+    const changes: string[] = [];
+    if (optionalString(input.date) && merged.date !== existing.date)
+      changes.push(`date → ${merged.date}`);
+    if (optionalString(input.time_slot) && merged.time_slot !== (existing.time_slot ?? ""))
+      changes.push(`time → ${merged.time_slot}`);
+    if (optionalString(input.service_type)) changes.push(`service → ${serviceLabel(v.service_type) ?? v.service_type}`);
+    if (optionalString(input.location)) changes.push(`location → ${bookingLocationLabel(v.location)}`);
+    if (input.fee != null) changes.push(`fee → ${v.fee}`);
+    if (input.tip != null) changes.push(`tip → ${v.tip}`);
+    if ("notes" in input) changes.push("notes updated");
+    if (changes.length === 0) changes.push("no change");
+
+    return {
+      kind: "edit_appointment",
+      mode: "reschedule_change",
+      clientId,
+      appointmentId,
+      ownerName,
+      petName,
+      date: v.date,
+      timeSlot: v.time_slot ?? merged.time_slot,
+      serviceType: v.service_type,
+      service: serviceLabel(v.service_type) ?? v.service_type,
+      location: v.location,
+      locationLabel: bookingLocationLabel(v.location) ?? v.location,
+      fee: v.fee,
+      tip: v.tip,
+      paymentMethod: v.payment_method,
+      paymentStatus: v.payment_status,
+      notes: v.notes,
+      salonPayoutOverride: salonOverride ?? null,
+      changes,
+    };
+  },
+};
+
+// ---------------------------------------------------------------------------
+// propose_delete_household — permanent delete (via deleteClient). Mirrors the
+// action's history guard: a household with any appointment record can't be
+// deleted, so we refuse here rather than show a destructive card that will fail.
+// ---------------------------------------------------------------------------
+
+const proposeDeleteHousehold: AgentWriteTool = {
+  name: "propose_delete_household",
+  description:
+    "Propose permanently DELETING a household (does NOT delete it — the operator confirms a " +
+    "destructive card first). Pass `client_id` (from find_household). A household that has " +
+    "ANY appointment history can't be deleted (business records) — say so instead of proposing. " +
+    "This is destructive and cannot be undone; only do it when the operator clearly asked to delete.",
+  input_schema: {
+    type: "object",
+    properties: { client_id: { type: "string" } },
+    required: ["client_id"],
+    additionalProperties: false,
+  },
+  propose: async (input): Promise<DeleteHouseholdProposal> => {
+    const clientId = requireString(input.client_id, "client_id");
+    const dataset = await loadDataset();
+    const client = dataset.clients.find((c) => c.id === clientId);
+    if (!client) {
+      throw new AgentToolError(
+        `No client with id ${JSON.stringify(clientId)}. Use find_household to look one up.`,
+      );
+    }
+    const pets = dataset.pets.filter((p) => p.client_id === clientId);
+    const appointments = dataset.appointments.filter((a) => a.client_id === clientId);
+    if (!canDeleteHousehold({ appointments })) {
+      throw new AgentToolError(
+        `${fullName(client.first_name, client.last_name)} has ${appointments.length} groom record${
+          appointments.length === 1 ? "" : "s"
+        } on file and can't be deleted. Tell the operator that household keeps its history.`,
+      );
+    }
+    return {
+      kind: "delete_household",
+      clientId,
+      ownerName: fullName(client.first_name, client.last_name),
+      petNames: pets.length > 0 ? formatPetNames(pets.map((p) => p.name)) : "no pets",
+      petCount: pets.length,
+      appointmentCount: appointments.length,
+      hasHistory: false,
+    };
+  },
+};
+
+// ---------------------------------------------------------------------------
+// propose_log_daily_income — a payout override for a day (via
+// saveDayCloseoutOverride), incl. "paid by salon, keep 100%". finalPayout is the
+// amount the operator states she kept; the agent records that, it does not
+// recompute the salon split.
+// ---------------------------------------------------------------------------
+
+const proposeLogDailyIncome: AgentWriteTool = {
+  name: "propose_log_daily_income",
+  description:
+    "Propose logging a day's take-home as a payout override (does NOT save it — the operator " +
+    "confirms a card first). Pass a concrete ISO `date` (YYYY-MM-DD), a `location` " +
+    "(gina or annette), and `final_payout` (the dollar amount the operator kept that day). " +
+    "Set `paid_by_salon` true for 'paid by the salon, kept 100%'. Optional `note` and " +
+    "`calculated_payout` (the app's computed figure, for reference).",
+  input_schema: {
+    type: "object",
+    properties: {
+      date: { type: "string" },
+      location: { type: "string", enum: [...BOOKING_LOCATIONS] },
+      final_payout: { type: "number" },
+      calculated_payout: { type: "number" },
+      paid_by_salon: { type: "boolean" },
+      note: { type: "string" },
+    },
+    required: ["date", "location", "final_payout"],
+    additionalProperties: false,
+  },
+  propose: async (input): Promise<LogDailyIncomeProposal> => {
+    const date = requireIsoDate(input.date, "date");
+    const location = optionalString(input.location);
+    if (!(BOOKING_LOCATIONS as readonly string[]).includes(location)) {
+      throw new AgentToolError("Location must be 'gina' or 'annette'.");
+    }
+    const paidBySalon = input.paid_by_salon === true;
+    const note =
+      optionalString(input.note) ||
+      (paidBySalon ? "Paid by salon — kept 100%." : "Daily income override.");
+
+    const validation = validateDayCloseoutInput({
+      date,
+      location,
+      final_payout: input.final_payout == null ? "" : String(input.final_payout),
+      calculated_payout: input.calculated_payout == null ? "" : String(input.calculated_payout),
+      note,
+    });
+    if (!validation.ok) {
+      throw new AgentToolError(
+        firstValidationError(validation.errors, "That day's income isn't valid."),
+      );
+    }
+    const v = validation.value;
+    return {
+      kind: "log_daily_income",
+      date: v.date,
+      location: v.location,
+      locationLabel: bookingLocationLabel(v.location) ?? v.location,
+      finalPayout: v.final_payout,
+      calculatedPayout: v.calculated_payout ?? v.final_payout,
+      note: v.note,
+      paidBySalon,
+    };
+  },
+};
+
+// ---------------------------------------------------------------------------
+// propose_send_text — draft a customer text (NEVER auto-sent; confirm-to-send).
+//   reminder: operator/template content (prepareReminder) — no customer free-text.
+//   reply:    a reply to a specific inbound message (sendInboxSmsReply). The
+//             customer's text reaches the MODEL only via the dedicated reply seam
+//             (lib/actions/agentReply.ts), NOT here — this tool never loads it.
+// THE injection surface for the agent is the reply seam; flagged for security review.
+// ---------------------------------------------------------------------------
+
+const proposeSendText: AgentWriteTool = {
+  name: "propose_send_text",
+  description:
+    "Propose sending a customer text (does NOT send it — the operator confirms the exact " +
+    "wording first, and nothing is ever auto-sent). For `mode` 'reminder', pass `client_id` " +
+    "and `appointment_id` (from find_household / get_schedule) and the `message` you drafted " +
+    "from the operator's instruction (do not invent appointment facts). For `mode` 'reply' " +
+    "(replying to a customer's inbound text), pass the `sms_id` being replied to, the drafted " +
+    "`message`, and `recipient_label` (the customer's name). Always show the operator the full " +
+    "wording to confirm before anything is sent.",
+  input_schema: {
+    type: "object",
+    properties: {
+      mode: { type: "string", enum: ["reminder", "reply"] },
+      message: { type: "string" },
+      client_id: { type: "string" },
+      appointment_id: { type: "string" },
+      sms_id: { type: "string" },
+      recipient_label: { type: "string" },
+    },
+    required: ["mode", "message"],
+    additionalProperties: false,
+  },
+  propose: async (input): Promise<SendTextProposal> => {
+    const mode = optionalString(input.mode);
+    const message = requireString(input.message, "message");
+
+    if (mode === "reply") {
+      const smsId = requireString(input.sms_id, "sms_id");
+      return {
+        kind: "send_text",
+        mode: "reply",
+        smsId,
+        recipientLabel: optionalString(input.recipient_label) || "the customer",
+        message,
+      };
+    }
+
+    if (mode !== "reminder") {
+      throw new AgentToolError("`mode` must be 'reminder' or 'reply'.");
+    }
+
+    const clientId = requireString(input.client_id, "client_id");
+    const appointmentId = requireString(input.appointment_id, "appointment_id");
+    const dataset = await loadDataset();
+    const client = dataset.clients.find((c) => c.id === clientId);
+    if (!client) {
+      throw new AgentToolError(
+        `No client with id ${JSON.stringify(clientId)}. Use find_household to look one up.`,
+      );
+    }
+    const target = buildReminderTarget(dataset.appointments, dataset.pets, {
+      appointmentId,
+    });
+    if (!target) {
+      throw new AgentToolError(
+        "I couldn't find that appointment to remind about. Re-check with get_schedule.",
+      );
+    }
+    const validation = validateReminderInput({ phone: client.phone, message });
+    if (!validation.ok) {
+      throw new AgentToolError(
+        firstValidationError(validation.errors, "That reminder can't be sent."),
+      );
+    }
+    const contextBits = [
+      target.petName,
+      formatDate(target.appointmentDate),
+      target.appointmentTime,
+    ].filter((bit): bit is string => Boolean(bit));
+
+    return {
+      kind: "send_text",
+      mode: "reminder",
+      clientId,
+      appointmentId,
+      recipientLabel: fullName(client.first_name, client.last_name),
+      toNumber: client.phone,
+      context: contextBits.join(" · "),
+      message: validation.value.message,
+    };
+  },
+};
+
 /**
  * The complete write-tool registry. INVARIANT: every entry only PROPOSES — it
  * resolves + validates and returns an AgentProposal, and performs no write. The
@@ -432,6 +1255,14 @@ export const AGENT_WRITE_TOOLS: readonly AgentWriteTool[] = [
   proposeBookAppointment,
   proposeAddTip,
   proposeLogGroom,
+  proposeAddHousehold,
+  proposeAddPet,
+  proposeEditHousehold,
+  proposeEditPet,
+  proposeEditAppointment,
+  proposeDeleteHousehold,
+  proposeLogDailyIncome,
+  proposeSendText,
 ] as const;
 
 export const AGENT_WRITE_TOOL_NAMES: readonly string[] = AGENT_WRITE_TOOLS.map(

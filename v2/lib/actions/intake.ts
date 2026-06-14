@@ -14,6 +14,7 @@
 
 import { revalidatePath } from "next/cache";
 import { recordAuditEvent } from "@/lib/audit.server";
+import { agentOriginMetadata } from "@/lib/auditSource";
 import { dataMode, requireOrgId } from "@/lib/data/repo";
 import { createServerSupabase, getCurrentUser } from "@/lib/supabase/server";
 import { isAddHouseholdWriteEnabled } from "@/lib/writeGate";
@@ -193,7 +194,11 @@ export async function saveIntake(
     eventType: "client.created",
     clientId: clientRow.id,
     summary: `Added household ${summary.ownerName} with ${summary.petNames.length} pet${summary.petNames.length === 1 ? "" : "s"}: ${summary.petNames.join(", ")}.`,
-    metadata: { fee: summary.typicalFee, petNames: summary.petNames },
+    metadata: {
+      fee: summary.typicalFee,
+      petNames: summary.petNames,
+      ...agentOriginMetadata(formData),
+    },
   });
   return { status: "saved", summary };
 }

@@ -27,11 +27,50 @@ export function confirmCardShowsActions(status: ConfirmCardStatus): boolean {
   return status === "pending";
 }
 
-const HEADING: Record<AgentProposal["kind"], string> = {
-  book_appointment: "Book this appointment?",
-  add_tip: "Add this tip?",
-  log_groom: "Log this groom?",
-};
+/** The card heading per proposal kind (cancel/delete read as their own action). */
+function headingFor(proposal: AgentProposal): string {
+  switch (proposal.kind) {
+    case "book_appointment":
+      return "Book this appointment?";
+    case "add_tip":
+      return "Add this tip?";
+    case "log_groom":
+      return "Log this groom?";
+    case "add_household":
+      return "Add this household?";
+    case "add_pet":
+      return "Add this pet?";
+    case "edit_household":
+      return "Update this household?";
+    case "edit_pet":
+      return "Update this pet?";
+    case "edit_appointment":
+      return proposal.mode === "cancel"
+        ? "Cancel this appointment?"
+        : "Update this appointment?";
+    case "delete_household":
+      return "Delete this household?";
+    case "log_daily_income":
+      return "Log this day's income?";
+    case "send_text":
+      return "Send this text?";
+  }
+}
+
+/** A destructive proposal (permanent delete or a cancellation) gets red styling. */
+function isDestructive(proposal: AgentProposal): boolean {
+  return (
+    proposal.kind === "delete_household" ||
+    (proposal.kind === "edit_appointment" && proposal.mode === "cancel")
+  );
+}
+
+function confirmLabel(proposal: AgentProposal): string {
+  if (proposal.kind === "delete_household") return "Delete";
+  if (proposal.kind === "edit_appointment" && proposal.mode === "cancel")
+    return "Cancel booking";
+  return "Confirm";
+}
 
 export function AssistantConfirmCard({
   proposal,
@@ -47,6 +86,7 @@ export function AssistantConfirmCard({
   onCancel: () => void;
 }) {
   const showActions = confirmCardShowsActions(status);
+  const destructive = isDestructive(proposal);
   const tone =
     status === "saved"
       ? "border-brand bg-brand-soft text-ink"
@@ -54,12 +94,18 @@ export function AssistantConfirmCard({
         ? "border-danger bg-danger-soft text-danger-ink"
         : status === "gated" || status === "cancelled"
           ? "border-line bg-surface text-ink-soft"
-          : "border-brand bg-surface text-ink";
+          : destructive
+            ? "border-danger bg-danger-soft text-ink"
+            : "border-brand bg-surface text-ink";
 
   return (
     <div className={`flex max-w-[90%] flex-col gap-2 rounded-2xl border px-4 py-3 shadow-sm ${tone}`}>
-      <p className="text-xs font-semibold uppercase tracking-wide text-ink-faint">
-        {HEADING[proposal.kind]}
+      <p
+        className={`text-xs font-semibold uppercase tracking-wide ${
+          destructive && showActions ? "text-danger-ink" : "text-ink-faint"
+        }`}
+      >
+        {headingFor(proposal)}
       </p>
 
       {/* The exact resolved action — what Sam is approving, verbatim. */}
@@ -88,16 +134,18 @@ export function AssistantConfirmCard({
           <button
             type="button"
             onClick={onConfirm}
-            className="min-h-11 flex-1 rounded-xl bg-brand px-4 text-sm font-semibold text-white active:bg-brand-ink"
+            className={`min-h-11 flex-1 rounded-xl px-4 text-sm font-semibold text-white ${
+              destructive ? "bg-danger active:bg-danger-ink" : "bg-brand active:bg-brand-ink"
+            }`}
           >
-            Confirm
+            {confirmLabel(proposal)}
           </button>
           <button
             type="button"
             onClick={onCancel}
             className="min-h-11 flex-1 rounded-xl border border-line bg-canvas px-4 text-sm font-semibold text-ink-soft active:bg-brand-soft"
           >
-            Cancel
+            {destructive ? "Keep" : "Cancel"}
           </button>
         </div>
       ) : null}

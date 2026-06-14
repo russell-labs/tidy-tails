@@ -122,3 +122,36 @@ describe("audit events", () => {
     expect(auditEventTone("client.viewed")).toBe("read");
   });
 });
+
+// The agentic layer records a "agent.feedback" event (thumbs up/down on an
+// assistant answer) through this SAME pipeline — no new table. The pipeline only
+// persists metadata keys on its safe allowlist, so feedback's keys (rating /
+// question / toolsUsed) must be allowed, and the event type needs a human label.
+describe("agent.feedback audit plumbing", () => {
+  it("keeps the feedback metadata keys through the safe-metadata filter", () => {
+    const insert = buildAuditEventInsert({
+      actorId: "user-1",
+      eventType: "agent.feedback",
+      summary: "Rated an assistant answer.",
+      metadata: {
+        rating: "up",
+        question: "how much did I make Friday",
+        toolsUsed: ["get_day_income"],
+        source: "agent",
+        customerPhone: "should-not-be-here",
+      },
+    });
+
+    expect(insert.event_type).toBe("agent.feedback");
+    expect(insert.metadata).toEqual({
+      rating: "up",
+      question: "how much did I make Friday",
+      toolsUsed: ["get_day_income"],
+      source: "agent",
+    });
+  });
+
+  it("gives the feedback event a human-readable label", () => {
+    expect(auditEventLabel("agent.feedback")).toBe("Rated assistant answer");
+  });
+});

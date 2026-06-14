@@ -30,10 +30,18 @@ import { getClientRecord } from "@/lib/data/repo";
 import { loadOrgSettings } from "@/lib/orgSettings.server";
 import {
   PROPOSAL_KINDS,
+  type AddHouseholdProposal,
+  type AddPetProposal,
   type AddTipProposal,
   type AgentProposal,
   type BookAppointmentProposal,
+  type DeleteHouseholdProposal,
+  type EditAppointmentProposal,
+  type EditHouseholdProposal,
+  type EditPetProposal,
+  type LogDailyIncomeProposal,
   type LogGroomProposal,
+  type SendTextProposal,
 } from "@/lib/agent/proposals";
 import { createBooking, type BookingState } from "./appointments";
 import {
@@ -45,6 +53,20 @@ import {
   type AppointmentPaymentState,
 } from "./appointmentPayment";
 import { logGroom, type GroomState } from "./grooms";
+import { saveIntake, type IntakeState } from "./intake";
+import { addPet, type AddPetState } from "./pets";
+import { editClient, type EditClientState } from "./editClient";
+import { editPet, type EditPetState } from "./editPet";
+import {
+  deleteAppointment,
+  editAppointment,
+  type DeleteAppointmentState,
+  type EditAppointmentState,
+} from "./editAppointment";
+import { deleteClient, type DeleteClientState } from "./deleteClient";
+import { saveDayCloseoutOverride, type DayCloseoutState } from "./dayCloseout";
+import { prepareReminder, type ReminderState } from "./reminders";
+import { sendInboxSmsReply, type InboxActionState } from "./inbox";
 
 export type AgentConfirmResult = {
   status: "saved" | "gated" | "error";
@@ -91,10 +113,35 @@ export async function confirmAgentProposal(
         return await confirmAddTip(proposal);
       case "log_groom":
         return await confirmLogGroom(proposal);
+      case "add_household":
+        return await confirmAddHousehold(proposal);
+      case "add_pet":
+        return await confirmAddPet(proposal);
+      case "edit_household":
+        return await confirmEditHousehold(proposal);
+      case "edit_pet":
+        return await confirmEditPet(proposal);
+      case "edit_appointment":
+        return await confirmEditAppointment(proposal);
+      case "delete_household":
+        return await confirmDeleteHousehold(proposal);
+      case "log_daily_income":
+        return await confirmLogDailyIncome(proposal);
+      case "send_text":
+        return await confirmSendText(proposal);
     }
   } catch {
     return { status: "error", message: GENERIC_ERROR };
   }
+}
+
+/** boolean|null allergy flag → the form's yes/no/unknown choice. */
+function allergyChoice(allergies: boolean | null): string {
+  return allergies === true ? "yes" : allergies === false ? "no" : "unknown";
+}
+
+function setOptional(form: FormData, field: string, value: string | null): void {
+  form.set(field, value ?? "");
 }
 
 async function confirmBooking(
@@ -240,6 +287,325 @@ function mapGroomState(state: GroomState): AgentConfirmResult {
         status: "error",
         message: state.formError ?? firstError(state.errors) ?? GENERIC_ERROR,
       };
+    default:
+      return { status: "error", message: GENERIC_ERROR };
+  }
+}
+
+// --- Phase 4 dispatchers ----------------------------------------------------
+
+async function confirmAddHousehold(
+  proposal: AddHouseholdProposal,
+): Promise<AgentConfirmResult> {
+  const form = new FormData();
+  form.set("first_name", proposal.firstName);
+  form.set("last_name", proposal.lastName);
+  form.set("phone", proposal.phone);
+  setOptional(form, "secondary_contact_name", proposal.secondaryContactName);
+  setOptional(form, "secondary_cell", proposal.secondaryCell);
+  setOptional(form, "landline", proposal.landline);
+  setOptional(form, "email", proposal.email);
+  setOptional(form, "address", proposal.address);
+  setOptional(form, "notes", proposal.notes);
+  if (proposal.smsConsent) form.set("sms_consent", "on");
+  form.set("pet_name", proposal.pet.name);
+  setOptional(form, "breed", proposal.pet.breed);
+  setOptional(form, "size", proposal.pet.size);
+  form.set("allergy_state", allergyChoice(proposal.pet.allergies));
+  setOptional(form, "allergies_detail", proposal.pet.allergiesDetail);
+  form.set("vaccination_state", proposal.pet.vaccinationState);
+  setOptional(form, "vaccination_detail", proposal.pet.vaccinationDetail);
+  setOptional(form, "date_of_birth", proposal.pet.dateOfBirth);
+  setOptional(form, "grooming_notes", proposal.pet.groomingNotes);
+  setMoney(form, "typical_fee", proposal.pet.typicalFee);
+  form.set(AGENT_SOURCE_FIELD, AGENT_SOURCE_VALUE);
+
+  const state = await saveIntake({ status: "idle" }, form);
+  return mapSummaryState(state, `Added ${proposal.ownerName}.`);
+}
+
+async function confirmAddPet(proposal: AddPetProposal): Promise<AgentConfirmResult> {
+  const form = new FormData();
+  form.set("client_id", proposal.clientId);
+  form.set("name", proposal.name);
+  setOptional(form, "breed", proposal.breed);
+  setOptional(form, "size", proposal.size);
+  form.set("allergy_state", allergyChoice(proposal.allergies));
+  setOptional(form, "allergies_detail", proposal.allergiesDetail);
+  setOptional(form, "grooming_notes", proposal.groomingNotes);
+  setMoney(form, "typical_fee", proposal.typicalFee);
+  form.set(AGENT_SOURCE_FIELD, AGENT_SOURCE_VALUE);
+
+  const state = await addPet({ status: "idle" }, form);
+  return mapSummaryState(state, `Added ${proposal.name} to ${proposal.ownerName}.`);
+}
+
+async function confirmEditHousehold(
+  proposal: EditHouseholdProposal,
+): Promise<AgentConfirmResult> {
+  const form = new FormData();
+  form.set("client_id", proposal.clientId);
+  form.set("first_name", proposal.firstName);
+  form.set("last_name", proposal.lastName);
+  form.set("phone", proposal.phone);
+  setOptional(form, "secondary_contact_name", proposal.secondaryContactName);
+  setOptional(form, "secondary_cell", proposal.secondaryCell);
+  setOptional(form, "landline", proposal.landline);
+  setOptional(form, "email", proposal.email);
+  setOptional(form, "address", proposal.address);
+  setOptional(form, "notes", proposal.notes);
+  form.set(AGENT_SOURCE_FIELD, AGENT_SOURCE_VALUE);
+
+  const state = await editClient({ status: "idle" }, form);
+  return mapSummaryState(state, `Updated ${proposal.ownerName}.`);
+}
+
+async function confirmEditPet(proposal: EditPetProposal): Promise<AgentConfirmResult> {
+  const form = new FormData();
+  form.set("client_id", proposal.clientId);
+  form.set("pet_id", proposal.petId);
+  form.set("name", proposal.name);
+  setOptional(form, "breed", proposal.breed);
+  setOptional(form, "size", proposal.size);
+  setOptional(form, "color", proposal.color);
+  setOptional(form, "date_of_birth", proposal.dateOfBirth);
+  form.set("allergy_state", allergyChoice(proposal.allergies));
+  setOptional(form, "allergies_detail", proposal.allergiesDetail);
+  setOptional(form, "grooming_notes", proposal.groomingNotes);
+  setMoney(form, "typical_fee", proposal.typicalFee);
+  form.set(AGENT_SOURCE_FIELD, AGENT_SOURCE_VALUE);
+
+  const state = await editPet({ status: "idle" }, form);
+  return mapSummaryState(state, `Updated ${proposal.petName}.`);
+}
+
+async function confirmEditAppointment(
+  proposal: EditAppointmentProposal,
+): Promise<AgentConfirmResult> {
+  if (proposal.mode === "cancel") {
+    const form = new FormData();
+    form.set("client_id", proposal.clientId);
+    form.set("appointment_id", proposal.appointmentId);
+    // No send_cancellation_text and no group scope: an agent cancel never
+    // auto-texts the customer and only ever touches the one resolved visit.
+    form.set(AGENT_SOURCE_FIELD, AGENT_SOURCE_VALUE);
+    return await runCancelAppointment(form, `Cancelled ${proposal.petName}'s visit.`);
+  }
+
+  const form = new FormData();
+  form.set("client_id", proposal.clientId);
+  form.set("appointment_id", proposal.appointmentId);
+  form.set("date", proposal.date);
+  form.set("time_slot", proposal.timeSlot);
+  form.set("service_type", proposal.serviceType);
+  form.set("location", proposal.location);
+  setMoney(form, "fee", proposal.fee);
+  setMoney(form, "tip", proposal.tip);
+  form.set("payment_method", proposal.paymentMethod);
+  form.set("payment_status", proposal.paymentStatus);
+  setOptional(form, "notes", proposal.notes);
+  setMoney(form, "salon_payout_override", proposal.salonPayoutOverride);
+  // No send_booking_update_text: an agent edit never auto-texts the customer.
+  form.set(AGENT_SOURCE_FIELD, AGENT_SOURCE_VALUE);
+
+  const state = await editAppointment({ status: "idle" }, form);
+  return mapSummaryState(state, `Updated ${proposal.petName}'s visit.`);
+}
+
+/**
+ * deleteAppointment redirect()s on success (which throws a Next redirect signal
+ * in the server-action runtime). The chat surface stays put — it does not want
+ * to navigate — so we swallow that specific signal and report success; any other
+ * throw is a real failure.
+ */
+async function runCancelAppointment(
+  form: FormData,
+  savedMessage: string,
+): Promise<AgentConfirmResult> {
+  try {
+    const state = await deleteAppointment({ status: "idle" }, form);
+    return mapDeleteAppointmentState(state, savedMessage);
+  } catch (error) {
+    if (isNextRedirect(error)) {
+      return { status: "saved", message: savedMessage };
+    }
+    throw error;
+  }
+}
+
+function isNextRedirect(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "digest" in error &&
+    typeof (error as { digest?: unknown }).digest === "string" &&
+    (error as { digest: string }).digest.startsWith("NEXT_REDIRECT")
+  );
+}
+
+async function confirmDeleteHousehold(
+  proposal: DeleteHouseholdProposal,
+): Promise<AgentConfirmResult> {
+  const form = new FormData();
+  form.set("client_id", proposal.clientId);
+  form.set(AGENT_SOURCE_FIELD, AGENT_SOURCE_VALUE);
+
+  const state = await deleteClient({ status: "idle" }, form);
+  return mapDeleteClientState(state, `Deleted ${proposal.ownerName}.`);
+}
+
+async function confirmLogDailyIncome(
+  proposal: LogDailyIncomeProposal,
+): Promise<AgentConfirmResult> {
+  const form = new FormData();
+  form.set("date", proposal.date);
+  form.set("location", proposal.location);
+  form.set("final_payout", String(proposal.finalPayout));
+  form.set("calculated_payout", String(proposal.calculatedPayout));
+  setOptional(form, "note", proposal.note);
+  form.set(AGENT_SOURCE_FIELD, AGENT_SOURCE_VALUE);
+
+  const state = await saveDayCloseoutOverride({ status: "idle" }, form);
+  return mapDayCloseoutState(state);
+}
+
+async function confirmSendText(
+  proposal: SendTextProposal,
+): Promise<AgentConfirmResult> {
+  // Nothing is sent until here — Sam's confirm tap is what calls the gated send
+  // action. The card already showed her the exact wording.
+  if (proposal.mode === "reply") {
+    const form = new FormData();
+    form.set("sms_id", proposal.smsId);
+    form.set("message", proposal.message);
+    form.set(AGENT_SOURCE_FIELD, AGENT_SOURCE_VALUE);
+    const state = await sendInboxSmsReply({ status: "idle" }, form);
+    return mapInboxState(state, `Replied to ${proposal.recipientLabel}.`);
+  }
+
+  const form = new FormData();
+  form.set("client_id", proposal.clientId);
+  form.set("appointment_id", proposal.appointmentId);
+  form.set("to_number", proposal.toNumber);
+  form.set("message", proposal.message);
+  form.set(AGENT_SOURCE_FIELD, AGENT_SOURCE_VALUE);
+  const state = await prepareReminder({ status: "idle" }, form);
+  return mapReminderState(state, `Texted ${proposal.recipientLabel}.`);
+}
+
+// --- state → confirm-result mappers (Phase 4) -------------------------------
+
+/** For the saved/gated/demo/error summary states (intake, pets, edits). */
+function mapSummaryState(
+  state:
+    | IntakeState
+    | AddPetState
+    | EditClientState
+    | EditPetState
+    | EditAppointmentState,
+  savedMessage: string,
+): AgentConfirmResult {
+  switch (state.status) {
+    case "saved":
+      return { status: "saved", message: savedMessage };
+    case "gated":
+      return { status: "gated", message: state.message };
+    case "demo":
+      return { status: "gated", message: "Demo mode — nothing was saved." };
+    case "error":
+      return {
+        status: "error",
+        message: state.formError ?? firstError(state.errors) ?? GENERIC_ERROR,
+      };
+    default:
+      return { status: "error", message: GENERIC_ERROR };
+  }
+}
+
+function mapDeleteClientState(
+  state: DeleteClientState,
+  savedMessage: string,
+): AgentConfirmResult {
+  switch (state.status) {
+    case "deleted":
+      return { status: "saved", message: savedMessage };
+    case "gated":
+      return { status: "gated", message: state.message };
+    case "demo":
+      return { status: "gated", message: "Demo mode — nothing was deleted." };
+    case "error":
+      return { status: "error", message: state.message };
+    default:
+      return { status: "error", message: GENERIC_ERROR };
+  }
+}
+
+function mapDeleteAppointmentState(
+  state: DeleteAppointmentState,
+  savedMessage: string,
+): AgentConfirmResult {
+  switch (state.status) {
+    case "deleted":
+      return { status: "saved", message: savedMessage };
+    case "gated":
+      return { status: "gated", message: state.message ?? "Nothing was changed." };
+    case "demo":
+      return { status: "gated", message: "Demo mode — nothing was changed." };
+    case "error":
+      return { status: "error", message: state.message };
+    default:
+      return { status: "error", message: GENERIC_ERROR };
+  }
+}
+
+function mapDayCloseoutState(state: DayCloseoutState): AgentConfirmResult {
+  switch (state.status) {
+    case "saved":
+      return { status: "saved", message: state.message };
+    case "gated":
+      return { status: "gated", message: state.message };
+    case "demo":
+      return { status: "gated", message: "Demo mode — nothing was saved." };
+    case "error":
+      return {
+        status: "error",
+        message: state.formError ?? firstError(state.errors) ?? GENERIC_ERROR,
+      };
+    default:
+      return { status: "error", message: GENERIC_ERROR };
+  }
+}
+
+function mapReminderState(
+  state: ReminderState,
+  savedMessage: string,
+): AgentConfirmResult {
+  switch (state.status) {
+    case "sent":
+      return { status: "saved", message: savedMessage };
+    case "gated":
+      return { status: "gated", message: state.message };
+    case "demo":
+      return { status: "gated", message: "Demo mode — no text was sent." };
+    case "error":
+      return {
+        status: "error",
+        message: state.formError ?? firstError(state.errors) ?? GENERIC_ERROR,
+      };
+    default:
+      return { status: "error", message: GENERIC_ERROR };
+  }
+}
+
+function mapInboxState(
+  state: InboxActionState,
+  savedMessage: string,
+): AgentConfirmResult {
+  switch (state.status) {
+    case "sent":
+      return { status: "saved", message: savedMessage };
+    case "error":
+      return { status: "error", message: state.message };
     default:
       return { status: "error", message: GENERIC_ERROR };
   }
