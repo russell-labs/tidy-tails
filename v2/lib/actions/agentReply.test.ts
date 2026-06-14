@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createSupabaseHarness, smsRow } from "./actionTestSupport";
 
@@ -114,5 +117,33 @@ describe("draftAgentReply", () => {
     const result = await draftAgentReply("sms-1", "   ");
     expect(result.status).toBe("error");
     expect(runAgentMock).not.toHaveBeenCalled();
+  });
+});
+
+// Structural contract for THE injection surface (the review focus). The seam may
+// load the one inbound message and run the read-only agent, but it must never
+// itself reach for a write/send action, the service-role client, or a Supabase
+// mutation — the send happens only later, in the confirm action, on Sam's tap.
+describe("agentReply.ts structural contract (injection-surface review)", () => {
+  const source = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), "agentReply.ts"),
+    "utf8",
+  );
+
+  it.each([
+    "@/lib/actions/", // no write/send server action imported
+    "recordAuditEvent(", // no audit write
+    "@/lib/supabase/service",
+    "createServiceSupabase",
+    "SERVICE_ROLE_KEY",
+    ".insert(",
+    ".update(",
+    ".delete(",
+  ])("never reaches a write/send/mutation (%s)", (forbidden) => {
+    expect(source, `agentReply.ts references ${forbidden}`).not.toContain(forbidden);
+  });
+
+  it("runs the read-only agent runner (it can only PROPOSE)", () => {
+    expect(source).toContain('from "@/lib/agent/runAgent"');
   });
 });
