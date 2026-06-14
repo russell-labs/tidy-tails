@@ -11,6 +11,11 @@
 // Defense in depth:
 //   - Re-checks the master agent gate (TIDYTAILS_ENABLE_AGENT) and a signed-in
 //     operator, so this endpoint can't be POSTed when the feature is dark.
+//   - Re-checks the assistant-WRITES kill-switch (TIDYTAILS_ENABLE_AGENT_WRITES)
+//     up front: off → "gated", nothing written, and we never dispatch to (or even
+//     pre-read for) any gated action. This decouples deploy from enabling writes —
+//     the assistant runs read-only on prod until the flag is flipped, regardless
+//     of the per-action write gates or anything the client sends.
 //   - Validates the proposal kind at the trust boundary (the proposal round-trips
 //     through the client; an unknown shape is rejected, not coerced).
 //   - Dispatches to the EXISTING gated server action for the kind, which is the
@@ -24,7 +29,7 @@
 // No service-role client is imported; every gated action runs in the operator's
 // session, so RLS + the org_id guard still bound the write to this org.
 
-import { isAgentEnabled } from "@/lib/writeGate";
+import { isAgentEnabled, isAgentWritesEnabled } from "@/lib/writeGate";
 import { getCurrentUser } from "@/lib/supabase/server";
 import { getClientRecord } from "@/lib/data/repo";
 import { loadOrgSettings } from "@/lib/orgSettings.server";
@@ -96,6 +101,18 @@ export async function confirmAgentProposal(
     return {
       status: "error",
       message: "Your session ended. Sign in again to confirm.",
+    };
+  }
+
+  // Assistant-WRITES master kill-switch. With the write code deployed but this
+  // flag off, the assistant is read-only: we block EVERY agent-initiated write
+  // here — server-side, BEFORE dispatching to any gated action and before any
+  // pre-dispatch read — so even with every per-action write gate on, nothing is
+  // written. The propose flow + confirm card may still render; execution can't.
+  if (!isAgentWritesEnabled()) {
+    return {
+      status: "gated",
+      message: "The assistant can't make changes yet. Nothing was saved.",
     };
   }
 
