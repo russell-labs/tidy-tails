@@ -20,6 +20,12 @@ describe("AssistantStatus", () => {
     expect(html).toContain("Looking that up…");
   });
 
+  it("shows the voice states tied into the same status UI", () => {
+    expect(renderToStaticMarkup(<AssistantStatus phase="listening" />)).toContain("Listening…");
+    expect(renderToStaticMarkup(<AssistantStatus phase="transcribing" />)).toContain("Transcribing…");
+    expect(renderToStaticMarkup(<AssistantStatus phase="speaking" />)).toContain("Speaking…");
+  });
+
   it("exposes a live region for assistive tech", () => {
     const html = renderToStaticMarkup(<AssistantStatus phase="thinking" />);
     expect(html).toContain('aria-live="polite"');

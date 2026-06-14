@@ -218,3 +218,45 @@ describe("streaming route inherits the agent safety rails", () => {
     expect(route, `route references ${forbidden}`).not.toContain(forbidden);
   });
 });
+
+// The VOICE route is the THIRD entry point into the agent (Phase: voice). It adds
+// one capability — server-side speech-to-text — and then runs the SAME read-only
+// agent on the transcript. Audio is an input mode, not a new power: there is
+// still no write/send tool anywhere on this path. It gets the same structural
+// gates as the stream route, plus proof that transcription rides the read-only
+// pipeline and grants no new data access.
+describe("voice route inherits the agent safety rails", () => {
+  const routePath = join(AGENT_DIR, "..", "..", "app", "api", "assistant", "voice", "route.ts");
+  const route = readFileSync(routePath, "utf8");
+
+  it("re-applies the feature gate and the signed-in-operator check", () => {
+    expect(route).toContain("isAgentEnabled");
+    expect(route).toContain("getCurrentUser");
+  });
+
+  it("validates the transcript through the shared sanitizer (no divergent rules)", () => {
+    expect(route).toContain("sanitizeAgentRequest");
+  });
+
+  it("runs the transcript through the read-only runAgent — and only that", () => {
+    expect(route).toContain("transcribeAudio");
+    expect(route).toContain("runAgent");
+  });
+
+  it.each([
+    "@/lib/supabase/service",
+    "createServiceSupabase",
+    "SERVICE_ROLE_KEY",
+    "sms_messages",
+    "loadRecentSmsMessages",
+    "booking_requests",
+  ])("never reaches the service-role client or customer-text surface (%s)", (forbidden) => {
+    expect(route, `voice route references ${forbidden}`).not.toContain(forbidden);
+  });
+
+  it("never imports a write/send server action (read-only by construction)", () => {
+    // The only agent entry it may call is the read-only runner; no write actions.
+    expect(route).not.toContain("@/lib/actions/");
+    expect(route).not.toMatch(/\bsend-sms\b/);
+  });
+});
