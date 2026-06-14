@@ -22,6 +22,7 @@ import {
 import { readOperatorSettings } from "@/lib/operatorSettings.server";
 import { loadOrgSettings } from "@/lib/orgSettings.server";
 import { loadRecentSmsMessages } from "@/lib/smsMessages.server";
+import { isAgentEnabled } from "@/lib/writeGate";
 
 export const metadata: Metadata = { title: "Messages" };
 
@@ -77,6 +78,9 @@ export default async function InboxPage() {
   );
   const counts = inboxCounts(items);
   const needsAction = items.filter((item) => item.priority === "action");
+  // Server-only flag: gate the assistant draft-a-reply trigger so it stays dark
+  // until Russell turns the agent on (the send itself stays gated separately).
+  const agentEnabled = isAgentEnabled();
 
   return (
     <main className="min-h-full px-5 py-8">
@@ -121,7 +125,12 @@ export default async function InboxPage() {
         <div className="mt-3 space-y-3">
           {needsAction.length ? (
             needsAction.map((item) => (
-              <InboxCard key={item.id} item={item} clientName={clientName(item, clientsById)} />
+              <InboxCard
+                key={item.id}
+                item={item}
+                clientName={clientName(item, clientsById)}
+                agentEnabled={agentEnabled}
+              />
             ))
           ) : (
             <EmptyState text="No customer replies or requests need action." />
@@ -174,7 +183,15 @@ function SectionHeader({ title, detail }: { title: string; detail: string }) {
   );
 }
 
-function InboxCard({ item, clientName }: { item: InboxItem; clientName: string }) {
+function InboxCard({
+  item,
+  clientName,
+  agentEnabled = false,
+}: {
+  item: InboxItem;
+  clientName: string;
+  agentEnabled?: boolean;
+}) {
   const showSmsActions = item.kind === "sms" && item.priority === "action";
   const card = (
     <article className="rounded-2xl border border-line bg-surface p-4 shadow-soft">
@@ -189,7 +206,7 @@ function InboxCard({ item, clientName }: { item: InboxItem; clientName: string }
       </div>
       <p className="mt-3 text-sm leading-relaxed text-ink-muted">{item.body}</p>
       <p className="mt-3 text-xs text-ink-faint">{formatDateTime(item.createdAt)}</p>
-      {showSmsActions ? <InboxSmsActions smsId={item.sourceId} /> : null}
+      {showSmsActions ? <InboxSmsActions smsId={item.sourceId} agentEnabled={agentEnabled} /> : null}
       {item.href && showSmsActions ? (
         <Link
           href={item.href}
