@@ -9,10 +9,18 @@ import {
 } from "@/lib/actions/inbox";
 import { setComposerBusy } from "@/lib/inboxAutoRefresh";
 import { clearDraft, loadDraft, saveDraft } from "@/lib/inboxDraftStore";
+import { InboxAssistantReply } from "@/components/InboxAssistantReply";
 
 const INITIAL_STATE: InboxActionState = { status: "idle" };
 
-export function InboxSmsActions({ smsId }: { smsId: string }) {
+export function InboxSmsActions({
+  smsId,
+  agentEnabled = false,
+}: {
+  smsId: string;
+  /** When true (TIDYTAILS_ENABLE_AGENT on), offer the "draft a reply with the assistant" trigger. */
+  agentEnabled?: boolean;
+}) {
   // TT-020: the inbox auto-refresh can remount this composer mid-typing. Seeding
   // the initial state from the per-thread draft store means a remount recovers
   // an in-progress reply (the store is empty on first page load, so this never
@@ -93,6 +101,10 @@ export function InboxSmsActions({ smsId }: { smsId: string }) {
           </button>
         </div>
       </form>
+
+      {/* Optional assistant draft-a-reply trigger (dark unless TIDYTAILS_ENABLE_AGENT).
+          It proposes a reply through the same confirm card; nothing sends without Sam's tap. */}
+      {agentEnabled ? <InboxAssistantReply smsId={smsId} /> : null}
 
       <form action={markHandledAction} className="flex items-center justify-between gap-3">
         <input type="hidden" name="sms_id" value={smsId} />
