@@ -13,7 +13,10 @@ import type {
 // gated actions to assert: the right one is called, the FormData is correct,
 // the agent-origin audit tag is set, and the action's state maps cleanly.
 
-vi.mock("@/lib/writeGate", () => ({ isAgentEnabled: vi.fn(() => true) }));
+vi.mock("@/lib/writeGate", () => ({
+  isAgentEnabled: vi.fn(() => true),
+  isAgentWritesEnabled: vi.fn(() => true),
+}));
 vi.mock("@/lib/supabase/server", () => ({
   getCurrentUser: vi.fn(async () => ({ id: "user-1" })),
 }));
@@ -40,7 +43,7 @@ vi.mock("./dayCloseout", () => ({ saveDayCloseoutOverride: vi.fn() }));
 vi.mock("./reminders", () => ({ prepareReminder: vi.fn() }));
 vi.mock("./inbox", () => ({ sendInboxSmsReply: vi.fn() }));
 
-const { isAgentEnabled } = await import("@/lib/writeGate");
+const { isAgentEnabled, isAgentWritesEnabled } = await import("@/lib/writeGate");
 const { getCurrentUser } = await import("@/lib/supabase/server");
 const { loadOrgSettings } = await import("@/lib/orgSettings.server");
 const { getClientRecord } = await import("@/lib/data/repo");
@@ -60,6 +63,7 @@ const { sendInboxSmsReply } = await import("./inbox");
 const { confirmAgentProposal } = await import("./agentConfirm");
 
 const isAgentEnabledMock = vi.mocked(isAgentEnabled);
+const isAgentWritesEnabledMock = vi.mocked(isAgentWritesEnabled);
 const getCurrentUserMock = vi.mocked(getCurrentUser);
 const loadOrgSettingsMock = vi.mocked(loadOrgSettings);
 const getClientRecordMock = vi.mocked(getClientRecord);
@@ -129,6 +133,7 @@ const LOG: LogGroomProposal = {
 beforeEach(() => {
   vi.clearAllMocks();
   isAgentEnabledMock.mockReturnValue(true);
+  isAgentWritesEnabledMock.mockReturnValue(true);
   getCurrentUserMock.mockResolvedValue({ id: "user-1" } as never);
   loadOrgSettingsMock.mockResolvedValue(DEFAULT_ORG_SETTINGS);
 });
@@ -586,5 +591,83 @@ describe("confirmAgentProposal — send text (never auto-sends)", () => {
     await confirmAgentProposal(LOG_DAILY_INCOME);
     expect(prepareReminderMock).not.toHaveBeenCalled();
     expect(sendInboxSmsReplyMock).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The assistant-WRITES kill switch (TIDYTAILS_ENABLE_AGENT_WRITES). This lets
+// the write CODE deploy to prod while writes stay OFF — read-only assistant,
+// decoupled from enabling execution. When it's off, confirmAgentProposal blocks
+// EVERY proposal kind server-side BEFORE dispatching to any gated action — so
+// even with every per-action write gate on, the assistant cannot write. The
+// model/UI may still propose/render; only EXECUTION is blocked.
+// ---------------------------------------------------------------------------
+
+describe("confirmAgentProposal — assistant-writes kill switch (TIDYTAILS_ENABLE_AGENT_WRITES off)", () => {
+  // Every proposal kind paired with the gated action it would otherwise dispatch to.
+  const EVERY_KIND: ReadonlyArray<readonly [string, Parameters<typeof confirmAgentProposal>[0], () => unknown]> = [
+    ["book_appointment", BOOK, () => createBookingMock],
+    ["book_appointment (1:1)", { ...BOOK, location: "Home Studio", durationMinutes: 90 }, () => createOneToOneBookingMock],
+    ["add_tip", TIP, () => markAppointmentPaidMock],
+    ["log_groom", LOG, () => logGroomMock],
+    ["add_household", ADD_HOUSEHOLD, () => saveIntakeMock],
+    ["add_pet", ADD_PET, () => addPetMock],
+    ["edit_household", EDIT_HOUSEHOLD, () => editClientMock],
+    ["edit_pet", EDIT_PET, () => editPetMock],
+    ["edit_appointment (change)", EDIT_APPT_CHANGE, () => editAppointmentMock],
+    ["edit_appointment (cancel)", EDIT_APPT_CANCEL, () => deleteAppointmentMock],
+    ["delete_household", DELETE_HOUSEHOLD, () => deleteClientMock],
+    ["log_daily_income", LOG_DAILY_INCOME, () => saveDayCloseoutOverrideMock],
+    ["send_text (reminder)", SEND_REMINDER, () => prepareReminderMock],
+    ["send_text (reply)", SEND_REPLY, () => sendInboxSmsReplyMock],
+  ];
+
+  it.each(EVERY_KIND)(
+    "blocks %s with status 'gated' and dispatches to NO gated action",
+    async (_name, proposal, getActionMock) => {
+      isAgentWritesEnabledMock.mockReturnValue(false);
+      // The completed-groom lookup (for add_tip) would also be a pre-dispatch step;
+      // the block happens before it, so nothing — not even the read — runs.
+      getClientRecordMock.mockResolvedValue(
+        clientRecord({
+          appointments: [
+            appointment({ id: "appt-done", pet_id: "pet-1", date: "2026-06-10", status: "completed", price: 50 }),
+          ],
+        }),
+      );
+
+      const result = await confirmAgentProposal(proposal);
+
+      expect(result.status).toBe("gated");
+      expect(getActionMock()).not.toHaveBeenCalled();
+    },
+  );
+
+  it("blocks BEFORE any gated action even when EVERY per-action write gate is on (deploy ≠ enabled)", async () => {
+    // The kill switch is the master block: per-action gates being on is irrelevant.
+    isAgentWritesEnabledMock.mockReturnValue(false);
+    const result = await confirmAgentProposal(BOOK);
+    expect(result.status).toBe("gated");
+    expect(createBookingMock).not.toHaveBeenCalled();
+    expect(createOneToOneBookingMock).not.toHaveBeenCalled();
+  });
+
+  it("does not even re-resolve the groom (no read) for add_tip when writes are off", async () => {
+    isAgentWritesEnabledMock.mockReturnValue(false);
+    const result = await confirmAgentProposal(TIP);
+    expect(result.status).toBe("gated");
+    expect(getClientRecordMock).not.toHaveBeenCalled();
+    expect(markAppointmentPaidMock).not.toHaveBeenCalled();
+  });
+
+  it("with the kill switch ON, behaves exactly as today (dispatches the write)", async () => {
+    isAgentWritesEnabledMock.mockReturnValue(true);
+    createBookingMock.mockResolvedValue({
+      status: "saved",
+      summary: { petName: "Kiwi", ownerName: "Mary Jones" },
+    } as never);
+    const result = await confirmAgentProposal(BOOK);
+    expect(result.status).toBe("saved");
+    expect(createBookingMock).toHaveBeenCalledTimes(1);
   });
 });

@@ -101,3 +101,17 @@ export function isGoogleCalendarSyncEnabled(): boolean {
 export function isAgentEnabled(): boolean {
   return isFlagEnabled(process.env.TIDYTAILS_ENABLE_AGENT);
 }
+
+// Assistant-WRITES master kill-switch — `TIDYTAILS_ENABLE_AGENT_WRITES`.
+//
+// Decouples DEPLOY from ENABLING writes: the assistant's write code can ship to
+// prod while every agent-initiated write stays OFF, so the assistant runs
+// read-only (propose/confirm-card may still render in demo/read-only) until this
+// flag is explicitly flipped. confirmAgentProposal checks it up front and refuses
+// to dispatch to ANY gated action when it's off — so even with every per-action
+// write gate on, the assistant cannot write unless this is on too. It is
+// INDEPENDENT of both the per-action write gates and the agent feature gate, and
+// follows the same `"on"`-means-on, default-OFF, server-only contract.
+export function isAgentWritesEnabled(): boolean {
+  return isFlagEnabled(process.env.TIDYTAILS_ENABLE_AGENT_WRITES);
+}

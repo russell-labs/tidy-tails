@@ -12,6 +12,7 @@ import {
   isDailyIncomeWriteEnabled,
   isGoogleCalendarSyncEnabled,
   isAgentEnabled,
+  isAgentWritesEnabled,
 } from "./writeGate";
 
 // The post-cutover write kill-switches. Each of v2's four write surfaces is
@@ -55,6 +56,11 @@ const SURFACES = [
     "Google Calendar sync",
     isGoogleCalendarSyncEnabled,
     "TIDYTAILS_ENABLE_GOOGLE_CALENDAR_SYNC",
+  ],
+  [
+    "Agent Writes",
+    isAgentWritesEnabled,
+    "TIDYTAILS_ENABLE_AGENT_WRITES",
   ],
 ] as const;
 
@@ -118,6 +124,7 @@ describe("write-gate isolation — one flag never enables another", () => {
     expect(isAddHouseholdWriteEnabled()).toBe(false);
     expect(isDailyIncomeWriteEnabled()).toBe(false);
     expect(isGoogleCalendarSyncEnabled()).toBe(false);
+    expect(isAgentWritesEnabled()).toBe(false);
   });
 
   it("enabling Log Groom leaves the other three OFF", () => {
@@ -154,6 +161,35 @@ describe("agent feature gate — default OFF, exact-match ON", () => {
   it("does not turn on when any write surface is enabled", () => {
     vi.stubEnv("TIDYTAILS_ENABLE_ADD_APPOINTMENT_WRITE", "on");
     vi.stubEnv("TIDYTAILS_ENABLE_DAILY_INCOME_WRITE", "on");
+    expect(isAgentEnabled()).toBe(false);
+  });
+});
+
+describe("agent WRITES kill-switch — decoupled from deploy and from the per-action gates", () => {
+  it("is OFF when the flag is unset (writes default off, even with the code deployed)", () => {
+    expect(isAgentWritesEnabled()).toBe(false);
+  });
+
+  it('is ON only for the exact value "on"', () => {
+    vi.stubEnv("TIDYTAILS_ENABLE_AGENT_WRITES", "on");
+    expect(isAgentWritesEnabled()).toBe(true);
+  });
+
+  it("is independent of the per-action write gates: turning them ALL on does not enable agent writes", () => {
+    for (const [, , flag] of SURFACES) {
+      if (flag !== "TIDYTAILS_ENABLE_AGENT_WRITES") vi.stubEnv(flag, "on");
+    }
+    expect(isAgentWritesEnabled()).toBe(false);
+  });
+
+  it("is independent of the agent feature gate: enabling agent writes does not enable any per-action gate", () => {
+    vi.stubEnv("TIDYTAILS_ENABLE_AGENT_WRITES", "on");
+    expect(isAgentWritesEnabled()).toBe(true);
+    expect(isAddAppointmentWriteEnabled()).toBe(false);
+    expect(isLogGroomWriteEnabled()).toBe(false);
+    expect(isReminderSendEnabled()).toBe(false);
+    expect(isDeleteClientWriteEnabled()).toBe(false);
+    expect(isDailyIncomeWriteEnabled()).toBe(false);
     expect(isAgentEnabled()).toBe(false);
   });
 });
