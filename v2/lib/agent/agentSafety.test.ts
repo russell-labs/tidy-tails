@@ -217,6 +217,52 @@ describe("golden phrasing → tool mapping", () => {
   });
 });
 
+// Booking misroute guard (staging rehearsal): "book <existing dog> ..." must map
+// to propose_book_appointment — NEVER propose_add_household/propose_add_pet for a
+// pet that is already on file. The model can't be called in CI (no key), so this
+// pins the intended intent→tool mapping AND asserts the routing guidance the model
+// reads at decision time (the system prompt + the two tool descriptions) actually
+// tells it to resolve via find_household and book, not re-create.
+const BOOKING_GOLDEN: { ask: string; tool: (typeof EXPECTED_WRITE_TOOLS)[number] }[] = [
+  { ask: "book Kiwi for a full groom Friday at 10", tool: "propose_book_appointment" },
+  { ask: "schedule Coco in for a bath next Tuesday", tool: "propose_book_appointment" },
+  { ask: "get the Adams dog on the calendar for tomorrow morning", tool: "propose_book_appointment" },
+];
+
+describe("booking an existing dog routes to propose_book_appointment (not add_household)", () => {
+  const runAgentSrc = readFileSync(join(AGENT_DIR, "runAgent.ts"), "utf8");
+  const writeToolsSrc = readFileSync(join(AGENT_DIR, "writeTools.ts"), "utf8");
+
+  it.each(BOOKING_GOLDEN)(
+    "'$ask' is served by the booking propose tool ($tool)",
+    ({ tool }) => {
+      expect(AGENT_WRITE_TOOL_NAMES).toContain(tool);
+      // The misroute target is a distinct, non-booking tool — never the answer here.
+      expect(tool).not.toBe("propose_add_household");
+      expect(tool).not.toBe("propose_add_pet");
+    },
+  );
+
+  it("the system prompt steers an existing-pet booking to book, not re-create", () => {
+    // Canonical booking-intent rule the model sees every turn: resolve with
+    // find_household, then book — an existing pet is never re-created.
+    expect(runAgentSrc).toContain("propose_book_appointment");
+    expect(runAgentSrc.toLowerCase()).toContain(
+      "do not use propose_add_household or propose_add_pet for a pet that already exists",
+    );
+  });
+
+  it("the booking tool description claims the existing-dog booking intent", () => {
+    // propose_book_appointment must own "book an existing dog" so the model
+    // doesn't fall through to creating a household/pet for one already on file.
+    expect(writeToolsSrc).toContain("existing dog");
+  });
+
+  it("the add-household tool description warns it is not for booking an existing dog", () => {
+    expect(writeToolsSrc.toLowerCase()).toContain("not for booking an existing dog");
+  });
+});
+
 // Cross-tenant isolation, tool-layer guarantee. The hard boundary is the per-org
 // RLS policies, proven by supabase/tests/cross_tenant_isolation.sql (structural
 // over all 10 tenant tables + behavioral). These tools add no new tables, so

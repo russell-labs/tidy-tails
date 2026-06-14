@@ -31,7 +31,7 @@ export default async function AppLayout({
   }
 
   return (
-    <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col bg-canvas md:max-w-3xl lg:max-w-4xl">
+    <div className="app-shell mx-auto flex min-h-dvh w-full max-w-md flex-col bg-canvas md:max-w-3xl lg:max-w-4xl">
       <SentryOrgTag orgId={orgId} />
       <DataModeBanner />
       <AppHeader />

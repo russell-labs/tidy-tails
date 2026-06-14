@@ -79,6 +79,22 @@ body[data-tidy-sheet-open="true"] .app-bottom-nav {
 body[data-tidy-search-active="true"] .pad-bottom-nav {
   padding-bottom: calc(1rem + env(safe-area-inset-bottom));
 }
+/* Assistant surface: pin the shell to the dynamic viewport and turn the content
+   wrapper into a definite-height flex column, so the chat panel becomes a
+   definite-height flex container — its transcript scrolls INSIDE and the
+   composer + last confirm card always clear the fixed BottomNav, whatever chrome
+   (banner, header, iPhone install prompt) sits above. Scoped to the assistant
+   route via this body flag (set by AssistantChat on mount) so EVERY other
+   (body-scrolling) page keeps the default block wrapper + min-h-dvh and is byte-
+   for-byte untouched — zero blast radius. */
+body[data-tidy-assistant="true"] .app-shell {
+  height: 100dvh;
+}
+body[data-tidy-assistant="true"] .app-shell .pad-bottom-nav {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
 .sheet-bottom-room {
   padding-bottom: calc(2rem + env(safe-area-inset-bottom));
 }
