@@ -449,17 +449,58 @@ describe("propose_edit_appointment", () => {
     ).rejects.toBeInstanceOf(AgentToolError);
   });
 
-  it("refuses to edit on a one_to_one org (the gated action does not support it)", async () => {
+  it("reschedules a 1:1 visit, preserving the org's own location", async () => {
+    const oneToOneVisit = appointment({
+      id: "appt-1to1",
+      pet_id: "pet-1",
+      client_id: "client-1",
+      date: "2026-07-20",
+      time_slot: "10:00am",
+      service: "Full groom",
+      status: "booked",
+      location: "Home Studio",
+      duration_minutes: 90,
+      price: 70,
+    });
     loadOrgSettingsMock.mockResolvedValue({
       ...DEFAULT_ORG_SETTINGS,
       schedulingStyle: "one_to_one",
       locations: [{ name: "Home Studio", address: "1 Bay St" }],
     });
-    loadDatasetMock.mockResolvedValue(dataset({ appointments: [booked] }));
+    loadDatasetMock.mockResolvedValue(dataset({ appointments: [oneToOneVisit] }));
+    const proposal = (await runAgentWriteTool("propose_edit_appointment", {
+      client_id: "client-1",
+      appointment_id: "appt-1to1",
+      mode: "change",
+      date: "2026-07-21",
+    })) as EditAppointmentProposal;
+    expect(proposal.kind).toBe("edit_appointment");
+    if (proposal.mode !== "reschedule_change") throw new Error("expected reschedule_change");
+    expect(proposal.date).toBe("2026-07-21");
+    expect(proposal.location).toBe("Home Studio"); // org location preserved, not blanked
+  });
+
+  it("refuses a 1:1 edit when the location is not one of the org's locations", async () => {
+    const oneToOneVisit = appointment({
+      id: "appt-1to1",
+      pet_id: "pet-1",
+      client_id: "client-1",
+      date: "2026-07-20",
+      status: "booked",
+      service: "Full groom",
+      location: "Old Studio", // no longer an org location
+      duration_minutes: 90,
+    });
+    loadOrgSettingsMock.mockResolvedValue({
+      ...DEFAULT_ORG_SETTINGS,
+      schedulingStyle: "one_to_one",
+      locations: [{ name: "Home Studio", address: "1 Bay St" }],
+    });
+    loadDatasetMock.mockResolvedValue(dataset({ appointments: [oneToOneVisit] }));
     await expect(
       runAgentWriteTool("propose_edit_appointment", {
         client_id: "client-1",
-        appointment_id: "appt-future",
+        appointment_id: "appt-1to1",
         mode: "change",
         date: "2026-07-21",
       }),

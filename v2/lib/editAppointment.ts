@@ -34,13 +34,26 @@ export type EditAppointmentInput = {
   booking_update_message: string;
 };
 
+/**
+ * Model context for validation. Default (batched) keeps the gina/annette enum and
+ * the exact behavior the batched callers rely on. For a one_to_one org the location
+ * is validated against the org's OWN location names (server-supplied), never the
+ * enum — this is what lets the SHARED edit surface serve both models, universal-first.
+ */
+export type EditAppointmentModelContext = {
+  schedulingStyle?: "batched" | "one_to_one";
+  orgLocations?: string[];
+};
+
 export type ValidatedEditAppointment = {
   client_id: string;
   appointment_id: string;
   date: string;
   time_slot: string | null;
   service_type: ServiceType | null;
-  location: BookingLocation | null;
+  // string (not just BookingLocation) so a one_to_one org's own location name
+  // round-trips through the shared validator.
+  location: string | null;
   fee: number | null;
   tip: number | null;
   payment_method: PaymentMethod;
@@ -61,7 +74,7 @@ export type EditAppointmentUpdate = {
   date: string;
   time_slot: string | null;
   service_type: ServiceType | null;
-  location: BookingLocation | null;
+  location: string | null;
   fee: number | null;
   tip: number | null;
   net: number | null;
@@ -113,8 +126,10 @@ function parseMoney(
 export function validateEditAppointment(
   raw: Partial<EditAppointmentInput>,
   today: Date = new Date(),
+  context: EditAppointmentModelContext = {},
 ): EditAppointmentValidationResult {
   const errors: EditAppointmentErrors = {};
+  const schedulingStyle = context.schedulingStyle ?? "batched";
 
   const client_id = (raw.client_id ?? "").trim();
   const appointment_id = (raw.appointment_id ?? "").trim();
@@ -147,9 +162,18 @@ export function validateEditAppointment(
   }
 
   const locationRaw = (raw.location ?? "").trim();
-  let location: BookingLocation | null = null;
+  let location: string | null = null;
   if (locationRaw) {
-    if ((BOOKING_LOCATIONS as readonly string[]).includes(locationRaw)) {
+    if (schedulingStyle === "one_to_one") {
+      const allowed = (context.orgLocations ?? []).map((name) =>
+        name.trim().toLowerCase(),
+      );
+      if (allowed.includes(locationRaw.toLowerCase())) {
+        location = locationRaw; // preserve the operator's casing
+      } else {
+        errors.location = "Choose one of your locations.";
+      }
+    } else if ((BOOKING_LOCATIONS as readonly string[]).includes(locationRaw)) {
       location = locationRaw as BookingLocation;
     } else {
       errors.location = "Choose Gina's or Annette's.";

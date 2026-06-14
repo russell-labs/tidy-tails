@@ -18,7 +18,6 @@ import {
   BOOKING_LOCATIONS,
   bookedTimesForDate,
   SERVICE_TYPES,
-  type BookingLocation,
   type ServiceType,
 } from "@/lib/booking";
 import type { Appointment } from "@/lib/data/types";
@@ -43,6 +42,7 @@ import {
   locationLabelFromSettings,
 } from "@/lib/locationFinance";
 import type { LocationSettingsMap } from "@/lib/operatorSettings";
+import type { OrgLocation } from "@/lib/orgSettings";
 import {
   PAYMENT_METHODS,
   PAYMENT_METHOD_LABELS,
@@ -86,6 +86,8 @@ export function EditAppointment({
   writesEnabled,
   locationSettings,
   operatorName,
+  schedulingStyle = "batched",
+  orgLocations = [],
   trigger,
 }: {
   clientId: string;
@@ -100,6 +102,8 @@ export function EditAppointment({
   writesEnabled: boolean;
   locationSettings: LocationSettingsMap;
   operatorName: string;
+  schedulingStyle?: "batched" | "one_to_one";
+  orgLocations?: OrgLocation[];
   trigger?: React.ReactNode;
 }) {
   const [open, setOpen] = useState(false);
@@ -148,6 +152,8 @@ export function EditAppointment({
           writesEnabled={writesEnabled}
           locationSettings={locationSettings}
           operatorName={operatorName}
+          schedulingStyle={schedulingStyle}
+          orgLocations={orgLocations}
           onDone={close}
         />
       </Sheet>
@@ -168,6 +174,8 @@ function EditAppointmentForm({
   writesEnabled,
   locationSettings,
   operatorName,
+  schedulingStyle,
+  orgLocations,
   onDone,
 }: {
   clientId: string;
@@ -182,8 +190,11 @@ function EditAppointmentForm({
   writesEnabled: boolean;
   locationSettings: LocationSettingsMap;
   operatorName: string;
+  schedulingStyle: "batched" | "one_to_one";
+  orgLocations: OrgLocation[];
   onDone: () => void;
 }) {
+  const isOneToOne = schedulingStyle === "one_to_one";
   const [state, formAction, pending] = useActionState<
     EditAppointmentState,
     FormData
@@ -236,10 +247,12 @@ function EditAppointmentForm({
   const [serviceType, setServiceType] = useState(
     serviceCodeFromLabel(appointment.service),
   );
-  const [location, setLocation] = useState<BookingLocation | "">(
-    (appointment.location === "gina" || appointment.location === "annette"
-      ? appointment.location
-      : "") as BookingLocation | "",
+  const [location, setLocation] = useState<string>(
+    isOneToOne
+      ? appointment.location ?? ""
+      : appointment.location === "gina" || appointment.location === "annette"
+        ? appointment.location
+        : "",
   );
   const [fee, setFee] = useState(
     appointment.price != null ? String(appointment.price) : "",
@@ -341,7 +354,8 @@ function EditAppointmentForm({
     : "";
 
   useEffect(() => {
-    if (!date) return;
+    // 1:1 visits don't use the batched morning-tile availability check.
+    if (isOneToOne || !date) return;
     let cancelled = false;
     startAvailabilityTransition(() => {
       void checkBookingAvailability({
@@ -358,16 +372,18 @@ function EditAppointmentForm({
     return () => {
       cancelled = true;
     };
-  }, [appointment.id, date, serviceType, scopedAppointmentIdKey]);
+  }, [appointment.id, date, serviceType, scopedAppointmentIdKey, isOneToOne]);
 
   function applyAppointmentFields(nextAppointment: Appointment) {
     setDate(nextAppointment.date);
     setTime(nextAppointment.time_slot ?? "");
     setServiceType(serviceCodeFromLabel(nextAppointment.service));
     setLocation(
-      (nextAppointment.location === "gina" || nextAppointment.location === "annette"
-        ? nextAppointment.location
-        : "") as BookingLocation | "",
+      isOneToOne
+        ? nextAppointment.location ?? ""
+        : nextAppointment.location === "gina" || nextAppointment.location === "annette"
+          ? nextAppointment.location
+          : "",
     );
     setFee(nextAppointment.price != null ? String(nextAppointment.price) : "");
     setTip(nextAppointment.tip != null ? String(nextAppointment.tip) : "");
@@ -412,21 +428,25 @@ function EditAppointmentForm({
   }
 
   function toReview() {
-    const validation = validateEditAppointment({
-      client_id: clientId,
-      appointment_id:
-        editScope === "group" ? groupAppointments[0]?.id ?? appointment.id : targetAppointment.id,
-      date,
-      time_slot: time,
-      service_type: serviceType,
-      location,
-      fee,
-      tip,
-      payment_method: paymentMethod,
-      payment_status: paymentStatus,
-      notes,
-      salon_payout_override: salonPayoutOverride,
-    });
+    const validation = validateEditAppointment(
+      {
+        client_id: clientId,
+        appointment_id:
+          editScope === "group" ? groupAppointments[0]?.id ?? appointment.id : targetAppointment.id,
+        date,
+        time_slot: time,
+        service_type: serviceType,
+        location,
+        fee,
+        tip,
+        payment_method: paymentMethod,
+        payment_status: paymentStatus,
+        notes,
+        salon_payout_override: salonPayoutOverride,
+      },
+      new Date(),
+      { schedulingStyle, orgLocations: orgLocations.map((entry) => entry.name) },
+    );
     if (!validation.ok) {
       setErrors(validation.errors);
       return;
@@ -589,7 +609,7 @@ function EditAppointmentForm({
             />
           </Field>
           <Field label="Drop-off time" error={errors.time_slot}>
-            {date && availability ? (
+            {!isOneToOne && date && availability ? (
               <BookingTimeSlotPicker
                 slots={slots}
                 selectedTime={time}
@@ -602,7 +622,7 @@ function EditAppointmentForm({
                 }}
               />
             ) : null}
-            {date ? (
+            {!isOneToOne && date ? (
               <p
                 className={`mb-2 rounded-lg px-3 py-2 text-xs font-medium ${
                   availability?.status === "failed"
@@ -618,9 +638,15 @@ function EditAppointmentForm({
                     "Checking the full production book for open drop-off times."}
               </p>
             ) : null}
-            {bookedTimes.length > 0 ? (
+            {!isOneToOne && bookedTimes.length > 0 ? (
               <p className="mb-2 rounded-lg bg-warn-soft px-3 py-2 text-xs font-medium text-warn">
                 Already booked that day: {bookedTimes.join(", ")}
+              </p>
+            ) : null}
+            {isOneToOne ? (
+              <p className="mb-2 rounded-lg bg-canvas px-3 py-2 text-xs font-medium text-ink-soft">
+                Start time for this block. The block keeps its current length; a
+                new time is checked against the day for overlaps when you save.
               </p>
             ) : null}
             <input
@@ -650,18 +676,24 @@ function EditAppointmentForm({
           <Field label="Location" error={errors.location}>
             <select
               value={location}
-              onChange={(e) => setLocation(e.target.value as BookingLocation | "")}
+              onChange={(e) => setLocation(e.target.value)}
               className={fieldClass}
             >
               <option value="">Not set</option>
-              {BOOKING_LOCATIONS.map((code) => (
-                <option key={code} value={code}>
-                  {locationLabelFromSettings(code, locationSettings)}
-                </option>
-              ))}
+              {isOneToOne
+                ? orgLocations.map((entry) => (
+                    <option key={entry.name} value={entry.name}>
+                      {entry.name}
+                    </option>
+                  ))
+                : BOOKING_LOCATIONS.map((code) => (
+                    <option key={code} value={code}>
+                      {locationLabelFromSettings(code, locationSettings)}
+                    </option>
+                  ))}
             </select>
           </Field>
-          {editScope === "single" && location ? (
+          {!isOneToOne && editScope === "single" && location ? (
             <Field
               label="Salon payout override %"
               error={errors.salon_payout_override}

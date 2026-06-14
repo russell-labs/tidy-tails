@@ -111,6 +111,42 @@ describe("validateEditAppointment", () => {
     expect(result.errors.payment_method).toBeTruthy();
     expect(result.errors.payment_status).toBeTruthy();
   });
+
+  // Universal-first (WS4): a one_to_one org validates location against ITS OWN
+  // locations, not the gina/annette enum. Passing the model context must not
+  // change batched behavior (the cases above, with no 3rd arg, still pass).
+  it("accepts a one_to_one org location when the model context is supplied", () => {
+    const result = validateEditAppointment(
+      { ...valid, location: "Home Studio" },
+      TODAY,
+      { schedulingStyle: "one_to_one", orgLocations: ["Home Studio", "Mobile"] },
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.location).toBe("Home Studio");
+  });
+
+  it("matches a one_to_one location case-insensitively, preserving the org's casing", () => {
+    const result = validateEditAppointment(
+      { ...valid, location: "home studio" },
+      TODAY,
+      { schedulingStyle: "one_to_one", orgLocations: ["Home Studio"] },
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.location).toBe("home studio");
+  });
+
+  it("rejects a location that is not one of the one_to_one org's locations", () => {
+    const result = validateEditAppointment(
+      { ...valid, location: "gina" },
+      TODAY,
+      { schedulingStyle: "one_to_one", orgLocations: ["Home Studio"] },
+    );
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.errors.location).toBeTruthy();
+  });
 });
 
 describe("buildCancellationTextMessage", () => {

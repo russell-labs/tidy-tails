@@ -217,41 +217,36 @@ export default async function AppointmentActionPage({
             />
           ) : null}
 
-          {orgSettings.schedulingStyle === "one_to_one" ? (
-            // The batched editor (morning tiles, gina/annette locations, day-fit)
-            // does not fit 1:1 duration blocks; the 1:1 edit experience is a later
-            // step (the editAppointment action also refuses 1:1). Degrade, don't
-            // show the wrong form.
-            <div className="rounded-2xl border border-line bg-surface px-4 py-3 text-sm text-ink-soft">
-              Editing 1:1 appointments is coming in a later step. For now, you can
-              book new blocks from a client&rsquo;s page.
-            </div>
-          ) : (
-            <EditAppointment
-              clientId={client.id}
-              appointment={appointment}
-              appointments={householdAppointments}
-              groupAppointmentIds={appointmentGroup.map((candidate) => candidate.id)}
-              groupPetNames={appointmentGroupPetNames}
-              petName={pet.name}
-              ownerFirstName={client.first_name}
-              customerPhone={client.phone}
-              mode={dataMode()}
-              writesEnabled={isEditAppointmentWriteEnabled()}
-              locationSettings={settings.locationSettings}
-              operatorName={orgSettings.operatorName}
-              trigger={
-                <ActionTile
-                  title="Change or cancel appointment"
-                  detail={
-                    appointmentGroup.length > 1
-                      ? "Update or cancel this dog, or all dogs booked in this time."
-                      : "Update the date, time, service, fee, payment, notes, or cancel this booking."
-                  }
-                />
-              }
-            />
-          )}
+          {/* Universal-first (WS4): one shared edit surface for both scheduling
+              models. It adapts to the org's style + locations (passed below) —
+              the batched gina/annette form, or the 1:1 org-location + start-time
+              form — without a separate 1:1 editor. */}
+          <EditAppointment
+            clientId={client.id}
+            appointment={appointment}
+            appointments={householdAppointments}
+            groupAppointmentIds={appointmentGroup.map((candidate) => candidate.id)}
+            groupPetNames={appointmentGroupPetNames}
+            petName={pet.name}
+            ownerFirstName={client.first_name}
+            customerPhone={client.phone}
+            mode={dataMode()}
+            writesEnabled={isEditAppointmentWriteEnabled()}
+            locationSettings={settings.locationSettings}
+            operatorName={orgSettings.operatorName}
+            schedulingStyle={orgSettings.schedulingStyle}
+            orgLocations={orgSettings.locations}
+            trigger={
+              <ActionTile
+                title="Change or cancel appointment"
+                detail={
+                  appointmentGroup.length > 1
+                    ? "Update or cancel this dog, or all dogs booked in this time."
+                    : "Update the date, time, service, fee, payment, notes, or cancel this booking."
+                }
+              />
+            }
+          />
 
           <LogGroom
             client={client}
