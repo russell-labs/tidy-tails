@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { recordAuditEvent } from "@/lib/audit.server";
+import { agentOriginMetadata } from "@/lib/auditSource";
 import { bookingLocationLabel } from "@/lib/booking";
 import {
   buildDayCloseoutUpsert,
@@ -85,6 +86,7 @@ export async function saveDayCloseoutOverride(
       finalPayout: closeout.final_payout,
       calculatedPayout: closeout.calculated_payout,
       note: closeout.note,
+      ...agentOriginMetadata(formData),
     },
   });
 

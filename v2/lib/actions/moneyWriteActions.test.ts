@@ -65,12 +65,13 @@ import { createBooking } from "./appointments";
 import { markAppointmentPaid } from "./appointmentPayment";
 import { saveDailyIncome } from "./dailyIncome";
 import { saveDayCloseoutOverride } from "./dayCloseout";
-import { editAppointment } from "./editAppointment";
+import { deleteAppointment, editAppointment } from "./editAppointment";
 import { logGroom } from "./grooms";
 import { recordAuditEvent } from "@/lib/audit.server";
 import { getClientRecord, loadAppointments } from "@/lib/data/repo";
 import {
   checkGoogleCalendarAppointmentAvailability,
+  deleteAppointmentFromGoogleCalendar,
   syncAppointmentToGoogleCalendar,
 } from "@/lib/googleCalendar.server";
 import { readOperatorSettings } from "@/lib/operatorSettings.server";
@@ -1265,5 +1266,106 @@ describe("createBooking — SMS consent gate (WS0)", () => {
     expect(
       (clientsUpdate?.payload as { sms_consent_at?: unknown }).sms_consent_at,
     ).toEqual(expect.any(String));
+  });
+});
+
+// The agentic layer dispatches edits, cancels, and day-closeout overrides to
+// these SAME gated actions on Sam's confirm tap, adding audit_source=agent. Each
+// must forward source:"agent" into its audit metadata, and emit nothing when the
+// field is absent (Sam's own edits stay byte-identical).
+describe("agent-originated audit tagging (money/appointment writes)", () => {
+  const deleteCalendarMock = vi.mocked(deleteAppointmentFromGoogleCalendar);
+
+  function lastAuditMetadata(): Record<string, unknown> {
+    return (recordAuditEventMock.mock.calls.at(-1)?.[0]?.metadata ?? {}) as Record<
+      string,
+      unknown
+    >;
+  }
+
+  function editForm(overrides: Record<string, string> = {}): FormData {
+    const editDate = isoDate(14);
+    return form({
+      client_id: "client-1",
+      appointment_id: "appt-1",
+      date: editDate,
+      time_slot: "10:30am",
+      service_type: "full_groom",
+      location: "annette",
+      fee: "80",
+      tip: "12",
+      payment_method: "interac",
+      payment_status: "paid",
+      notes: "Fresh trim",
+      ...overrides,
+    });
+  }
+
+  function seedEditRecord(): void {
+    getClientRecordMock.mockResolvedValue(
+      clientRecord({
+        appointments: [
+          appointment({ date: isoDate(14), time_slot: "10:30am", service: "Full groom", price: 70, tip: 5 }),
+        ],
+      }),
+    );
+    queueSupabaseResult({ data: appointmentRow({ date: isoDate(14), fee: 80, tip: 12 }), error: null });
+  }
+
+  it("editAppointment tags source=agent only when audit_source=agent", async () => {
+    vi.stubEnv("TIDYTAILS_ENABLE_EDIT_APPOINTMENT_WRITE", "on");
+
+    seedEditRecord();
+    await editAppointment({ status: "idle" }, editForm({ audit_source: "agent" }));
+    expect(lastAuditMetadata()).toMatchObject({ source: "agent" });
+
+    recordAuditEventMock.mockClear();
+    seedEditRecord();
+    await editAppointment({ status: "idle" }, editForm());
+    expect(lastAuditMetadata()).not.toHaveProperty("source");
+  });
+
+  it("saveDayCloseoutOverride tags source=agent only when audit_source=agent", async () => {
+    vi.stubEnv("TIDYTAILS_ENABLE_DAY_CLOSEOUT_WRITE", "on");
+
+    await saveDayCloseoutOverride(
+      { status: "idle" },
+      form({ date: isoDate(0), location: "gina", final_payout: "85.50", calculated_payout: "84.63", note: "x", audit_source: "agent" }),
+    );
+    expect(lastAuditMetadata()).toMatchObject({ source: "agent" });
+
+    recordAuditEventMock.mockClear();
+    await saveDayCloseoutOverride(
+      { status: "idle" },
+      form({ date: isoDate(0), location: "gina", final_payout: "85.50", calculated_payout: "84.63", note: "x" }),
+    );
+    expect(lastAuditMetadata()).not.toHaveProperty("source");
+  });
+
+  it("deleteAppointment (the agent cancel path) tags source=agent only when audit_source=agent", async () => {
+    vi.stubEnv("TIDYTAILS_ENABLE_EDIT_APPOINTMENT_WRITE", "on");
+    deleteCalendarMock.mockResolvedValue({ status: "skipped", message: "" } as never);
+
+    // deleteAppointment redirect()s on success (throws in tests) — the audit fires
+    // before the redirect, so catch it and inspect the recorded event.
+    const cancel = (auditSource?: string) =>
+      deleteAppointment(
+        { status: "idle" },
+        form({ client_id: "client-1", appointment_id: "appt-1", ...(auditSource ? { audit_source: auditSource } : {}) }),
+      ).catch(() => undefined);
+
+    getClientRecordMock.mockResolvedValue(
+      clientRecord({ appointments: [appointment({ id: "appt-1", date: isoDate(14), status: "booked" })] }),
+    );
+    await cancel("agent");
+    expect(recordAuditEventMock.mock.calls.some(([e]) => e.eventType === "appointment.deleted")).toBe(true);
+    expect(lastAuditMetadata()).toMatchObject({ source: "agent" });
+
+    recordAuditEventMock.mockClear();
+    getClientRecordMock.mockResolvedValue(
+      clientRecord({ appointments: [appointment({ id: "appt-1", date: isoDate(14), status: "booked" })] }),
+    );
+    await cancel();
+    expect(lastAuditMetadata()).not.toHaveProperty("source");
   });
 });

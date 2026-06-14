@@ -30,6 +30,15 @@ vi.mock("./appointments", () => ({ createBooking: vi.fn() }));
 vi.mock("./oneToOneBooking", () => ({ createOneToOneBooking: vi.fn() }));
 vi.mock("./appointmentPayment", () => ({ markAppointmentPaid: vi.fn() }));
 vi.mock("./grooms", () => ({ logGroom: vi.fn() }));
+vi.mock("./intake", () => ({ saveIntake: vi.fn() }));
+vi.mock("./pets", () => ({ addPet: vi.fn() }));
+vi.mock("./editClient", () => ({ editClient: vi.fn() }));
+vi.mock("./editPet", () => ({ editPet: vi.fn() }));
+vi.mock("./editAppointment", () => ({ editAppointment: vi.fn(), deleteAppointment: vi.fn() }));
+vi.mock("./deleteClient", () => ({ deleteClient: vi.fn() }));
+vi.mock("./dayCloseout", () => ({ saveDayCloseoutOverride: vi.fn() }));
+vi.mock("./reminders", () => ({ prepareReminder: vi.fn() }));
+vi.mock("./inbox", () => ({ sendInboxSmsReply: vi.fn() }));
 
 const { isAgentEnabled } = await import("@/lib/writeGate");
 const { getCurrentUser } = await import("@/lib/supabase/server");
@@ -39,6 +48,15 @@ const { createBooking } = await import("./appointments");
 const { createOneToOneBooking } = await import("./oneToOneBooking");
 const { markAppointmentPaid } = await import("./appointmentPayment");
 const { logGroom } = await import("./grooms");
+const { saveIntake } = await import("./intake");
+const { addPet } = await import("./pets");
+const { editClient } = await import("./editClient");
+const { editPet } = await import("./editPet");
+const { editAppointment, deleteAppointment } = await import("./editAppointment");
+const { deleteClient } = await import("./deleteClient");
+const { saveDayCloseoutOverride } = await import("./dayCloseout");
+const { prepareReminder } = await import("./reminders");
+const { sendInboxSmsReply } = await import("./inbox");
 const { confirmAgentProposal } = await import("./agentConfirm");
 
 const isAgentEnabledMock = vi.mocked(isAgentEnabled);
@@ -49,6 +67,16 @@ const createBookingMock = vi.mocked(createBooking);
 const createOneToOneBookingMock = vi.mocked(createOneToOneBooking);
 const markAppointmentPaidMock = vi.mocked(markAppointmentPaid);
 const logGroomMock = vi.mocked(logGroom);
+const saveIntakeMock = vi.mocked(saveIntake);
+const addPetMock = vi.mocked(addPet);
+const editClientMock = vi.mocked(editClient);
+const editPetMock = vi.mocked(editPet);
+const editAppointmentMock = vi.mocked(editAppointment);
+const deleteAppointmentMock = vi.mocked(deleteAppointment);
+const deleteClientMock = vi.mocked(deleteClient);
+const saveDayCloseoutOverrideMock = vi.mocked(saveDayCloseoutOverride);
+const prepareReminderMock = vi.mocked(prepareReminder);
+const sendInboxSmsReplyMock = vi.mocked(sendInboxSmsReply);
 
 const BOOK: BookAppointmentProposal = {
   kind: "book_appointment",
@@ -252,5 +280,311 @@ describe("confirmAgentProposal — log groom", () => {
     expect(form.get("payment_status")).toBe("paid");
     expect(form.get("notes")).toBe("Used #4 blade");
     expect(form.get("audit_source")).toBe("agent");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 4 — every new proposal kind dispatches to its EXISTING gated action,
+// with the right FormData and the agent-origin audit tag, and maps the action's
+// state back. The model never reaches here — only Sam's confirm tap does.
+// ---------------------------------------------------------------------------
+
+import type {
+  AddHouseholdProposal,
+  AddPetProposal,
+  DeleteHouseholdProposal,
+  EditAppointmentProposal,
+  EditHouseholdProposal,
+  EditPetProposal,
+  LogDailyIncomeProposal,
+  SendTextProposal,
+} from "@/lib/agent/proposals";
+
+const ADD_HOUSEHOLD: AddHouseholdProposal = {
+  kind: "add_household",
+  ownerName: "Dana Reed",
+  firstName: "Dana",
+  lastName: "Reed",
+  phone: "705-555-0190",
+  secondaryContactName: null,
+  secondaryCell: null,
+  landline: null,
+  email: "dana@example.com",
+  address: null,
+  notes: null,
+  smsConsent: true,
+  pet: {
+    name: "Biscuit",
+    breed: "Beagle",
+    size: "medium",
+    allergies: false,
+    allergiesDetail: null,
+    vaccinationState: "yes",
+    vaccinationDetail: "Rabies current",
+    dateOfBirth: null,
+    groomingNotes: null,
+    typicalFee: 72,
+  },
+};
+
+const ADD_PET: AddPetProposal = {
+  kind: "add_pet",
+  clientId: "client-1",
+  ownerName: "Mary Jones",
+  name: "Maple",
+  breed: "Poodle",
+  size: "medium",
+  allergies: true,
+  allergiesDetail: "Chicken",
+  groomingNotes: null,
+  typicalFee: 82,
+};
+
+const EDIT_HOUSEHOLD: EditHouseholdProposal = {
+  kind: "edit_household",
+  clientId: "client-1",
+  ownerName: "Mary Jones",
+  firstName: "Mary",
+  lastName: "Jones",
+  phone: "705-555-7777",
+  secondaryContactName: "Pat",
+  secondaryCell: "705-555-0112",
+  landline: null,
+  email: "mary@example.com",
+  address: "10 Main Street",
+  notes: null,
+  changes: ["phone → 705-555-7777"],
+};
+
+const EDIT_PET: EditPetProposal = {
+  kind: "edit_pet",
+  clientId: "client-1",
+  petId: "pet-1",
+  petName: "Kiwi",
+  name: "Kiwi",
+  breed: "Terrier",
+  size: "small",
+  color: "Black",
+  dateOfBirth: null,
+  allergies: true,
+  allergiesDetail: "Oatmeal only",
+  groomingNotes: "Use #5 blade",
+  typicalFee: 75,
+  changes: ["grooming notes → Use #5 blade"],
+};
+
+const EDIT_APPT_CHANGE: EditAppointmentProposal = {
+  kind: "edit_appointment",
+  mode: "reschedule_change",
+  clientId: "client-1",
+  appointmentId: "appt-1",
+  ownerName: "Mary Jones",
+  petName: "Kiwi",
+  date: "2026-07-21",
+  timeSlot: "10:30am",
+  serviceType: "full_groom",
+  service: "Full groom",
+  location: "gina",
+  locationLabel: "Tidy Tails (Gina)",
+  fee: 70,
+  tip: null,
+  paymentMethod: "cash",
+  paymentStatus: "paid",
+  notes: "Trim face",
+  salonPayoutOverride: 18,
+  changes: ["date → 2026-07-21"],
+};
+
+const EDIT_APPT_CANCEL: EditAppointmentProposal = {
+  kind: "edit_appointment",
+  mode: "cancel",
+  clientId: "client-1",
+  appointmentId: "appt-1",
+  ownerName: "Mary Jones",
+  petName: "Kiwi",
+  date: "2026-07-21",
+  service: "Full groom",
+};
+
+const DELETE_HOUSEHOLD: DeleteHouseholdProposal = {
+  kind: "delete_household",
+  clientId: "client-1",
+  ownerName: "Mary Jones",
+  petNames: "Kiwi",
+  petCount: 1,
+  appointmentCount: 0,
+  hasHistory: false,
+};
+
+const LOG_DAILY_INCOME: LogDailyIncomeProposal = {
+  kind: "log_daily_income",
+  date: "2026-07-12",
+  location: "gina",
+  locationLabel: "Tidy Tails (Gina)",
+  finalPayout: 240,
+  calculatedPayout: 168,
+  note: "Paid by salon — kept 100%.",
+  paidBySalon: true,
+};
+
+const SEND_REMINDER: SendTextProposal = {
+  kind: "send_text",
+  mode: "reminder",
+  clientId: "client-1",
+  appointmentId: "appt-1",
+  recipientLabel: "Mary Jones",
+  toNumber: "705-555-0101",
+  context: "Full groom · Jul 12 · 9:00am",
+  message: "Hi Mary, reminder Kiwi is booked Saturday 9am.",
+};
+
+const SEND_REPLY: SendTextProposal = {
+  kind: "send_text",
+  mode: "reply",
+  smsId: "sms-1",
+  recipientLabel: "Mary Jones",
+  message: "Yes, 2pm works — see you then!",
+};
+
+describe("confirmAgentProposal — add household / pet", () => {
+  it("dispatches add_household to saveIntake with owner + pet fields, agent-tagged", async () => {
+    saveIntakeMock.mockResolvedValue({ status: "saved", summary: { ownerName: "Dana Reed" } } as never);
+    const result = await confirmAgentProposal(ADD_HOUSEHOLD);
+    expect(result.status).toBe("saved");
+    const form = saveIntakeMock.mock.calls[0][1] as FormData;
+    expect(form.get("first_name")).toBe("Dana");
+    expect(form.get("phone")).toBe("705-555-0190");
+    expect(form.get("pet_name")).toBe("Biscuit");
+    expect(form.get("allergy_state")).toBe("no");
+    expect(form.get("vaccination_state")).toBe("yes");
+    expect(form.get("sms_consent")).toBe("on");
+    expect(form.get("typical_fee")).toBe("72");
+    expect(form.get("audit_source")).toBe("agent");
+  });
+
+  it("dispatches add_pet to addPet, agent-tagged", async () => {
+    addPetMock.mockResolvedValue({ status: "saved", summary: { petName: "Maple", ownerName: "Mary Jones" } } as never);
+    const result = await confirmAgentProposal(ADD_PET);
+    expect(result.status).toBe("saved");
+    const form = addPetMock.mock.calls[0][1] as FormData;
+    expect(form.get("client_id")).toBe("client-1");
+    expect(form.get("name")).toBe("Maple");
+    expect(form.get("allergy_state")).toBe("yes");
+    expect(form.get("allergies_detail")).toBe("Chicken");
+    expect(form.get("audit_source")).toBe("agent");
+  });
+});
+
+describe("confirmAgentProposal — edit household / pet", () => {
+  it("dispatches edit_household to editClient with the full merged contact, agent-tagged", async () => {
+    editClientMock.mockResolvedValue({ status: "saved", summary: { ownerName: "Mary Jones" } } as never);
+    const result = await confirmAgentProposal(EDIT_HOUSEHOLD);
+    expect(result.status).toBe("saved");
+    const form = editClientMock.mock.calls[0][1] as FormData;
+    expect(form.get("client_id")).toBe("client-1");
+    expect(form.get("phone")).toBe("705-555-7777");
+    expect(form.get("secondary_contact_name")).toBe("Pat");
+    expect(form.get("audit_source")).toBe("agent");
+  });
+
+  it("dispatches edit_pet to editPet with the full merged profile, agent-tagged", async () => {
+    editPetMock.mockResolvedValue({ status: "saved", summary: { petName: "Kiwi", ownerName: "Mary Jones" } } as never);
+    const result = await confirmAgentProposal(EDIT_PET);
+    expect(result.status).toBe("saved");
+    const form = editPetMock.mock.calls[0][1] as FormData;
+    expect(form.get("pet_id")).toBe("pet-1");
+    expect(form.get("grooming_notes")).toBe("Use #5 blade");
+    expect(form.get("allergy_state")).toBe("yes");
+    expect(form.get("audit_source")).toBe("agent");
+  });
+});
+
+describe("confirmAgentProposal — edit appointment", () => {
+  it("dispatches a reschedule/change to editAppointment with merged fields, agent-tagged", async () => {
+    editAppointmentMock.mockResolvedValue({ status: "saved", summary: { petName: "Kiwi", ownerName: "Mary Jones" } } as never);
+    const result = await confirmAgentProposal(EDIT_APPT_CHANGE);
+    expect(result.status).toBe("saved");
+    const form = editAppointmentMock.mock.calls[0][1] as FormData;
+    expect(form.get("appointment_id")).toBe("appt-1");
+    expect(form.get("date")).toBe("2026-07-21");
+    expect(form.get("service_type")).toBe("full_groom");
+    expect(form.get("location")).toBe("gina");
+    expect(form.get("salon_payout_override")).toBe("18");
+    expect(form.get("send_booking_update_text")).toBeFalsy(); // agent edit never auto-texts here
+    expect(form.get("audit_source")).toBe("agent");
+    expect(deleteAppointmentMock).not.toHaveBeenCalled();
+  });
+
+  it("dispatches a cancel to deleteAppointment, agent-tagged", async () => {
+    deleteAppointmentMock.mockResolvedValue({ status: "deleted", summary: { petName: "Kiwi" }, message: "Removed." } as never);
+    const result = await confirmAgentProposal(EDIT_APPT_CANCEL);
+    expect(result.status).toBe("saved");
+    const form = deleteAppointmentMock.mock.calls[0][1] as FormData;
+    expect(form.get("appointment_id")).toBe("appt-1");
+    expect(form.get("send_cancellation_text")).toBeFalsy(); // never auto-texts on an agent cancel
+    expect(form.get("audit_source")).toBe("agent");
+    expect(editAppointmentMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("confirmAgentProposal — delete household (destructive)", () => {
+  it("dispatches to deleteClient, agent-tagged", async () => {
+    deleteClientMock.mockResolvedValue({ status: "deleted", ownerName: "Mary Jones", message: "Deleted." } as never);
+    const result = await confirmAgentProposal(DELETE_HOUSEHOLD);
+    expect(result.status).toBe("saved");
+    const form = deleteClientMock.mock.calls[0][1] as FormData;
+    expect(form.get("client_id")).toBe("client-1");
+    expect(form.get("audit_source")).toBe("agent");
+  });
+
+  it("passes a blocked (error) delete straight through without claiming success", async () => {
+    deleteClientMock.mockResolvedValue({ status: "error", message: "This household has groom history and can't be deleted." } as never);
+    const result = await confirmAgentProposal(DELETE_HOUSEHOLD);
+    expect(result.status).toBe("error");
+    expect(result.message).toContain("history");
+  });
+});
+
+describe("confirmAgentProposal — log daily income", () => {
+  it("dispatches to saveDayCloseoutOverride with the override fields, agent-tagged", async () => {
+    saveDayCloseoutOverrideMock.mockResolvedValue({ status: "saved", message: "Day closeout saved." } as never);
+    const result = await confirmAgentProposal(LOG_DAILY_INCOME);
+    expect(result.status).toBe("saved");
+    const form = saveDayCloseoutOverrideMock.mock.calls[0][1] as FormData;
+    expect(form.get("date")).toBe("2026-07-12");
+    expect(form.get("location")).toBe("gina");
+    expect(form.get("final_payout")).toBe("240");
+    expect(form.get("note")).toContain("salon");
+    expect(form.get("audit_source")).toBe("agent");
+  });
+});
+
+describe("confirmAgentProposal — send text (never auto-sends)", () => {
+  it("dispatches a reminder to prepareReminder with the drafted message + number", async () => {
+    prepareReminderMock.mockResolvedValue({ status: "sent", summary: {} } as never);
+    const result = await confirmAgentProposal(SEND_REMINDER);
+    expect(result.status).toBe("saved");
+    const form = prepareReminderMock.mock.calls[0][1] as FormData;
+    expect(form.get("client_id")).toBe("client-1");
+    expect(form.get("appointment_id")).toBe("appt-1");
+    expect(form.get("to_number")).toBe("705-555-0101");
+    expect(form.get("message")).toBe(SEND_REMINDER.message);
+  });
+
+  it("dispatches a reply to sendInboxSmsReply with the sms_id + drafted message", async () => {
+    sendInboxSmsReplyMock.mockResolvedValue({ status: "sent", message: "Reply sent." } as never);
+    const result = await confirmAgentProposal(SEND_REPLY);
+    expect(result.status).toBe("saved");
+    const form = sendInboxSmsReplyMock.mock.calls[0][1] as FormData;
+    expect(form.get("sms_id")).toBe("sms-1");
+    expect(form.get("message")).toBe(SEND_REPLY.message);
+  });
+
+  it("does not call ANY send action just by constructing the proposal (send only on dispatch)", async () => {
+    // Sanity: dispatch is the only path that calls a send action; a different kind never does.
+    saveDayCloseoutOverrideMock.mockResolvedValue({ status: "saved", message: "ok" } as never);
+    await confirmAgentProposal(LOG_DAILY_INCOME);
+    expect(prepareReminderMock).not.toHaveBeenCalled();
+    expect(sendInboxSmsReplyMock).not.toHaveBeenCalled();
   });
 });

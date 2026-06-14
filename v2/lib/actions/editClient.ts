@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { recordAuditEvent } from "@/lib/audit.server";
+import { agentOriginMetadata } from "@/lib/auditSource";
 import { dataMode, getClientRecord } from "@/lib/data/repo";
 import { createServerSupabase, getCurrentUser } from "@/lib/supabase/server";
 import { isEditClientWriteEnabled } from "@/lib/writeGate";
@@ -101,6 +102,7 @@ export async function editClient(
     eventType: "client.updated",
     clientId: client.client_id,
     summary: `Edited household ${summary.ownerName}.`,
+    metadata: { ...agentOriginMetadata(formData) },
   });
   return { status: "saved", summary };
 }

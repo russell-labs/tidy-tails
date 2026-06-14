@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { recordAuditEvent } from "@/lib/audit.server";
+import { agentOriginMetadata } from "@/lib/auditSource";
 import { dataMode, getClientRecord, requireOrgId } from "@/lib/data/repo";
 import { createServerSupabase, getCurrentUser } from "@/lib/supabase/server";
 import { isAddPetWriteEnabled } from "@/lib/writeGate";
@@ -104,7 +105,7 @@ export async function addPet(
     eventType: "pet.created",
     clientId: pet.client_id,
     summary: `Added pet ${summary.petName} to ${summary.ownerName}.`,
-    metadata: { fee: summary.typicalFee },
+    metadata: { fee: summary.typicalFee, ...agentOriginMetadata(formData) },
   });
   return { status: "saved", summary };
 }

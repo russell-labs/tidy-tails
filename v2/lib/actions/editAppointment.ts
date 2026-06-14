@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { recordAuditEvent } from "@/lib/audit.server";
+import { agentOriginMetadata } from "@/lib/auditSource";
 import { dataMode, getClientRecord, loadAppointments } from "@/lib/data/repo";
 import { mapAppointmentRow, serviceLabel } from "@/lib/data/live";
 import type { Appointment } from "@/lib/data/types";
@@ -388,6 +389,7 @@ export async function editAppointment(
       paymentMethod: summary.paymentMethod,
       paymentStatus: summary.paymentStatus,
       calendarStatus: summary.calendar?.status,
+      ...agentOriginMetadata(formData),
     },
   });
   let bookingUpdateText: AppointmentTextSend | undefined;
@@ -542,6 +544,7 @@ export async function deleteAppointment(
       service: summary.service,
       fee: summary.fee,
       calendarStatus: calendar?.status,
+      ...agentOriginMetadata(formData),
     },
   });
   let cancellationText: AppointmentTextSend = {

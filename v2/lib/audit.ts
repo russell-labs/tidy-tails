@@ -31,7 +31,8 @@ export type AuditEventType =
   | "google_calendar.connected"
   | "google_calendar.disconnected"
   | "google_calendar.duration_repaired"
-  | "google_calendar.sync_failed";
+  | "google_calendar.sync_failed"
+  | "agent.feedback";
 
 export type AuditEvent = {
   id: string;
@@ -83,6 +84,10 @@ const SAFE_METADATA_KEYS = new Set([
   "templateKey",
   "tip",
   "updated",
+  // Agentic-layer feedback (thumbs up/down on an assistant answer).
+  "rating",
+  "question",
+  "toolsUsed",
 ]);
 
 const LABELS: Record<AuditEventType, string> = {
@@ -117,6 +122,7 @@ const LABELS: Record<AuditEventType, string> = {
   "google_calendar.disconnected": "Disconnected calendar",
   "google_calendar.duration_repaired": "Repaired calendar",
   "google_calendar.sync_failed": "Calendar sync failed",
+  "agent.feedback": "Rated assistant answer",
 };
 
 export function buildAuditEventInsert(input: AuditEventInput) {

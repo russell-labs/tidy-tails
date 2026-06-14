@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { recordAuditEvent } from "@/lib/audit.server";
+import { agentOriginMetadata } from "@/lib/auditSource";
 import { dataMode, getClientRecord } from "@/lib/data/repo";
 import { fullName } from "@/lib/format";
 import { canDeleteHousehold } from "@/lib/householdLifecycle";
@@ -109,6 +110,7 @@ export async function deleteClient(
     eventType: "client.deleted",
     clientId,
     summary: `Deleted household ${ownerName}.`,
+    metadata: { ...agentOriginMetadata(formData) },
   });
 
   return {
