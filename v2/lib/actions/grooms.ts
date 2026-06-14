@@ -25,6 +25,7 @@ import { dataMode, getClientRecord, requireOrgId } from "@/lib/data/repo";
 import { serviceLabel } from "@/lib/data/live";
 import { createServerSupabase, getCurrentUser } from "@/lib/supabase/server";
 import { isLogGroomWriteEnabled } from "@/lib/writeGate";
+import { agentOriginMetadata } from "@/lib/auditSource";
 import { findOwnedPet } from "@/lib/booking";
 import {
   buildGroomInsert,
@@ -179,6 +180,7 @@ export async function logGroom(
       paymentMethod: summary.paymentMethod,
       paymentStatus: summary.paymentStatus,
       status: "completed",
+      ...agentOriginMetadata(formData),
     },
   });
   return { status: "saved", summary };

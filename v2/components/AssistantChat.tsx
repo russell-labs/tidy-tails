@@ -19,7 +19,13 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { AgentTurn } from "@/lib/agent/runAgent";
+import type { AgentProposal } from "@/lib/agent/proposals";
+import { confirmAgentProposal } from "@/lib/actions/agentConfirm";
 import { AssistantStatus, type AssistantStatusPhase } from "@/components/AssistantStatus";
+import {
+  AssistantConfirmCard,
+  type ConfirmCardStatus,
+} from "@/components/AssistantConfirmCard";
 import {
   MAX_RECORDING_MS,
   detectVoiceInputSupport,
@@ -37,7 +43,16 @@ import {
 type Entry =
   | { kind: "user"; text: string }
   | { kind: "assistant"; text: string; toolsUsed: string[] }
-  | { kind: "error"; text: string };
+  | { kind: "error"; text: string }
+  // A prepared write awaiting Sam's confirm tap. The model never executes it;
+  // Confirm calls the gated confirm action, Cancel writes nothing.
+  | {
+      kind: "proposal";
+      id: number;
+      proposal: AgentProposal;
+      status: ConfirmCardStatus;
+      message?: string;
+    };
 
 /** The in-flight live state shown while a turn streams (or while listening / speaking). */
 type LiveStatus = { phase: AssistantStatusPhase; toolName?: string };
@@ -46,7 +61,7 @@ type StreamEvent =
   | { type: "transcript"; text: string }
   | { type: "thinking" }
   | { type: "tool"; name: string }
-  | { type: "done"; answer: string; toolsUsed?: string[] }
+  | { type: "done"; answer: string; toolsUsed?: string[]; proposal?: AgentProposal }
   | { type: "error"; message: string };
 
 const SUGGESTIONS = [
@@ -73,6 +88,8 @@ export function AssistantChat() {
   const chunksRef = useRef<BlobPart[]>([]);
   const recordTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const speakerRef = useRef<Speaker | null>(null);
+  // Monotonic id for confirm-card entries so a confirm/cancel updates the right one.
+  const proposalIdRef = useRef(0);
   // Read the latest mute state inside async stream handlers without re-binding them.
   const speakEnabledRef = useRef(speakEnabled);
   speakEnabledRef.current = speakEnabled;
@@ -127,10 +144,26 @@ export function AssistantChat() {
       setStatus({ phase: "tool", toolName: event.name });
     } else if (event.type === "done") {
       const answer = event.answer ?? "";
-      setEntries((current) => [
-        ...current,
-        { kind: "assistant", text: answer, toolsUsed: event.toolsUsed ?? [] },
-      ]);
+      setEntries((current) => {
+        const next: Entry[] = [...current];
+        // Show the assistant's words when it said any (a propose turn may be silent).
+        if (answer.trim()) {
+          next.push({ kind: "assistant", text: answer, toolsUsed: event.toolsUsed ?? [] });
+        } else if (!event.proposal) {
+          next.push({ kind: "assistant", text: answer, toolsUsed: event.toolsUsed ?? [] });
+        }
+        // A prepared write → a confirm card. Voice and typed turns both land here,
+        // so a voice-initiated write still surfaces the card (never auto-runs).
+        if (event.proposal) {
+          next.push({
+            kind: "proposal",
+            id: (proposalIdRef.current += 1),
+            proposal: event.proposal,
+            status: "pending",
+          });
+        }
+        return next;
+      });
       if (speak && speakerRef.current && answer.trim()) {
         setStatus({ phase: "speaking" });
         speakerRef.current.speak(answer, { onEnd: () => setStatus(null) });
@@ -218,6 +251,38 @@ export function AssistantChat() {
         entry.kind === "user" || entry.kind === "assistant",
       )
       .map((entry) => ({ role: entry.kind, text: entry.text }));
+  }
+
+  function updateProposal(
+    id: number,
+    patch: { status: ConfirmCardStatus; message?: string },
+  ) {
+    setEntries((current) =>
+      current.map((entry) =>
+        entry.kind === "proposal" && entry.id === id ? { ...entry, ...patch } : entry,
+      ),
+    );
+  }
+
+  // Confirm tap → the ONLY write path. Calls the gated confirm action and shows
+  // its result. The card is replaced by its terminal state; it can't re-fire.
+  async function onConfirmProposal(id: number, proposal: AgentProposal) {
+    updateProposal(id, { status: "confirming" });
+    try {
+      const result = await confirmAgentProposal(proposal);
+      updateProposal(id, { status: result.status, message: result.message });
+    } catch {
+      updateProposal(id, {
+        status: "error",
+        message: "That action couldn't be completed. Nothing was saved.",
+      });
+    }
+    scrollToEnd();
+  }
+
+  // Cancel tap → writes NOTHING. It only dismisses the card; no action is called.
+  function onCancelProposal(id: number) {
+    updateProposal(id, { status: "cancelled" });
   }
 
   function send(text: string) {
@@ -376,9 +441,21 @@ export function AssistantChat() {
           </div>
         ) : null}
 
-        {entries.map((entry, index) => (
-          <Bubble key={index} entry={entry} />
-        ))}
+        {entries.map((entry, index) =>
+          entry.kind === "proposal" ? (
+            <div key={index} className="flex justify-start">
+              <AssistantConfirmCard
+                proposal={entry.proposal}
+                status={entry.status}
+                message={entry.message}
+                onConfirm={() => onConfirmProposal(entry.id, entry.proposal)}
+                onCancel={() => onCancelProposal(entry.id)}
+              />
+            </div>
+          ) : (
+            <Bubble key={index} entry={entry} />
+          ),
+        )}
 
         {status ? <AssistantStatus phase={status.phase} toolName={status.toolName} /> : null}
         <div ref={endRef} />
@@ -450,7 +527,7 @@ export function AssistantChat() {
   );
 }
 
-function Bubble({ entry }: { entry: Entry }) {
+function Bubble({ entry }: { entry: Exclude<Entry, { kind: "proposal" }> }) {
   if (entry.kind === "user") {
     return (
       <div className="flex justify-end">

@@ -4,8 +4,11 @@
 // audio is POSTed here as multipart/form-data. This route transcribes it
 // SERVER-SIDE with Gemini (the iPhone Safari Web Speech API is too unreliable to
 // trust on-device), then runs the resulting TEXT through the exact same
-// read-only `runAgent` pipeline as a typed question. Voice adds an input mode and
-// nothing else — there is still no write/send tool anywhere in this path.
+// same `runAgent` pipeline as a typed question. Voice adds an input mode and
+// nothing else: a voice turn can PREPARE a write exactly as a typed turn can, but
+// the route still only proposes — the actual write happens later, on Sam's
+// confirm tap, through the separate confirm action. No write/send action is
+// imported or called anywhere in this path.
 //
 // SAFETY: this is a THIRD entry point into the agent, so it re-applies the SAME
 // gate and request scope as the askAgent action and the stream route — never
@@ -145,6 +148,10 @@ export async function POST(request: Request): Promise<Response> {
           type: "done",
           answer: result.text,
           toolsUsed: Array.from(new Set(result.toolCalls.map((call) => call.name))),
+          // A voice-initiated turn may PREPARE a write (book/tip/log). The route
+          // never executes it — the proposal rides back so the UI surfaces the
+          // same confirm card a typed turn would. Voice does not bypass confirm.
+          proposal: result.proposal,
         });
       } catch (error) {
         write({ type: "error", message: friendlyMessage(error) });

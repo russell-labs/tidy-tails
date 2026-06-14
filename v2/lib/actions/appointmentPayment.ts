@@ -14,6 +14,7 @@ import {
 import { scheduledAppointmentGroupFor } from "@/lib/schedule";
 import { createServerSupabase, getCurrentUser } from "@/lib/supabase/server";
 import { isEditAppointmentWriteEnabled } from "@/lib/writeGate";
+import { agentOriginMetadata } from "@/lib/auditSource";
 
 export type AppointmentPaymentState =
   | { status: "idle" }
@@ -144,6 +145,7 @@ export async function markAppointmentPaid(
       paidAmount,
       tip: allocation.updates.reduce((sum, update) => sum + update.tip, 0),
       date: appointment.date,
+      ...agentOriginMetadata(formData),
     },
   });
 

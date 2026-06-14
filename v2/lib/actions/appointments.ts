@@ -29,6 +29,7 @@ import {
 import { mapAppointmentRow, serviceLabel } from "@/lib/data/live";
 import { createServerSupabase, getCurrentUser } from "@/lib/supabase/server";
 import { isAddAppointmentWriteEnabled } from "@/lib/writeGate";
+import { agentOriginMetadata } from "@/lib/auditSource";
 import { loadOrgSettings } from "@/lib/orgSettings.server";
 import {
   checkGoogleCalendarAppointmentAvailability,
@@ -417,6 +418,7 @@ export async function createBooking(
       appointmentIds: savedAppointments.map((appointment) => appointment.id),
       calendarStatus: summary.calendar?.status,
       status: "booked",
+      ...agentOriginMetadata(formData),
     },
   });
   if (summary.bookingTextSend?.status === "sent") {

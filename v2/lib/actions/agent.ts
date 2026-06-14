@@ -17,6 +17,7 @@ import {
   AgentNotConfiguredError,
   type AgentTurn,
 } from "@/lib/agent/runAgent";
+import type { AgentProposal } from "@/lib/agent/proposals";
 
 export type AgentChatState = {
   status: "answered" | "error";
@@ -24,6 +25,12 @@ export type AgentChatState = {
   answer?: string;
   /** Names of the read tools the agent used this turn (transparency only). */
   toolsUsed?: string[];
+  /**
+   * A prepared write awaiting the operator's confirm, when this turn proposed
+   * one. The agent never executes it — the UI renders a confirm card and the
+   * separate confirm action performs the (gated) write on her tap.
+   */
+  proposal?: AgentProposal;
   /** User-facing error text, when status is "error". */
   message?: string;
 };
@@ -62,6 +69,7 @@ export async function askAgent(
       status: "answered",
       answer: result.text,
       toolsUsed: Array.from(new Set(result.toolCalls.map((call) => call.name))),
+      proposal: result.proposal,
     };
   } catch (error) {
     if (error instanceof AgentNotConfiguredError) {

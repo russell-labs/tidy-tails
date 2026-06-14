@@ -1021,6 +1021,55 @@ describe("logGroom", () => {
     ]);
   });
 
+  it("records the audit as agent-originated when audit_source=agent (and not otherwise)", async () => {
+    const groomDate = isoDate(-1);
+
+    // Agent-initiated: the audit row carries source:"agent".
+    vi.stubEnv("TIDYTAILS_ENABLE_LOG_GROOM_WRITE", "on");
+    getClientRecordMock.mockResolvedValue(
+      clientRecord({ appointments: [appointment({ id: "b1", date: groomDate, status: "booked" })] }),
+    );
+    await logGroom(
+      { status: "idle" },
+      form({
+        client_id: "client-1",
+        pet_id: "pet-1",
+        date: groomDate,
+        service_type: "full_groom",
+        fee: "70",
+        payment_method: "cash",
+        payment_status: "paid",
+        audit_source: "agent",
+      }),
+    );
+    expect(recordAuditEventMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        eventType: "groom.logged",
+        metadata: expect.objectContaining({ source: "agent" }),
+      }),
+    );
+
+    // Sam's normal submission (no field): the audit metadata has NO source key.
+    recordAuditEventMock.mockClear();
+    getClientRecordMock.mockResolvedValue(
+      clientRecord({ appointments: [appointment({ id: "b2", date: groomDate, status: "booked" })] }),
+    );
+    await logGroom(
+      { status: "idle" },
+      form({
+        client_id: "client-1",
+        pet_id: "pet-1",
+        date: groomDate,
+        service_type: "full_groom",
+        fee: "70",
+        payment_method: "cash",
+        payment_status: "paid",
+      }),
+    );
+    const metadata = recordAuditEventMock.mock.calls.at(-1)?.[0]?.metadata ?? {};
+    expect(metadata).not.toHaveProperty("source");
+  });
+
   it("returns gated and writes nothing when the log-groom gate is not exactly on", async () => {
     vi.stubEnv("TIDYTAILS_ENABLE_LOG_GROOM_WRITE", "1");
 
