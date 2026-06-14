@@ -42,7 +42,10 @@ import { validateAddPet } from "@/lib/addPet";
 import { parseAltContact } from "@/lib/altContact";
 import { validateEditClient } from "@/lib/editClient";
 import { validateEditPet } from "@/lib/editPet";
-import { validateEditAppointment } from "@/lib/editAppointment";
+import {
+  canMarkAppointmentNoShow,
+  validateEditAppointment,
+} from "@/lib/editAppointment";
 import { canDeleteHousehold } from "@/lib/householdLifecycle";
 import { validateDayCloseoutInput } from "@/lib/dayCloseout";
 import { buildReminderTarget, validateReminderInput } from "@/lib/reminders";
@@ -865,28 +868,30 @@ const proposeEditPet: AgentWriteTool = {
 };
 
 // ---------------------------------------------------------------------------
-// propose_edit_appointment — reschedule/change (editAppointment) or cancel
-// (deleteAppointment), both behind EDIT_APPOINTMENT_WRITE. Batched surface only:
-// the gated edit action refuses one_to_one orgs, so we refuse here too rather
-// than show a card for a write that will bounce. No-show is NOT supported — no
-// gated action sets that status (flagged in the PR).
+// propose_edit_appointment — reschedule/change (editAppointment), cancel
+// (deleteAppointment), or no-show (markAppointmentNoShow), all behind
+// EDIT_APPOINTMENT_WRITE. Batched surface only: the gated edit action refuses
+// one_to_one orgs, so we refuse them here too rather than show a card for a write
+// that will bounce. A no-show is a status transition that KEEPS the record (only
+// a still-booked visit qualifies) — never a delete.
 // ---------------------------------------------------------------------------
 
 const proposeEditAppointment: AgentWriteTool = {
   name: "propose_edit_appointment",
   description:
-    "Propose changing or cancelling an existing appointment (does NOT save it — the operator " +
-    "confirms a card first). Pass `client_id` and `appointment_id` (from find_household / " +
-    "get_schedule) and `mode`: 'change' to reschedule or edit it (any of `date` YYYY-MM-DD, " +
-    "`time_slot`, `service_type`, `location` gina/annette, `fee`, `tip`, `payment_method`, " +
-    "`payment_status`, `notes` — untouched fields are kept), or 'cancel' to remove the " +
-    "booking. Only works on the batched (Gina/Annette) schedule. Resolve the visit first.",
+    "Propose changing, cancelling, or marking an existing appointment as a no-show (does NOT " +
+    "save it — the operator confirms a card first). Pass `client_id` and `appointment_id` (from " +
+    "find_household / get_schedule) and `mode`: 'change' to reschedule or edit it (any of `date` " +
+    "YYYY-MM-DD, `time_slot`, `service_type`, `location` gina/annette, `fee`, `tip`, " +
+    "`payment_method`, `payment_status`, `notes` — untouched fields are kept), 'cancel' to remove " +
+    "the booking, or 'no_show' to mark a still-booked visit as a no-show (keeps the record, never " +
+    "deletes). Only works on the batched (Gina/Annette) schedule. Resolve the visit first.",
   input_schema: {
     type: "object",
     properties: {
       client_id: { type: "string" },
       appointment_id: { type: "string" },
-      mode: { type: "string", enum: ["change", "cancel"] },
+      mode: { type: "string", enum: ["change", "cancel", "no_show"] },
       date: { type: "string" },
       time_slot: { type: "string" },
       service_type: { type: "string", enum: [...SERVICE_TYPES] },
@@ -935,6 +940,26 @@ const proposeEditAppointment: AgentWriteTool = {
       return {
         kind: "edit_appointment",
         mode: "cancel",
+        clientId,
+        appointmentId,
+        ownerName,
+        petName,
+        date: existing.date,
+        service: existing.service,
+      };
+    }
+
+    if (mode === "no_show") {
+      // Mirror the gated action's guard: only a still-booked visit can become a
+      // no-show, so refuse here rather than show a card for a write that bounces.
+      if (!canMarkAppointmentNoShow(existing.status)) {
+        throw new AgentToolError(
+          "Only a booked appointment can be marked a no-show. A completed or cancelled visit can't.",
+        );
+      }
+      return {
+        kind: "edit_appointment",
+        mode: "no_show",
         clientId,
         appointmentId,
         ownerName,

@@ -7,6 +7,7 @@ import {
   buildEditAppointmentUpdate,
   buildSharedAppointmentGroupRowUpdate,
   buildSharedAppointmentGroupUpdate,
+  canMarkAppointmentNoShow,
   shouldBlockAppointmentDeleteForCalendarStatus,
   validateCancellationTextInput,
   validateEditAppointment,
@@ -350,6 +351,24 @@ describe("appointmentDeleteKind", () => {
         today: "2026-05-21",
       }),
     ).toBe("disabled");
+  });
+});
+
+describe("canMarkAppointmentNoShow", () => {
+  it("allows a booked appointment to be marked no-show", () => {
+    expect(canMarkAppointmentNoShow("booked")).toBe(true);
+  });
+
+  it("refuses completed grooms, cancellations, and existing no-shows", () => {
+    expect(canMarkAppointmentNoShow("completed")).toBe(false);
+    expect(canMarkAppointmentNoShow("cancelled")).toBe(false);
+    expect(canMarkAppointmentNoShow("no_show")).toBe(false);
+  });
+
+  it("refuses an unknown or missing status", () => {
+    expect(canMarkAppointmentNoShow(null)).toBe(false);
+    expect(canMarkAppointmentNoShow(undefined)).toBe(false);
+    expect(canMarkAppointmentNoShow("")).toBe(false);
   });
 });
 

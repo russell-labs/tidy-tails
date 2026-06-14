@@ -34,7 +34,11 @@ vi.mock("./intake", () => ({ saveIntake: vi.fn() }));
 vi.mock("./pets", () => ({ addPet: vi.fn() }));
 vi.mock("./editClient", () => ({ editClient: vi.fn() }));
 vi.mock("./editPet", () => ({ editPet: vi.fn() }));
-vi.mock("./editAppointment", () => ({ editAppointment: vi.fn(), deleteAppointment: vi.fn() }));
+vi.mock("./editAppointment", () => ({
+  editAppointment: vi.fn(),
+  deleteAppointment: vi.fn(),
+  markAppointmentNoShow: vi.fn(),
+}));
 vi.mock("./deleteClient", () => ({ deleteClient: vi.fn() }));
 vi.mock("./dayCloseout", () => ({ saveDayCloseoutOverride: vi.fn() }));
 vi.mock("./reminders", () => ({ prepareReminder: vi.fn() }));
@@ -52,7 +56,9 @@ const { saveIntake } = await import("./intake");
 const { addPet } = await import("./pets");
 const { editClient } = await import("./editClient");
 const { editPet } = await import("./editPet");
-const { editAppointment, deleteAppointment } = await import("./editAppointment");
+const { editAppointment, deleteAppointment, markAppointmentNoShow } = await import(
+  "./editAppointment"
+);
 const { deleteClient } = await import("./deleteClient");
 const { saveDayCloseoutOverride } = await import("./dayCloseout");
 const { prepareReminder } = await import("./reminders");
@@ -73,6 +79,7 @@ const editClientMock = vi.mocked(editClient);
 const editPetMock = vi.mocked(editPet);
 const editAppointmentMock = vi.mocked(editAppointment);
 const deleteAppointmentMock = vi.mocked(deleteAppointment);
+const markAppointmentNoShowMock = vi.mocked(markAppointmentNoShow);
 const deleteClientMock = vi.mocked(deleteClient);
 const saveDayCloseoutOverrideMock = vi.mocked(saveDayCloseoutOverride);
 const prepareReminderMock = vi.mocked(prepareReminder);
@@ -406,6 +413,17 @@ const EDIT_APPT_CANCEL: EditAppointmentProposal = {
   service: "Full groom",
 };
 
+const EDIT_APPT_NO_SHOW: EditAppointmentProposal = {
+  kind: "edit_appointment",
+  mode: "no_show",
+  clientId: "client-1",
+  appointmentId: "appt-1",
+  ownerName: "Mary Jones",
+  petName: "Kiwi",
+  date: "2026-07-21",
+  service: "Full groom",
+};
+
 const DELETE_HOUSEHOLD: DeleteHouseholdProposal = {
   kind: "delete_household",
   clientId: "client-1",
@@ -524,6 +542,19 @@ describe("confirmAgentProposal — edit appointment", () => {
     expect(form.get("send_cancellation_text")).toBeFalsy(); // never auto-texts on an agent cancel
     expect(form.get("audit_source")).toBe("agent");
     expect(editAppointmentMock).not.toHaveBeenCalled();
+  });
+
+  it("dispatches a no-show to markAppointmentNoShow (not edit or delete), agent-tagged", async () => {
+    markAppointmentNoShowMock.mockResolvedValue({ status: "saved", summary: { petName: "Kiwi", ownerName: "Mary Jones" } } as never);
+    const result = await confirmAgentProposal(EDIT_APPT_NO_SHOW);
+    expect(result.status).toBe("saved");
+    expect(markAppointmentNoShowMock).toHaveBeenCalledTimes(1);
+    const form = markAppointmentNoShowMock.mock.calls[0][1] as FormData;
+    expect(form.get("client_id")).toBe("client-1");
+    expect(form.get("appointment_id")).toBe("appt-1");
+    expect(form.get("audit_source")).toBe("agent");
+    expect(editAppointmentMock).not.toHaveBeenCalled();
+    expect(deleteAppointmentMock).not.toHaveBeenCalled();
   });
 });
 

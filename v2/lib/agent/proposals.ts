@@ -161,9 +161,11 @@ export type EditPetProposal = {
 
 /**
  * Propose editing an appointment. `reschedule_change` is backed by
- * editAppointment (full-replace, merged); `cancel` is backed by deleteAppointment
- * (both behind EDIT_APPOINTMENT_WRITE). Batched surface only — the gated edit
- * action refuses one_to_one orgs, so the propose tool refuses them too.
+ * editAppointment (full-replace, merged); `cancel` is backed by deleteAppointment;
+ * `no_show` is backed by markAppointmentNoShow (a status transition that KEEPS the
+ * record — never a delete). All three are behind EDIT_APPOINTMENT_WRITE. Batched
+ * surface only — the gated edit action refuses one_to_one orgs, so the propose tool
+ * refuses them too.
  */
 export type EditAppointmentProposal =
   | {
@@ -190,6 +192,16 @@ export type EditAppointmentProposal =
   | {
       kind: "edit_appointment";
       mode: "cancel";
+      clientId: string;
+      appointmentId: string;
+      ownerName: string;
+      petName: string;
+      date: string;
+      service: string | null;
+    }
+  | {
+      kind: "edit_appointment";
+      mode: "no_show";
       clientId: string;
       appointmentId: string;
       ownerName: string;
@@ -375,6 +387,13 @@ export function describeProposal(proposal: AgentProposal): string {
         return (
           `Cancel ${proposal.petName}'s visit${tail} on ` +
           `${formatDate(proposal.date)} — this removes the booking.`
+        );
+      }
+      if (proposal.mode === "no_show") {
+        const tail = proposal.service ? ` (${proposal.service})` : "";
+        return (
+          `Mark ${proposal.petName}'s visit${tail} on ` +
+          `${formatDate(proposal.date)} as a no-show — keeps the record, no charge.`
         );
       }
       const parts = [

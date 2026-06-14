@@ -283,6 +283,18 @@ export function appointmentDeleteKind({
   return "disabled";
 }
 
+/**
+ * A no-show is a status transition that KEEPS the record. Only a still-`booked`
+ * appointment can become a no-show: a completed groom is a logged business
+ * record (edit/void it instead), and a cancellation or an existing no-show is
+ * already an exception. Mirrors how the workflow controls refuse exception rows.
+ */
+export function canMarkAppointmentNoShow(
+  status: string | null | undefined,
+): boolean {
+  return status === "booked";
+}
+
 export function shouldBlockAppointmentDeleteForCalendarStatus(
   status: string,
 ): boolean {

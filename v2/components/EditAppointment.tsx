@@ -8,8 +8,10 @@ import {
 import {
   deleteAppointment,
   editAppointment,
+  markAppointmentNoShow,
   type DeleteAppointmentState,
   type EditAppointmentState,
+  type NoShowAppointmentState,
 } from "@/lib/actions/editAppointment";
 import {
   availableBookingTimeSlots,
@@ -29,6 +31,7 @@ import {
   appointmentDeleteKind,
   buildBookingUpdateTextMessage,
   buildCancellationTextMessage,
+  canMarkAppointmentNoShow,
   validateEditAppointment,
   type EditAppointmentErrors,
 } from "@/lib/editAppointment";
@@ -189,8 +192,13 @@ function EditAppointmentForm({
     DeleteAppointmentState,
     FormData
   >(deleteAppointment, { status: "idle" });
+  const [noShowState, noShowAction, noShowPending] = useActionState<
+    NoShowAppointmentState,
+    FormData
+  >(markAppointmentNoShow, { status: "idle" });
   const [step, setStep] = useState<"form" | "review">("form");
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmNoShow, setConfirmNoShow] = useState(false);
   const [errors, setErrors] = useState<EditAppointmentErrors>({});
   const cleanGroupAppointmentIds = Array.from(
     new Set(groupAppointmentIds.filter(Boolean)),
@@ -262,6 +270,10 @@ function EditAppointmentForm({
     today: todayISO(),
   });
   const canDeleteAppointment = deleteKind !== "disabled";
+  // A no-show keeps the record and only applies to a single still-booked visit
+  // (group scope edits shared fields, not per-dog attendance).
+  const canMarkNoShow =
+    editScope === "single" && canMarkAppointmentNoShow(targetAppointment.status);
   const [sendCancellationText, setSendCancellationText] = useState(false);
   const defaultCancellationMessage = (scope: "single" | "group" = editScope) =>
     buildCancellationTextMessage({
@@ -376,6 +388,7 @@ function EditAppointmentForm({
     setEditTargetId(value);
     setBookingUpdateMessage("");
     setConfirmDelete(false);
+    setConfirmNoShow(false);
     setErrors({});
     if (value === GROUP_APPOINTMENT_VALUE) {
       setCancellationMessage(defaultCancellationMessage("group"));
@@ -436,6 +449,13 @@ function EditAppointmentForm({
   ) {
     return <DeleteResultScreen state={deleteState} onDone={onDone} />;
   }
+  if (
+    noShowState.status === "demo" ||
+    noShowState.status === "gated" ||
+    noShowState.status === "saved"
+  ) {
+    return <NoShowResultScreen state={noShowState} onDone={onDone} />;
+  }
 
   const formError =
     state.status === "error"
@@ -445,8 +465,14 @@ function EditAppointmentForm({
   return (
     <form action={formAction} className="flex flex-col gap-3.5">
       <SubmitDogOverlay
-        label={deletePending ? "Deleting booking" : "Saving changes"}
-        show={pending || deletePending}
+        label={
+          noShowPending
+            ? "Marking no-show"
+            : deletePending
+              ? "Deleting booking"
+              : "Saving changes"
+        }
+        show={pending || deletePending || noShowPending}
       />
       <SubmitDogOverlay
         label="Checking calendar"
@@ -518,6 +544,11 @@ function EditAppointmentForm({
       {deleteState.status === "error" ? (
         <p className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger-ink">
           {deleteState.message}
+        </p>
+      ) : null}
+      {noShowState.status === "error" ? (
+        <p className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger-ink">
+          {noShowState.message}
         </p>
       ) : null}
 
@@ -839,6 +870,47 @@ function EditAppointmentForm({
               )}
             </div>
           ) : null}
+          {canMarkNoShow ? (
+            <div className="rounded-xl border border-line bg-surface p-3">
+              {confirmNoShow ? (
+                <div className="flex flex-col gap-2.5">
+                  <p className="text-sm font-semibold text-warn">
+                    Mark {scopedPetLabel}&rsquo;s visit as a no-show?
+                  </p>
+                  <p className="text-xs leading-relaxed text-ink-soft">
+                    This keeps the booking as a business record and marks it a
+                    no-show. It is not deleted, and no cancellation text is sent.
+                  </p>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setConfirmNoShow(false)}
+                      disabled={noShowPending}
+                      className="flex-1 rounded-lg border border-line px-3 py-2 text-sm font-semibold text-ink-soft"
+                    >
+                      Keep it booked
+                    </button>
+                    <button
+                      type="submit"
+                      formAction={noShowAction}
+                      disabled={noShowPending}
+                      className="flex-1 rounded-lg border border-warn/40 bg-warn-soft px-3 py-2 text-sm font-semibold text-warn disabled:opacity-50"
+                    >
+                      Mark no-show
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setConfirmNoShow(true)}
+                  className="w-full rounded-lg border border-warn/40 px-3 py-2 text-sm font-semibold text-warn active:bg-warn-soft"
+                >
+                  Mark no-show
+                </button>
+              )}
+            </div>
+          ) : null}
         </>
       ) : (
         <>
@@ -1093,6 +1165,52 @@ function DeleteResultScreen({
           {state.cancellationText.message}
         </p>
       ) : null}
+      <button
+        type="button"
+        onClick={onDone}
+        className="rounded-xl bg-brand px-4 py-3 text-base font-semibold text-white active:bg-brand-ink"
+      >
+        Done
+      </button>
+    </div>
+  );
+}
+
+function NoShowResultScreen({
+  state,
+  onDone,
+}: {
+  state: Extract<NoShowAppointmentState, { status: "demo" | "gated" | "saved" }>;
+  onDone: () => void;
+}) {
+  const saved = state.status === "saved";
+  const headline =
+    state.status === "saved"
+      ? "Marked no-show - booking kept"
+      : state.status === "demo"
+        ? "Demo only - nothing was changed"
+        : "Not changed - no-show marking is switched off";
+  return (
+    <div className="flex flex-col gap-3.5">
+      <div
+        className={`rounded-xl p-3.5 ${
+          saved ? "bg-brand-soft text-brand-ink" : "bg-warn-soft text-warn"
+        }`}
+      >
+        <p className="text-sm font-semibold">{headline}</p>
+        <p className="mt-0.5 text-xs leading-relaxed">{state.message}</p>
+      </div>
+      <p className="text-sm text-ink-soft">
+        The visit for{" "}
+        <span className="font-semibold text-ink">{state.summary.petName}</span> under{" "}
+        <span className="font-semibold text-ink">{state.summary.ownerName}</span> is
+        kept on file as a no-show.
+      </p>
+      <dl className="flex flex-col gap-1.5 rounded-xl border border-line bg-canvas px-3.5 py-3 text-sm">
+        <ReviewRow label="Date" value={state.summary.date} />
+        <ReviewRow label="Drop-off" value={state.summary.time ?? "Not set"} />
+        <ReviewRow label="Service" value={state.summary.service ?? "Not set"} />
+      </dl>
       <button
         type="button"
         onClick={onDone}
