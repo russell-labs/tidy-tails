@@ -150,8 +150,11 @@ function petIdsFrom(input: Record<string, unknown>): string[] {
 const proposeBookAppointment: AgentWriteTool = {
   name: "propose_book_appointment",
   description:
-    "Propose booking a new appointment (does NOT book it — the operator confirms a card " +
-    "first). Pass `client_id` and `pet_ids` (both from find_household), a concrete " +
+    "Propose booking a new appointment for an existing dog (does NOT book it — the " +
+    "operator confirms a card first). This is the tool for ANY booking/scheduling " +
+    "request: look the dog up with find_household first, then book it here — never " +
+    "create the household or pet again for a dog already on file. " +
+    "Pass `client_id` and `pet_ids` (both from find_household), a concrete " +
     "ISO `date` (YYYY-MM-DD), a `time_slot` (e.g. '10:00am'), and a `service_type` " +
     "(one of full_groom, puppy_groom, bath_only, nail_trim, other). Optional `fee`. " +
     "`location` is REQUIRED: gina or annette for a batched business (it sets the " +
@@ -482,7 +485,9 @@ const proposeAddHousehold: AgentWriteTool = {
   description:
     "Propose creating a NEW household and its first pet (does NOT save it — the operator " +
     "confirms a card first). Use only for a household not already on file (check with " +
-    "find_household first). Pass owner `first_name`, `last_name`, `phone`, and the first " +
+    "find_household first). This is NOT for booking an existing dog — if find_household " +
+    "returns the pet, it already exists, so use propose_book_appointment instead. " +
+    "Pass owner `first_name`, `last_name`, `phone`, and the first " +
     "pet's `pet_name`; optional `email`, `address`, `notes`, `secondary_contact_name`, " +
     "`secondary_cell`, `landline`, `sms_consent` (true only if the owner agreed to texts), " +
     "and pet `breed`, `size` (small/medium/large), `allergy_state` (yes/no/unknown), " +

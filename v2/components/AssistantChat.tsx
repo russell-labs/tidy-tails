@@ -20,6 +20,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { AgentTurn } from "@/lib/agent/runAgent";
 import type { AgentProposal } from "@/lib/agent/proposals";
+import { assistantIntroCopy } from "@/lib/assistantIntroCopy";
 import { confirmAgentProposal } from "@/lib/actions/agentConfirm";
 import { recordAgentFeedback } from "@/lib/actions/agentFeedback";
 import { AnswerFeedback, type FeedbackRating } from "@/components/AnswerFeedback";
@@ -74,7 +75,7 @@ const SUGGESTIONS = [
 
 const GENERIC_ERROR = "Something went wrong answering that. Please try again.";
 
-export function AssistantChat() {
+export function AssistantChat({ writesEnabled }: { writesEnabled: boolean }) {
   const [entries, setEntries] = useState<Entry[]>([]);
   const [draft, setDraft] = useState("");
   const [pending, setPending] = useState(false);
@@ -118,6 +119,18 @@ export function AssistantChat() {
       stopTracks();
       if (recordTimerRef.current) clearTimeout(recordTimerRef.current);
       speakerRef.current?.cancel();
+    };
+  }, []);
+
+  // Pin the app shell to the dynamic viewport while the assistant is mounted so
+  // this chat panel is a definite-height flex container (transcript scrolls
+  // inside, composer + last confirm card always clear the BottomNav). Scoped to
+  // this route via a body flag — same idiom as the search/sheet flags — so every
+  // other (body-scrolling) page keeps its min-h-dvh growth untouched.
+  useEffect(() => {
+    document.body.dataset.tidyAssistant = "true";
+    return () => {
+      delete document.body.dataset.tidyAssistant;
     };
   }, []);
 
@@ -441,16 +454,22 @@ export function AssistantChat() {
   const micAvailable = voiceSupport?.supported === true;
 
   return (
-    // Self-contained chat panel: a fixed dynamic-viewport height leaves room for
-    // the app header and the fixed bottom nav, the transcript scrolls inside,
-    // and the composer is the panel's last row (above the nav, not page-fixed).
-    <div className="flex h-[calc(100dvh-12rem)] flex-col overflow-hidden rounded-2xl border border-line bg-canvas">
-      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4">
+    // Self-contained chat panel: it FILLS the available space via the flex chain
+    // (layout wrapper → main → this box are all flex-col with flex-1), so the
+    // panel bottom always lands inside the wrapper's nav-reserved padding —
+    // clearing the fixed BottomNav whatever chrome sits above (banner, header,
+    // the iPhone install prompt). The transcript scrolls inside; the composer is
+    // the panel's last row (above the nav, not page-fixed). A fixed
+    // viewport-height (100dvh − Nrem) was wrong: it assumed a fixed chrome height,
+    // so a tall install prompt pushed the composer + last confirm card behind the
+    // bars. The list carries bottom scroll room (plus iOS safe-area) so the final
+    // card's buttons AND result always clear the composer.
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-line bg-canvas">
+      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
         {entries.length === 0 ? (
           <div className="mt-6 text-center">
             <p className="text-sm text-ink-soft">
-              Ask about your schedule, a household, a dog&apos;s history and groom
-              notes, your income, or who&apos;s due for a rebooking.
+              {assistantIntroCopy(writesEnabled).emptyState}
               {micAvailable ? " Tap the mic to ask out loud." : null}
             </p>
             <div className="mt-4 flex flex-col gap-2">
