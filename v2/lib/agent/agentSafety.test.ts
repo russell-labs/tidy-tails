@@ -7,6 +7,11 @@ import {
   AGENT_READ_TOOL_NAMES,
   agentToolDefinitions,
 } from "./tools";
+import {
+  AGENT_WRITE_TOOLS,
+  AGENT_WRITE_TOOL_NAMES,
+  agentWriteToolDefinitions,
+} from "./writeTools";
 
 const AGENT_DIR = dirname(fileURLToPath(import.meta.url));
 
@@ -66,23 +71,23 @@ const WRITE_VERB = new RegExp(
   "i",
 );
 
-describe("agent is read-only — no write/send tools registered", () => {
+describe("the READ tool registry stays read-only", () => {
   it("registers exactly the six intended read tools", () => {
     expect([...AGENT_READ_TOOL_NAMES].sort()).toEqual([...EXPECTED_TOOLS]);
   });
 
-  it("no registered tool name denotes a side effect", () => {
+  it("no read tool name denotes a side effect", () => {
     for (const name of AGENT_READ_TOOL_NAMES) {
       expect(name, `${name} looks like a write/send tool`).not.toMatch(WRITE_VERB);
     }
   });
 
-  it("exposes the same tools to the model that it dispatches", () => {
+  it("exposes the same read tools to the model that it dispatches", () => {
     const defined = agentToolDefinitions().map((tool) => tool.name).sort();
     expect(defined).toEqual([...AGENT_READ_TOOL_NAMES].sort());
   });
 
-  it("every tool schema is strict (no free-form extra properties)", () => {
+  it("every read tool schema is strict (no free-form extra properties)", () => {
     for (const tool of AGENT_READ_TOOLS) {
       expect(tool.input_schema.type).toBe("object");
       expect(tool.input_schema.additionalProperties).toBe(false);
@@ -91,6 +96,79 @@ describe("agent is read-only — no write/send tools registered", () => {
         expect(Object.keys(tool.input_schema.properties)).toContain(req);
       }
     }
+  });
+});
+
+// Phase 3 adds WRITE tools, but they only PROPOSE — they resolve + validate and
+// return a proposal; the model never executes a write. The real write happens in
+// the confirm action (lib/actions/agentConfirm.ts, OUTSIDE this path) on Sam's
+// tap. These tests pin the propose-only surface and assert, structurally, that
+// nothing on the agent path can reach a write/send/mutation — so the model is
+// physically unable to do anything but propose.
+const EXPECTED_WRITE_TOOLS = [
+  "propose_add_tip",
+  "propose_book_appointment",
+  "propose_log_groom",
+] as const;
+
+describe("the WRITE tools only PROPOSE (confirm-gated, never auto-executed)", () => {
+  it("registers exactly the three intended propose tools", () => {
+    expect([...AGENT_WRITE_TOOL_NAMES].sort()).toEqual([...EXPECTED_WRITE_TOOLS]);
+  });
+
+  it("every propose tool name is explicitly a proposal, not a bare write verb", () => {
+    // The propose_ prefix is what keeps the model honest in the UI copy and the
+    // audit trail: the tool prepares, it does not perform.
+    for (const name of AGENT_WRITE_TOOL_NAMES) {
+      expect(name).toMatch(/^propose_/);
+    }
+  });
+
+  it("exposes the same propose tools to the model that it dispatches", () => {
+    const defined = agentWriteToolDefinitions().map((tool) => tool.name).sort();
+    expect(defined).toEqual([...AGENT_WRITE_TOOL_NAMES].sort());
+  });
+
+  it("every propose tool schema is strict (no free-form extra properties)", () => {
+    for (const tool of AGENT_WRITE_TOOLS) {
+      expect(tool.input_schema.type).toBe("object");
+      expect(tool.input_schema.additionalProperties).toBe(false);
+      for (const req of tool.input_schema.required ?? []) {
+        expect(Object.keys(tool.input_schema.properties)).toContain(req);
+      }
+    }
+  });
+});
+
+// THE load-bearing Phase 3 invariant: the agent path (runner + read tools +
+// propose tools + provider adapters) can only PROPOSE. It must not import any
+// write/send server action, the audit recorder, or perform a Supabase mutation.
+// The write is reachable only from the confirm action, which lives outside this
+// path and is driven by Sam's tap. This makes "the model cannot execute a write"
+// a structural fact, not a convention.
+describe("agent path can PROPOSE but never EXECUTE a write", () => {
+  const agentSourceFiles = agentSourceFilesRecursive(AGENT_DIR);
+
+  // Usage/import forms (with `(` or `from "…`) so prose comments that merely
+  // NAME these helpers don't trip the gate — only real calls/imports do.
+  it.each([
+    'from "@/lib/actions/', // importing any write/send server action
+    "recordAuditEvent(", // calling the audit recorder
+    "createServerSupabase(", // reaching the request DB client directly
+    "createClient(", // constructing a Supabase client
+    ".insert(",
+    ".update(",
+    ".delete(",
+  ])("no agent source can reach a write/mutation (%s)", (forbidden) => {
+    for (const file of agentSourceFiles) {
+      const contents = readFileSync(file, "utf8");
+      expect(contents, `${file} references ${forbidden}`).not.toContain(forbidden);
+    }
+  });
+
+  it("the propose tools resolve through the org-scoped read loader (positive proof)", () => {
+    const writeTools = readFileSync(join(AGENT_DIR, "writeTools.ts"), "utf8");
+    expect(writeTools).toContain("loadDataset");
   });
 });
 

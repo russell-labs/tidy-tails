@@ -223,7 +223,7 @@ const findHousehold: AgentReadTool = {
  * screen uses so split duplicate rows (Coco/Coco) read as one animal with one
  * combined history. Shared by get_pet_history and get_groom_detail.
  */
-function petVisits(petId: string, pets: Pet[], appointments: Appointment[]): Appointment[] {
+export function petVisits(petId: string, pets: Pet[], appointments: Appointment[]): Appointment[] {
   const group = groupPetsForDisplay(pets, appointments).find((candidate) =>
     candidate.pets.some((member) => member.id === petId),
   );

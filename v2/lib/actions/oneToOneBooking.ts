@@ -41,6 +41,7 @@ import {
 import { parseTimeToMinutes } from "@/lib/scheduling/time";
 import { createServerSupabase, getCurrentUser } from "@/lib/supabase/server";
 import { isAddAppointmentWriteEnabled } from "@/lib/writeGate";
+import { agentOriginMetadata } from "@/lib/auditSource";
 
 // Conservative fallback length for an existing block whose duration_minutes is
 // null (legacy row): assume a long block so overlap math fails TOWARD conflict.
@@ -179,7 +180,12 @@ export async function createOneToOneBooking(
     petId: booking.pet_id,
     appointmentId: (data as { id: string }).id,
     summary: `Booked ${pet.name} for ${summary.ownerName}.`,
-    metadata: { date: booking.date, service: summary.service, status: "booked" },
+    metadata: {
+      date: booking.date,
+      service: summary.service,
+      status: "booked",
+      ...agentOriginMetadata(formData),
+    },
   });
   return { status: "saved", summary };
 }

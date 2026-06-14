@@ -79,6 +79,9 @@ export async function POST(request: Request): Promise<Response> {
           type: "done",
           answer: result.text,
           toolsUsed: Array.from(new Set(result.toolCalls.map((call) => call.name))),
+          // A prepared write awaiting Sam's confirm tap, when this turn proposed
+          // one. The agent never executes it — the UI renders a confirm card.
+          proposal: result.proposal,
         });
       } catch (error) {
         const message =
