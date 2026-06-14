@@ -1,4 +1,4 @@
-// Agentic layer — Phase 1 READ-ONLY tools.
+// Agentic layer — READ-ONLY tools.
 //
 // Each tool is a thin, typed wrapper over an EXISTING org-scoped read path. No
 // business logic lives here: the tools call the same loaders Sam's screens call
@@ -15,10 +15,15 @@
 //   2. No service-role bypass. This module (and the whole lib/agent path) must
 //      never import the admin/service-role Supabase client; every data access
 //      goes through the request's authed session, so it stays RLS-bound.
-//   3. Minimal output. Tools return small structured fields and deliberately do
-//      NOT echo raw customer-authored free text (e.g. appointment `notes`). That
-//      keeps both token cost and the prompt-injection surface low — customer
-//      content is data, never instructions.
+//   3. Operator data only; customer-authored text stays out. Tools expose the
+//      operator's OWN notes — per-visit groom notes (`appointment.notes`) and a
+//      pet's standing `grooming_notes` (clipper number, coat, behavior, products)
+//      — because they are Sam's own org-scoped data. They do NOT load or echo
+//      CUSTOMER-authored free text: inbound SMS message bodies and self-serve
+//      booking-request notes are never read here. `loadDataset` only returns
+//      clients/pets/appointments/vaccinations, so that surface is structurally
+//      unreachable — customer content is data, never instructions. The safety
+//      test forbids the customer-text loaders by name across the whole agent path.
 //
 // Server-only: imported by the agent runner inside a server action's request
 // scope (it reaches into `next/headers` via readOperatorSettings). Never import
@@ -213,13 +218,44 @@ const findHousehold: AgentReadTool = {
   },
 };
 
+/**
+ * The visits for one pet, newest first, using the same dedup grouping the pet
+ * screen uses so split duplicate rows (Coco/Coco) read as one animal with one
+ * combined history. Shared by get_pet_history and get_groom_detail.
+ */
+function petVisits(petId: string, pets: Pet[], appointments: Appointment[]): Appointment[] {
+  const group = groupPetsForDisplay(pets, appointments).find((candidate) =>
+    candidate.pets.some((member) => member.id === petId),
+  );
+  return (group?.appointments ?? appointments.filter((a) => a.pet_id === petId))
+    .slice()
+    .sort((a: Appointment, b: Appointment) => b.date.localeCompare(a.date));
+}
+
+/** The operator's standing notes on a pet — her own data (grooming notes, allergies). */
+function petProfile(pet: Pet) {
+  return {
+    id: pet.id,
+    name: pet.name,
+    breed: pet.breed,
+    size: pet.size,
+    // Operator-authored standing notes — where clipper/coat/behavior detail
+    // usually lives. Never customer-authored.
+    groomingNotes: pet.grooming_notes,
+    allergies: pet.allergies,
+    allergiesDetail: pet.allergies_detail,
+  };
+}
+
 /** getPetHistory(petId) — a pet's profile + combined visit history. */
 const getPetHistory: AgentReadTool = {
   name: "get_pet_history",
   description:
     "Get one pet's profile and visit history by pet id (from find_household). " +
-    "Returns the pet's name, breed, size, owner, and a list of past and " +
-    "upcoming visits (date, service, fee, status), most recent first.",
+    "Returns the pet's name, breed, size, the operator's standing grooming notes " +
+    "and allergy info, the owner, and a list of past and upcoming visits (date, " +
+    "service, fee, status, and the operator's own per-visit groom notes), most " +
+    "recent first. For a single groom's full notes use get_groom_detail.",
   input_schema: {
     type: "object",
     properties: {
@@ -240,29 +276,93 @@ const getPetHistory: AgentReadTool = {
         `No pet with id ${JSON.stringify(petId)} in this account. Use find_household to look one up.`,
       );
     }
-    // Use the same dedup grouping the pet screen uses, so split duplicate rows
-    // (Coco/Coco) read as one animal with one combined history.
-    const group = groupPetsForDisplay(pets, appointments).find((candidate) =>
-      candidate.pets.some((member) => member.id === petId),
-    );
     const owner = clients.find((candidate) => candidate.id === pet.client_id) ?? null;
-    const visits = (group?.appointments ?? appointments.filter((a) => a.pet_id === petId))
-      .slice()
-      .sort((a: Appointment, b: Appointment) => b.date.localeCompare(a.date))
-      .map((appointment) => ({
-        date: appointment.date,
-        service: appointment.service ?? null,
-        fee: appointment.price ?? null,
-        status: appointment.status ?? "booked",
-      }));
+    const visits = petVisits(petId, pets, appointments).map((appointment) => ({
+      date: appointment.date,
+      service: appointment.service ?? null,
+      fee: appointment.price ?? null,
+      status: appointment.status ?? "booked",
+      // Operator-authored per-visit groom note (clipper number, coat, behavior,
+      // products). This is Sam's own note, not customer text.
+      notes: appointment.notes ?? null,
+    }));
 
     return {
-      pet: { id: pet.id, name: pet.name, breed: pet.breed, size: pet.size },
+      pet: petProfile(pet),
       owner: owner
         ? { id: owner.id, name: ownerName(owner), phone: formatPhone(owner.phone) }
         : null,
       visitCount: visits.length,
       visits,
+    };
+  },
+};
+
+/** getGroomDetail(petId, date?) — one groom's full operator-authored detail. */
+const getGroomDetail: AgentReadTool = {
+  name: "get_groom_detail",
+  description:
+    "Get the operator's own detailed notes for a single groom — the free-text " +
+    "note she recorded (e.g. clipper number, coat condition, behavior, products " +
+    "used), plus the pet's standing grooming notes and allergy info. Pass " +
+    "`pet_id` (from find_household); optionally pass a concrete ISO `date` " +
+    "(YYYY-MM-DD) to target a specific visit, otherwise the most recent completed " +
+    "groom is used. Answers questions like 'what clipper did I use on Coco last " +
+    "time'. Returns ONLY the operator's own notes — never a customer's messages.",
+  input_schema: {
+    type: "object",
+    properties: {
+      pet_id: { type: "string", description: "Pet id from find_household." },
+      date: {
+        type: "string",
+        description: "Optional specific visit date, ISO YYYY-MM-DD.",
+      },
+    },
+    required: ["pet_id"],
+    additionalProperties: false,
+  },
+  run: async (input) => {
+    const petId = input.pet_id;
+    if (typeof petId !== "string" || petId.trim() === "") {
+      throw new AgentToolError("`pet_id` must be a non-empty pet id.");
+    }
+    const date = optionalIsoDate(input.date, "date");
+    const { pets, appointments } = await loadDataset();
+    const pet = pets.find((candidate) => candidate.id === petId);
+    if (!pet) {
+      throw new AgentToolError(
+        `No pet with id ${JSON.stringify(petId)} in this account. Use find_household to look one up.`,
+      );
+    }
+
+    const visits = petVisits(petId, pets, appointments);
+    let target: Appointment | undefined;
+    if (date) {
+      target = visits.find((visit) => visit.date === date);
+      if (!target) {
+        throw new AgentToolError(
+          `No visit for that pet on ${date}. Use get_pet_history to see the visit dates.`,
+        );
+      }
+    } else {
+      // Most recent completed groom (the "last time" answer); fall back to the
+      // most recent visit if none are marked completed.
+      target = visits.find((visit) => visit.status === "completed") ?? visits[0];
+    }
+
+    return {
+      pet: petProfile(pet),
+      groom: target
+        ? {
+            date: target.date,
+            service: target.service ?? null,
+            fee: target.price ?? null,
+            tip: target.tip ?? null,
+            status: target.status ?? "booked",
+            // The operator's own groom note, verbatim. Operator-authored.
+            notes: target.notes ?? null,
+          }
+        : null,
     };
   },
 };
@@ -367,7 +467,7 @@ const listLapsedClients: AgentReadTool = {
 };
 
 /**
- * The complete read-only tool registry for Phase 1.
+ * The complete read-only tool registry.
  *
  * INVARIANT: every entry is a read. There is no write/send/log/delete tool here
  * and there must not be one until a later, separately-reviewed phase. The
@@ -378,16 +478,17 @@ export const AGENT_READ_TOOLS: readonly AgentReadTool[] = [
   getSchedule,
   findHousehold,
   getPetHistory,
+  getGroomDetail,
   getDayIncome,
   listLapsedClients,
 ] as const;
 
-/** The exact set of tool names registered in Phase 1 (read-only). */
+/** The exact set of registered read-tool names. */
 export const AGENT_READ_TOOL_NAMES: readonly string[] = AGENT_READ_TOOLS.map(
   (tool) => tool.name,
 );
 
-/** Tool definitions in the shape the Anthropic Messages API expects. */
+/** Tool definitions in the shape the model providers expect. */
 export function agentToolDefinitions() {
   return AGENT_READ_TOOLS.map(({ name, description, input_schema }) => ({
     name,
