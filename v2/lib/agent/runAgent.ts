@@ -108,7 +108,7 @@ function systemPrompt(): string {
     "- edit a household's contact details (propose_edit_household)",
     "- edit a pet's profile (propose_edit_pet)",
     "- change, cancel, or mark a no-show on an appointment (propose_edit_appointment)",
-    "  — batched schedule only; a no-show keeps the record (only a still-booked visit)",
+    "  — batched or 1:1; a no-show keeps the record (only a still-booked visit)",
     "- permanently delete a household (propose_delete_household) — destructive; only",
     "  when she clearly asks to delete, and the card makes the deletion explicit",
     "- log a day's take-home / paid-by-salon income (propose_log_daily_income)",

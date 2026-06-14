@@ -870,10 +870,10 @@ const proposeEditPet: AgentWriteTool = {
 // ---------------------------------------------------------------------------
 // propose_edit_appointment — reschedule/change (editAppointment), cancel
 // (deleteAppointment), or no-show (markAppointmentNoShow), all behind
-// EDIT_APPOINTMENT_WRITE. Batched surface only: the gated edit action refuses
-// one_to_one orgs, so we refuse them here too rather than show a card for a write
-// that will bounce. A no-show is a status transition that KEEPS the record (only
-// a still-booked visit qualifies) — never a delete.
+// EDIT_APPOINTMENT_WRITE. Universal: works for BOTH the batched (gina/annette)
+// and 1:1 (org-location) schedules — the gated edit action validates the location
+// and reschedule conflict by the org's model. A no-show is a status transition
+// that KEEPS the record (only a still-booked visit qualifies) — never a delete.
 // ---------------------------------------------------------------------------
 
 const proposeEditAppointment: AgentWriteTool = {
@@ -882,10 +882,11 @@ const proposeEditAppointment: AgentWriteTool = {
     "Propose changing, cancelling, or marking an existing appointment as a no-show (does NOT " +
     "save it — the operator confirms a card first). Pass `client_id` and `appointment_id` (from " +
     "find_household / get_schedule) and `mode`: 'change' to reschedule or edit it (any of `date` " +
-    "YYYY-MM-DD, `time_slot`, `service_type`, `location` gina/annette, `fee`, `tip`, " +
-    "`payment_method`, `payment_status`, `notes` — untouched fields are kept), 'cancel' to remove " +
-    "the booking, or 'no_show' to mark a still-booked visit as a no-show (keeps the record, never " +
-    "deletes). Only works on the batched (Gina/Annette) schedule. Resolve the visit first.",
+    "YYYY-MM-DD, `time_slot`, `service_type`, `location`, `fee`, `tip`, `payment_method`, " +
+    "`payment_status`, `notes` — untouched fields are kept), 'cancel' to remove the booking, or " +
+    "'no_show' to mark a still-booked visit as a no-show (keeps the record, never deletes). " +
+    "`location` is gina/annette for a batched business or one of the operator's own locations for " +
+    "a 1:1 business; leave it out to keep the current one. Resolve the visit first.",
   input_schema: {
     type: "object",
     properties: {
@@ -895,7 +896,7 @@ const proposeEditAppointment: AgentWriteTool = {
       date: { type: "string" },
       time_slot: { type: "string" },
       service_type: { type: "string", enum: [...SERVICE_TYPES] },
-      location: { type: "string", enum: [...BOOKING_LOCATIONS] },
+      location: { type: "string", description: "gina/annette (batched) or an org location name (1:1)." },
       fee: { type: "number" },
       tip: { type: "number" },
       payment_method: { type: "string", enum: ["cash", "interac", "other"] },
@@ -911,11 +912,8 @@ const proposeEditAppointment: AgentWriteTool = {
     const mode = optionalString(input.mode);
 
     const org = await loadOrgSettings();
-    if (org.schedulingStyle === "one_to_one") {
-      throw new AgentToolError(
-        "Editing one-at-a-time appointments isn't supported yet — tell the operator to change it on the schedule.",
-      );
-    }
+    const isOneToOne = org.schedulingStyle === "one_to_one";
+    const orgLocationNames = org.locations.map((entry) => entry.name);
 
     const dataset = await loadDataset();
     const client = dataset.clients.find((c) => c.id === clientId);
@@ -974,8 +972,9 @@ const proposeEditAppointment: AgentWriteTool = {
     // untouched field is preserved exactly.
     const payment = parsePaymentInfo(existing.notes);
     const cleanNotes = stripSalonPayoutOverride(stripPaymentInfo(existing.notes)) ?? "";
-    const currentLocation =
-      existing.location === "gina" || existing.location === "annette"
+    const currentLocation = isOneToOne
+      ? existing.location ?? ""
+      : existing.location === "gina" || existing.location === "annette"
         ? existing.location
         : "";
     const merged = {
@@ -1017,6 +1016,9 @@ const proposeEditAppointment: AgentWriteTool = {
       salon_payout_override: salonOverride != null ? String(salonOverride) : "",
       send_booking_update_text: "",
       booking_update_message: "",
+    }, new Date(), {
+      schedulingStyle: org.schedulingStyle,
+      orgLocations: orgLocationNames,
     });
     if (!validation.ok) {
       throw new AgentToolError(
@@ -1025,8 +1027,15 @@ const proposeEditAppointment: AgentWriteTool = {
     }
     const v = validation.value;
     if (!v.service_type || !v.location) {
-      throw new AgentToolError("That visit needs a service and a Gina/Annette location.");
+      throw new AgentToolError(
+        isOneToOne
+          ? "That visit needs a service and one of your locations."
+          : "That visit needs a service and a Gina/Annette location.",
+      );
     }
+    const resolvedLocationLabel = isOneToOne
+      ? orgLocationAddress(org, v.location) ?? v.location
+      : bookingLocationLabel(v.location) ?? v.location;
 
     const changes: string[] = [];
     if (optionalString(input.date) && merged.date !== existing.date)
@@ -1034,7 +1043,7 @@ const proposeEditAppointment: AgentWriteTool = {
     if (optionalString(input.time_slot) && merged.time_slot !== (existing.time_slot ?? ""))
       changes.push(`time → ${merged.time_slot}`);
     if (optionalString(input.service_type)) changes.push(`service → ${serviceLabel(v.service_type) ?? v.service_type}`);
-    if (optionalString(input.location)) changes.push(`location → ${bookingLocationLabel(v.location)}`);
+    if (optionalString(input.location)) changes.push(`location → ${resolvedLocationLabel}`);
     if (input.fee != null) changes.push(`fee → ${v.fee}`);
     if (input.tip != null) changes.push(`tip → ${v.tip}`);
     if ("notes" in input) changes.push("notes updated");
@@ -1052,7 +1061,7 @@ const proposeEditAppointment: AgentWriteTool = {
       serviceType: v.service_type,
       service: serviceLabel(v.service_type) ?? v.service_type,
       location: v.location,
-      locationLabel: bookingLocationLabel(v.location) ?? v.location,
+      locationLabel: resolvedLocationLabel,
       fee: v.fee,
       tip: v.tip,
       paymentMethod: v.payment_method,

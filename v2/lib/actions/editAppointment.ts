@@ -18,6 +18,12 @@ import {
   googleAvailabilityBlocksBooking,
   hasBookedTimeConflict,
 } from "@/lib/booking";
+import { isScheduleSlateAppointment } from "@/lib/appointmentWorkflow";
+import {
+  hasOverlapConflict,
+  resolveExistingBlock,
+} from "@/lib/scheduling/oneToOne";
+import { parseTimeToMinutes } from "@/lib/scheduling/time";
 import {
   appointmentDeleteKind,
   buildCancellationTextDraft,
@@ -99,6 +105,11 @@ export type NoShowAppointmentState =
       message: string;
     };
 
+// Conservative fallback for a 1:1 block whose duration_minutes is null (legacy
+// row): assume a long block so overlap math fails TOWARD conflict. Mirrors the
+// 1:1 booking action.
+const FALLBACK_BLOCK_MINUTES = 120;
+
 function checked(value: FormDataEntryValue | null): boolean {
   return ["on", "true", "1", "yes"].includes(String(value ?? "").trim().toLowerCase());
 }
@@ -165,19 +176,14 @@ export async function editAppointment(
     };
   }
 
-  // WS4a: this batched editor (morning tiles, gina/annette locations) does not
-  // fit a one_to_one org's duration blocks. The 1:1 edit experience is a later
-  // step; refuse server-side so a 1:1 appointment is never rewritten through the
-  // wrong flow (the detail page also degrades the UI). Defense-in-depth.
+  // Universal-first (WS4): the SHARED edit surface serves BOTH models. The org's
+  // scheduling style decides location validation (gina/annette vs the org's own
+  // locations) and reschedule conflict detection (exact slot vs duration overlap),
+  // and whether the visit participates in Google Calendar — all handled below.
+  // Batched behavior is unchanged.
   const orgSettings = await loadOrgSettings();
-  if (orgSettings.schedulingStyle === "one_to_one") {
-    return {
-      status: "error",
-      errors: {},
-      formError:
-        "Editing 1:1 appointments is coming in a later step. Nothing was changed.",
-    };
-  }
+  const isOneToOne = orgSettings.schedulingStyle === "one_to_one";
+  const orgLocationNames = orgSettings.locations.map((entry) => entry.name);
 
   const raw = {
     client_id: String(formData.get("client_id") ?? ""),
@@ -199,7 +205,10 @@ export async function editAppointment(
     formData.get("booking_update_message") ?? "",
   ).trim();
 
-  const validation = validateEditAppointment(raw);
+  const validation = validateEditAppointment(raw, new Date(), {
+    schedulingStyle: orgSettings.schedulingStyle,
+    orgLocations: orgLocationNames,
+  });
   if (!validation.ok) return { status: "error", errors: validation.errors };
   const appointment = validation.value;
 
@@ -296,20 +305,60 @@ export async function editAppointment(
     );
 
   if (payload.time_slot && bookingSlotChanged) {
-    const allAppointments = (await loadAppointments()).filter(
-      (candidate) => !targetAppointmentIds.includes(candidate.id),
-    );
-    if (hasBookedTimeConflict(allAppointments, payload.date, payload.time_slot)) {
-      return {
-        status: "error",
-        errors: {},
-        formError:
-          "That time is already booked in Tidy Tails. Choose another time.",
-      };
+    if (isOneToOne) {
+      // 1:1 is exclusive-by-duration: re-check the moved block against the day's
+      // slate using persisted durations (same basis as the 1:1 booking action),
+      // excluding the visit(s) being edited.
+      const candidateStart = parseTimeToMinutes(payload.time_slot);
+      if (candidateStart === null) {
+        return { status: "error", errors: {}, formError: "Pick the start time again." };
+      }
+      const candidateDuration = existing.duration_minutes ?? FALLBACK_BLOCK_MINUTES;
+      const sameDayBlocks = (await loadAppointments())
+        .filter(
+          (candidate) =>
+            candidate.date === payload.date &&
+            isScheduleSlateAppointment(candidate) &&
+            !targetAppointmentIds.includes(candidate.id),
+        )
+        .map((candidate) =>
+          resolveExistingBlock(
+            candidate.time_slot,
+            candidate.duration_minutes ?? null,
+            FALLBACK_BLOCK_MINUTES,
+          ),
+        );
+      if (
+        hasOverlapConflict({
+          candidateStartMinutes: candidateStart,
+          candidateDurationMinutes: candidateDuration,
+          existing: sameDayBlocks,
+          bufferMinutes: orgSettings.bufferMinutes,
+        })
+      ) {
+        return {
+          status: "error",
+          errors: {},
+          formError:
+            "That block overlaps an appointment already on this day. Pick another time.",
+        };
+      }
+    } else {
+      const allAppointments = (await loadAppointments()).filter(
+        (candidate) => !targetAppointmentIds.includes(candidate.id),
+      );
+      if (hasBookedTimeConflict(allAppointments, payload.date, payload.time_slot)) {
+        return {
+          status: "error",
+          errors: {},
+          formError:
+            "That time is already booked in Tidy Tails. Choose another time.",
+        };
+      }
     }
   }
 
-  if (payload.time_slot && calendarRelevantChanged) {
+  if (!isOneToOne && payload.time_slot && calendarRelevantChanged) {
     const googleAvailability = await checkGoogleCalendarAppointmentAvailability({
       date: payload.date,
       timeSlot: payload.time_slot,
@@ -364,19 +413,23 @@ export async function editAppointment(
     .map((result) => result.data)
     .filter(Boolean)
     .map((row) => mapAppointmentRow(row ?? {}) as Appointment);
-  const calendarResults = await Promise.all(
-    savedAppointments.map(async (savedAppointment) => {
-      const pet = record.pets.find(
-        (candidate) => candidate.id === savedAppointment.pet_id,
+  // 1:1 visits carry no Google Calendar event (the 1:1 booking action has no
+  // calendar side effect), so an edit must not create or sync one either.
+  const calendarResults = isOneToOne
+    ? []
+    : await Promise.all(
+        savedAppointments.map(async (savedAppointment) => {
+          const pet = record.pets.find(
+            (candidate) => candidate.id === savedAppointment.pet_id,
+          );
+          if (!pet) return { status: "skipped", message: "Pet was not found for calendar sync." };
+          return syncAppointmentToGoogleCalendar({
+            appointment: savedAppointment,
+            client: record.client,
+            pet,
+          });
+        }),
       );
-      if (!pet) return { status: "skipped", message: "Pet was not found for calendar sync." };
-      return syncAppointmentToGoogleCalendar({
-        appointment: savedAppointment,
-        client: record.client,
-        pet,
-      });
-    }),
-  );
   summary.calendar = summarizeCalendarResults(calendarResults);
 
   revalidatePath(`/clients/${appointment.client_id}`);
