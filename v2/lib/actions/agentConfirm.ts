@@ -65,8 +65,10 @@ import { editPet, type EditPetState } from "./editPet";
 import {
   deleteAppointment,
   editAppointment,
+  markAppointmentNoShow,
   type DeleteAppointmentState,
   type EditAppointmentState,
+  type NoShowAppointmentState,
 } from "./editAppointment";
 import { deleteClient, type DeleteClientState } from "./deleteClient";
 import { saveDayCloseoutOverride, type DayCloseoutState } from "./dayCloseout";
@@ -409,6 +411,15 @@ async function confirmEditAppointment(
     return await runCancelAppointment(form, `Cancelled ${proposal.petName}'s visit.`);
   }
 
+  if (proposal.mode === "no_show") {
+    const form = new FormData();
+    form.set("client_id", proposal.clientId);
+    form.set("appointment_id", proposal.appointmentId);
+    form.set(AGENT_SOURCE_FIELD, AGENT_SOURCE_VALUE);
+    const state = await markAppointmentNoShow({ status: "idle" }, form);
+    return mapNoShowAppointmentState(state, `Marked ${proposal.petName} as a no-show.`);
+  }
+
   const form = new FormData();
   form.set("client_id", proposal.clientId);
   form.set("appointment_id", proposal.appointmentId);
@@ -566,6 +577,24 @@ function mapDeleteAppointmentState(
       return { status: "saved", message: savedMessage };
     case "gated":
       return { status: "gated", message: state.message ?? "Nothing was changed." };
+    case "demo":
+      return { status: "gated", message: "Demo mode — nothing was changed." };
+    case "error":
+      return { status: "error", message: state.message };
+    default:
+      return { status: "error", message: GENERIC_ERROR };
+  }
+}
+
+function mapNoShowAppointmentState(
+  state: NoShowAppointmentState,
+  savedMessage: string,
+): AgentConfirmResult {
+  switch (state.status) {
+    case "saved":
+      return { status: "saved", message: savedMessage };
+    case "gated":
+      return { status: "gated", message: state.message };
     case "demo":
       return { status: "gated", message: "Demo mode — nothing was changed." };
     case "error":

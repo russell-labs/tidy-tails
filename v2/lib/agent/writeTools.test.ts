@@ -417,6 +417,38 @@ describe("propose_edit_appointment", () => {
     expect(proposal.mode).toBe("cancel");
   });
 
+  it("marks a booked visit as a no-show (keeps the record)", async () => {
+    loadDatasetMock.mockResolvedValue(dataset({ appointments: [booked] }));
+    const proposal = (await runAgentWriteTool("propose_edit_appointment", {
+      client_id: "client-1",
+      appointment_id: "appt-future",
+      mode: "no_show",
+    })) as EditAppointmentProposal;
+    expect(proposal.kind).toBe("edit_appointment");
+    expect(proposal.mode).toBe("no_show");
+    if (proposal.mode !== "no_show") throw new Error("expected no_show");
+    expect(proposal.appointmentId).toBe("appt-future");
+    expect(proposal.date).toBe("2026-07-20");
+  });
+
+  it("refuses a no-show on a non-booked visit (mirrors the action guard)", async () => {
+    const completed = appointment({
+      id: "appt-done",
+      pet_id: "pet-1",
+      client_id: "client-1",
+      date: "2026-06-01",
+      status: "completed",
+    });
+    loadDatasetMock.mockResolvedValue(dataset({ appointments: [completed] }));
+    await expect(
+      runAgentWriteTool("propose_edit_appointment", {
+        client_id: "client-1",
+        appointment_id: "appt-done",
+        mode: "no_show",
+      }),
+    ).rejects.toBeInstanceOf(AgentToolError);
+  });
+
   it("refuses to edit on a one_to_one org (the gated action does not support it)", async () => {
     loadOrgSettingsMock.mockResolvedValue({
       ...DEFAULT_ORG_SETTINGS,

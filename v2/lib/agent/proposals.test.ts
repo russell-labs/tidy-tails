@@ -229,6 +229,17 @@ const EDIT_APPT_CANCEL: EditAppointmentProposal = {
   service: "Full groom",
 };
 
+const EDIT_APPT_NO_SHOW: EditAppointmentProposal = {
+  kind: "edit_appointment",
+  mode: "no_show",
+  clientId: "c1",
+  appointmentId: "a1",
+  ownerName: "Mary Jones",
+  petName: "Kiwi",
+  date: "2026-07-12",
+  service: "Full groom",
+};
+
 const DELETE_HOUSEHOLD: DeleteHouseholdProposal = {
   kind: "delete_household",
   clientId: "c1",
@@ -324,6 +335,15 @@ describe("describeProposal — edit appointment", () => {
     expect(text.toLowerCase()).toContain("cancel");
     expect(text).toContain("Kiwi");
     expect(text).toContain(formatDate("2026-07-12"));
+  });
+
+  it("no-show says it marks a no-show and keeps the record (not a delete)", () => {
+    const text = describeProposal(EDIT_APPT_NO_SHOW);
+    expect(text.toLowerCase()).toContain("no-show");
+    expect(text).toContain("Kiwi");
+    expect(text).toContain(formatDate("2026-07-12"));
+    expect(text.toLowerCase()).toContain("keep");
+    expect(text.toLowerCase()).not.toContain("delete");
   });
 });
 

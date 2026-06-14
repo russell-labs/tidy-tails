@@ -24,6 +24,7 @@ import {
   buildEditAppointmentUpdate,
   buildSharedAppointmentGroupRowUpdate,
   buildSharedAppointmentGroupUpdate,
+  canMarkAppointmentNoShow,
   shouldBlockAppointmentDeleteForCalendarStatus,
   validateBookingUpdateTextInput,
   validateCancellationTextInput,
@@ -87,6 +88,15 @@ export type DeleteAppointmentState =
       message?: string;
       calendar?: { status: string; message: string };
       cancellationText?: AppointmentTextSend;
+    };
+
+export type NoShowAppointmentState =
+  | { status: "idle" }
+  | { status: "error"; message: string }
+  | {
+      status: "demo" | "gated" | "saved";
+      summary: EditAppointmentSummary;
+      message: string;
     };
 
 function checked(value: FormDataEntryValue | null): boolean {
@@ -577,6 +587,98 @@ export async function deleteAppointment(
     calendar: { status: calendar.status, message: calendar.message },
     cancellationText,
   };
+}
+
+/**
+ * Mark a booked appointment as a no-show. This is a STATUS transition that keeps
+ * the record (never a hard delete) — a no-show is a business record. Same gate as
+ * edit/cancel (EDIT_APPOINTMENT_WRITE). Universal: the status change is identical
+ * for batched and one_to_one orgs (it touches no location/duration/slot field).
+ * Per the product call, the linked Google Calendar event is left untouched.
+ */
+export async function markAppointmentNoShow(
+  _prev: NoShowAppointmentState,
+  formData: FormData,
+): Promise<NoShowAppointmentState> {
+  const user = await getCurrentUser();
+  if (!user) return { status: "error", message: "Your session ended. Sign in again." };
+
+  const clientId = String(formData.get("client_id") ?? "").trim();
+  const appointmentId = String(formData.get("appointment_id") ?? "").trim();
+  if (!clientId || !appointmentId) {
+    return { status: "error", message: "Missing appointment details." };
+  }
+
+  const record = await getClientRecord(clientId);
+  const existing = record?.appointments.find((candidate) => candidate.id === appointmentId);
+  if (!record || !existing) {
+    return { status: "error", message: "That appointment could not be found." };
+  }
+  if (!canMarkAppointmentNoShow(existing.status)) {
+    return {
+      status: "error",
+      message:
+        "Only a booked appointment can be marked no-show. Use Edit visit for corrections.",
+    };
+  }
+
+  const pet = record.pets.find((candidate) => candidate.id === existing.pet_id);
+  const operatorSettings = await readOperatorSettings();
+  const payment = parsePaymentInfo(existing.notes);
+  const ownerName = fullName(record.client.first_name, record.client.last_name);
+  const summary: EditAppointmentSummary = {
+    ownerName,
+    petName: pet?.name ?? "the pet",
+    date: existing.date,
+    time: existing.time_slot,
+    service: existing.service,
+    location: customerFacingLocationLabel(
+      existing.location,
+      operatorSettings.locationSettings,
+    ),
+    fee: existing.price,
+    tip: existing.tip,
+    paymentMethod: payment.method ?? "cash",
+    paymentStatus: payment.status ?? "paid",
+  };
+
+  if (dataMode() === "fixtures") {
+    return { status: "demo", summary, message: "Demo only - the appointment was not changed." };
+  }
+  if (!isEditAppointmentWriteEnabled()) {
+    return {
+      status: "gated",
+      summary,
+      message: "No-show marking isn't switched on yet. Nothing was changed.",
+    };
+  }
+
+  const supabase = await createServerSupabase();
+  const { error } = await supabase
+    .from("appointments")
+    .update({ status: "no_show" })
+    .eq("client_id", clientId)
+    .eq("id", appointmentId);
+  if (error) {
+    return { status: "error", message: "That appointment could not be marked no-show." };
+  }
+
+  revalidatePath("/schedule");
+  revalidatePath(`/clients/${clientId}`);
+  if (existing.pet_id) revalidatePath(`/clients/${clientId}/pets/${existing.pet_id}`);
+  await recordAuditEvent({
+    eventType: "appointment.updated",
+    clientId,
+    petId: existing.pet_id,
+    appointmentId,
+    summary: `Marked ${summary.petName}'s visit on ${existing.date} as a no-show for ${ownerName}.`,
+    metadata: {
+      status: "no_show",
+      date: existing.date,
+      ...agentOriginMetadata(formData),
+    },
+  });
+  return { status: "saved", summary, message: `Marked ${summary.petName} as a no-show.` };
 }
 
 function serviceCodeFromLabel(label: string | null): string | null {
