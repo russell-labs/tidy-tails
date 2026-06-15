@@ -33,6 +33,7 @@ import { isAgentEnabled, isAgentWritesEnabled } from "@/lib/writeGate";
 import { getCurrentUser } from "@/lib/supabase/server";
 import { getClientRecord } from "@/lib/data/repo";
 import { loadOrgSettings } from "@/lib/orgSettings.server";
+import { findAppointmentByPetDate } from "@/lib/editAppointment";
 import {
   PROPOSAL_KINDS,
   type AddHouseholdProposal,
@@ -398,13 +399,46 @@ async function confirmEditPet(proposal: EditPetProposal): Promise<AgentConfirmRe
   return mapSummaryState(state, `Updated ${proposal.petName}.`);
 }
 
+/**
+ * Re-resolve the authoritative appointment id from the proposal's re-resolution
+ * tuple (pet + current date + time) against org-scoped data — the model never
+ * supplies an id, and a tampered tuple can only ever resolve within this org.
+ * Returns null when the visit can't be uniquely re-resolved (gone, or a same-day
+ * duplicate that the stored time can't disambiguate) — caller errors, no write.
+ */
+async function resolveAppointmentId(
+  proposal: EditAppointmentProposal,
+): Promise<string | null> {
+  const record = await getClientRecord(proposal.clientId);
+  if (!record) return null;
+  const match = findAppointmentByPetDate(record.appointments, {
+    clientId: proposal.clientId,
+    petId: proposal.petId,
+    date: proposal.targetDate,
+    timeSlot: proposal.targetTimeSlot,
+  });
+  return match.kind === "found" ? match.appointment.id : null;
+}
+
 async function confirmEditAppointment(
   proposal: EditAppointmentProposal,
 ): Promise<AgentConfirmResult> {
+  // Re-resolve the appointment id server-side from the proposal's pet + current
+  // date (+ time) using the SAME resolver the propose tool used, so a
+  // client-tampered proposal can't redirect the write to another visit. The read
+  // is org-scoped (RLS + org_id), so resolution stays bound to this org.
+  const appointmentId = await resolveAppointmentId(proposal);
+  if (!appointmentId) {
+    return {
+      status: "error",
+      message: "That visit couldn't be found anymore. Nothing was saved.",
+    };
+  }
+
   if (proposal.mode === "cancel") {
     const form = new FormData();
     form.set("client_id", proposal.clientId);
-    form.set("appointment_id", proposal.appointmentId);
+    form.set("appointment_id", appointmentId);
     // No send_cancellation_text and no group scope: an agent cancel never
     // auto-texts the customer and only ever touches the one resolved visit.
     form.set(AGENT_SOURCE_FIELD, AGENT_SOURCE_VALUE);
@@ -414,7 +448,7 @@ async function confirmEditAppointment(
   if (proposal.mode === "no_show") {
     const form = new FormData();
     form.set("client_id", proposal.clientId);
-    form.set("appointment_id", proposal.appointmentId);
+    form.set("appointment_id", appointmentId);
     form.set(AGENT_SOURCE_FIELD, AGENT_SOURCE_VALUE);
     const state = await markAppointmentNoShow({ status: "idle" }, form);
     return mapNoShowAppointmentState(state, `Marked ${proposal.petName} as a no-show.`);
@@ -422,7 +456,7 @@ async function confirmEditAppointment(
 
   const form = new FormData();
   form.set("client_id", proposal.clientId);
-  form.set("appointment_id", proposal.appointmentId);
+  form.set("appointment_id", appointmentId);
   form.set("date", proposal.date);
   form.set("time_slot", proposal.timeSlot);
   form.set("service_type", proposal.serviceType);

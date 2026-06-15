@@ -8,6 +8,7 @@ import {
   buildSharedAppointmentGroupRowUpdate,
   buildSharedAppointmentGroupUpdate,
   canMarkAppointmentNoShow,
+  findAppointmentByPetDate,
   shouldBlockAppointmentDeleteForCalendarStatus,
   validateCancellationTextInput,
   validateEditAppointment,
@@ -405,6 +406,83 @@ describe("canMarkAppointmentNoShow", () => {
     expect(canMarkAppointmentNoShow(null)).toBe(false);
     expect(canMarkAppointmentNoShow(undefined)).toBe(false);
     expect(canMarkAppointmentNoShow("")).toBe(false);
+  });
+});
+
+describe("findAppointmentByPetDate", () => {
+  const row = (over: Partial<{ id: string; client_id: string; pet_id: string; date: string; time_slot: string | null }>) => ({
+    id: "a1",
+    client_id: "client-1",
+    pet_id: "pet-1",
+    date: "2026-07-20",
+    time_slot: "10:00am",
+    ...over,
+  });
+
+  it("resolves the single visit for a pet on a date", () => {
+    const result = findAppointmentByPetDate([row({ id: "a1" })], {
+      clientId: "client-1",
+      petId: "pet-1",
+      date: "2026-07-20",
+    });
+    expect(result.kind).toBe("found");
+    if (result.kind !== "found") throw new Error("expected found");
+    expect(result.appointment.id).toBe("a1");
+  });
+
+  it("returns none when no visit matches the pet + date", () => {
+    const result = findAppointmentByPetDate([row({ id: "a1", date: "2026-07-20" })], {
+      clientId: "client-1",
+      petId: "pet-1",
+      date: "2026-07-21",
+    });
+    expect(result.kind).toBe("none");
+  });
+
+  it("scopes to the household and the pet (never another pet's visit)", () => {
+    const result = findAppointmentByPetDate(
+      [row({ id: "a1", pet_id: "pet-OTHER" }), row({ id: "a2", client_id: "client-OTHER" })],
+      { clientId: "client-1", petId: "pet-1", date: "2026-07-20" },
+    );
+    expect(result.kind).toBe("none");
+  });
+
+  it("is ambiguous (lists the times) when a pet has two visits on the same date and no time is given", () => {
+    const result = findAppointmentByPetDate(
+      [row({ id: "a1", time_slot: "10:00am" }), row({ id: "a2", time_slot: "2:00pm" })],
+      { clientId: "client-1", petId: "pet-1", date: "2026-07-20" },
+    );
+    expect(result.kind).toBe("ambiguous");
+    if (result.kind !== "ambiguous") throw new Error("expected ambiguous");
+    expect(result.times).toEqual(["10:00am", "2:00pm"]);
+  });
+
+  it("breaks a same-date tie by exact time_slot string", () => {
+    const result = findAppointmentByPetDate(
+      [row({ id: "a1", time_slot: "10:00am" }), row({ id: "a2", time_slot: "2:00pm" })],
+      { clientId: "client-1", petId: "pet-1", date: "2026-07-20", timeSlot: "2:00pm" },
+    );
+    expect(result.kind).toBe("found");
+    if (result.kind !== "found") throw new Error("expected found");
+    expect(result.appointment.id).toBe("a2");
+  });
+
+  it("stays ambiguous when the given time matches none of the same-date visits", () => {
+    const result = findAppointmentByPetDate(
+      [row({ id: "a1", time_slot: "10:00am" }), row({ id: "a2", time_slot: "2:00pm" })],
+      { clientId: "client-1", petId: "pet-1", date: "2026-07-20", timeSlot: "9:00am" },
+    );
+    expect(result.kind).toBe("ambiguous");
+  });
+
+  it("refuses (ambiguous) when two same-date visits both have no time", () => {
+    const result = findAppointmentByPetDate(
+      [row({ id: "a1", time_slot: null }), row({ id: "a2", time_slot: null })],
+      { clientId: "client-1", petId: "pet-1", date: "2026-07-20" },
+    );
+    expect(result.kind).toBe("ambiguous");
+    if (result.kind !== "ambiguous") throw new Error("expected ambiguous");
+    expect(result.times).toEqual(["(no time set)"]);
   });
 });
 

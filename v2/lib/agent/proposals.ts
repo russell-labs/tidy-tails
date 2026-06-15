@@ -163,19 +163,28 @@ export type EditPetProposal = {
  * Propose editing an appointment. `reschedule_change` is backed by
  * editAppointment (full-replace, merged); `cancel` is backed by deleteAppointment;
  * `no_show` is backed by markAppointmentNoShow (a status transition that KEEPS the
- * record — never a delete). All three are behind EDIT_APPOINTMENT_WRITE. Batched
- * surface only — the gated edit action refuses one_to_one orgs, so the propose tool
- * refuses them too.
+ * record — never a delete). All three are behind EDIT_APPOINTMENT_WRITE. Universal:
+ * serves BOTH the batched (gina/annette) and 1:1 (org-location) schedules.
+ *
+ * TARGET, NOT ID: the visit is identified by the re-resolution tuple
+ * (`petId` + `targetDate` + `targetTimeSlot`), NOT a raw appointment id — the read
+ * tools never expose ids, so the model can't supply one. The confirm action
+ * re-resolves the authoritative appointment id server-side from this tuple against
+ * org-scoped data (mirroring confirmAddTip), so a client-tampered proposal can't
+ * redirect the write outside the org. For `reschedule_change`, `targetDate` is the
+ * visit's CURRENT date (the identifier) while `date` is the NEW date being written.
  */
 export type EditAppointmentProposal =
   | {
       kind: "edit_appointment";
       mode: "reschedule_change";
       clientId: string;
-      appointmentId: string;
+      petId: string;
+      targetDate: string; // the visit's CURRENT date — used to re-resolve the id
+      targetTimeSlot: string | null; // the visit's CURRENT time — disambiguates a same-day duplicate
       ownerName: string;
       petName: string;
-      date: string;
+      date: string; // the NEW date being written
       timeSlot: string;
       serviceType: ServiceType;
       service: string;
@@ -193,7 +202,9 @@ export type EditAppointmentProposal =
       kind: "edit_appointment";
       mode: "cancel";
       clientId: string;
-      appointmentId: string;
+      petId: string;
+      targetDate: string;
+      targetTimeSlot: string | null;
       ownerName: string;
       petName: string;
       date: string;
@@ -203,7 +214,9 @@ export type EditAppointmentProposal =
       kind: "edit_appointment";
       mode: "no_show";
       clientId: string;
-      appointmentId: string;
+      petId: string;
+      targetDate: string;
+      targetTimeSlot: string | null;
       ownerName: string;
       petName: string;
       date: string;

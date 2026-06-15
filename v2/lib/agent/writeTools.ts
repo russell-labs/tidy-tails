@@ -44,6 +44,7 @@ import { validateEditClient } from "@/lib/editClient";
 import { validateEditPet } from "@/lib/editPet";
 import {
   canMarkAppointmentNoShow,
+  findAppointmentByPetDate,
   validateEditAppointment,
 } from "@/lib/editAppointment";
 import { canDeleteHousehold } from "@/lib/householdLifecycle";
@@ -879,27 +880,45 @@ const proposeEditPet: AgentWriteTool = {
 // and 1:1 (org-location) schedules — the gated edit action validates the location
 // and reschedule conflict by the org's model. A no-show is a status transition
 // that KEEPS the record (only a still-booked visit qualifies) — never a delete.
+//
+// TARGET BY pet + date (+ time), NOT an id. The read tools never expose
+// appointment ids, so the model can't pass one. We identify the visit by its
+// CURRENT date for the pet (a `time_slot` breaks a same-day tie) via the shared
+// findAppointmentByPetDate resolver — the SAME resolver the confirm action uses
+// to re-resolve the authoritative id server-side. A same-day duplicate that a
+// time can't disambiguate is REFUSED here (we ask which time), never guessed.
 // ---------------------------------------------------------------------------
 
 const proposeEditAppointment: AgentWriteTool = {
   name: "propose_edit_appointment",
   description:
     "Propose changing, cancelling, or marking an existing appointment as a no-show (does NOT " +
-    "save it — the operator confirms a card first). Pass `client_id` and `appointment_id` (from " +
-    "find_household / get_schedule) and `mode`: 'change' to reschedule or edit it (any of `date` " +
-    "YYYY-MM-DD, `time_slot`, `service_type`, `location`, `fee`, `tip`, `payment_method`, " +
-    "`payment_status`, `notes` — untouched fields are kept), 'cancel' to remove the booking, or " +
-    "'no_show' to mark a still-booked visit as a no-show (keeps the record, never deletes). " +
-    "`location` is gina/annette for a batched business or one of the operator's own locations for " +
-    "a 1:1 business; leave it out to keep the current one. Resolve the visit first.",
+    "save it — the operator confirms a card first). Identify the visit by `client_id` and " +
+    "`pet_id` (from find_household) plus `date` (YYYY-MM-DD) — the visit's CURRENT date, used to " +
+    "FIND it (NOT a new date). If the pet has more than one visit that day, also pass `time_slot` " +
+    "(the visit's current time) to say which; if you don't know it, ask the operator — never guess. " +
+    "Then `mode`: 'change' to reschedule or edit it — pass `new_date` (YYYY-MM-DD) and/or " +
+    "`new_time_slot` to move it, and/or `service_type`, `location`, `fee`, `tip`, `payment_method`, " +
+    "`payment_status`, `notes` to change those (untouched fields are kept); 'cancel' to remove the " +
+    "booking; or 'no_show' to mark a still-booked visit as a no-show (keeps the record, never " +
+    "deletes). `location` is gina/annette for a batched business or one of the operator's own " +
+    "locations for a 1:1 business; leave it out to keep the current one.",
   input_schema: {
     type: "object",
     properties: {
-      client_id: { type: "string" },
-      appointment_id: { type: "string" },
+      client_id: { type: "string", description: "Client id from find_household." },
+      pet_id: { type: "string", description: "Pet id from find_household." },
+      date: {
+        type: "string",
+        description: "The visit's CURRENT date (ISO YYYY-MM-DD), used to find it — not a new date.",
+      },
+      time_slot: {
+        type: "string",
+        description: "The visit's CURRENT time, to pick which visit when the pet has two that day.",
+      },
       mode: { type: "string", enum: ["change", "cancel", "no_show"] },
-      date: { type: "string" },
-      time_slot: { type: "string" },
+      new_date: { type: "string", description: "Reschedule target date (ISO YYYY-MM-DD)." },
+      new_time_slot: { type: "string", description: "Reschedule target time, e.g. '2:00pm'." },
       service_type: { type: "string", enum: [...SERVICE_TYPES] },
       location: { type: "string", description: "gina/annette (batched) or an org location name (1:1)." },
       fee: { type: "number" },
@@ -908,12 +927,14 @@ const proposeEditAppointment: AgentWriteTool = {
       payment_status: { type: "string", enum: ["paid", "waiting"] },
       notes: { type: "string" },
     },
-    required: ["client_id", "appointment_id", "mode"],
+    required: ["client_id", "pet_id", "date", "mode"],
     additionalProperties: false,
   },
   propose: async (input): Promise<EditAppointmentProposal> => {
     const clientId = requireString(input.client_id, "client_id");
-    const appointmentId = requireString(input.appointment_id, "appointment_id");
+    const petId = requireString(input.pet_id, "pet_id");
+    const targetDate = requireIsoDate(input.date, "date");
+    const targetTimeInput = optionalString(input.time_slot) || null;
     const mode = optionalString(input.mode);
 
     const org = await loadOrgSettings();
@@ -927,24 +948,50 @@ const proposeEditAppointment: AgentWriteTool = {
         `No client with id ${JSON.stringify(clientId)}. Use find_household to look one up.`,
       );
     }
-    const existing = dataset.appointments.find(
-      (a) => a.id === appointmentId && a.client_id === clientId,
-    );
-    if (!existing) {
+    const ownerName = fullName(client.first_name, client.last_name);
+    const petName =
+      dataset.pets.find((p) => p.id === petId && p.client_id === clientId)?.name ?? null;
+    if (!petName) {
       throw new AgentToolError(
-        "That visit isn't on this household. Re-check with get_schedule / find_household.",
+        "That pet isn't on this client's file. Re-check with find_household.",
       );
     }
-    const petName =
-      dataset.pets.find((p) => p.id === existing.pet_id)?.name ?? "the pet";
-    const ownerName = fullName(client.first_name, client.last_name);
+
+    // Resolve the exact visit by pet + date (+ time) — the same resolver the
+    // confirm action re-runs server-side. A same-day duplicate disambiguates by
+    // time or is refused; it is never resolved to a guess.
+    const match = findAppointmentByPetDate(dataset.appointments, {
+      clientId,
+      petId,
+      date: targetDate,
+      timeSlot: targetTimeInput,
+    });
+    if (match.kind === "none") {
+      throw new AgentToolError(
+        `No appointment for ${petName} on ${targetDate}. Check get_schedule or get_pet_history for the date.`,
+      );
+    }
+    if (match.kind === "ambiguous") {
+      throw new AgentToolError(
+        `${petName} has more than one visit on ${targetDate} (${match.times.join(", ")}). ` +
+          "Check get_schedule for the times or ask the operator which one, then pass it as `time_slot`.",
+      );
+    }
+    const existing = match.appointment;
+    // Preserve the resolved visit's OWN date/time as the re-resolution tuple, so
+    // the confirm action finds the same visit by its current (pre-move) date/time
+    // before the write then moves it.
+    const resolvedTargetDate = existing.date;
+    const resolvedTargetTime = existing.time_slot ?? null;
 
     if (mode === "cancel") {
       return {
         kind: "edit_appointment",
         mode: "cancel",
         clientId,
-        appointmentId,
+        petId,
+        targetDate: resolvedTargetDate,
+        targetTimeSlot: resolvedTargetTime,
         ownerName,
         petName,
         date: existing.date,
@@ -964,7 +1011,9 @@ const proposeEditAppointment: AgentWriteTool = {
         kind: "edit_appointment",
         mode: "no_show",
         clientId,
-        appointmentId,
+        petId,
+        targetDate: resolvedTargetDate,
+        targetTimeSlot: resolvedTargetTime,
         ownerName,
         petName,
         date: existing.date,
@@ -974,7 +1023,8 @@ const proposeEditAppointment: AgentWriteTool = {
 
     // mode === "change": merge the requested fields onto the existing visit,
     // mirroring how the edit screen pre-fills from a saved appointment so an
-    // untouched field is preserved exactly.
+    // untouched field is preserved exactly. `new_date`/`new_time_slot` move it;
+    // omitting them keeps the current date/time.
     const payment = parsePaymentInfo(existing.notes);
     const cleanNotes = stripSalonPayoutOverride(stripPaymentInfo(existing.notes)) ?? "";
     const currentLocation = isOneToOne
@@ -983,8 +1033,8 @@ const proposeEditAppointment: AgentWriteTool = {
         ? existing.location
         : "";
     const merged = {
-      date: optionalString(input.date) || existing.date,
-      time_slot: optionalString(input.time_slot) || (existing.time_slot ?? ""),
+      date: optionalString(input.new_date) || existing.date,
+      time_slot: optionalString(input.new_time_slot) || (existing.time_slot ?? ""),
       service_type:
         optionalString(input.service_type) || (serviceCodeFromLabel(existing.service) ?? ""),
       location: optionalString(input.location) || currentLocation,
@@ -1004,11 +1054,14 @@ const proposeEditAppointment: AgentWriteTool = {
       payment_status: optionalString(input.payment_status) || (payment.status ?? "paid"),
       notes: "notes" in input ? optionalString(input.notes) : cleanNotes,
     };
+    if (optionalString(input.new_date)) requireIsoDate(input.new_date, "new_date");
     const salonOverride = parseSalonPayoutOverride(existing.notes);
 
     const validation = validateEditAppointment({
       client_id: clientId,
-      appointment_id: appointmentId,
+      // The gated action's validator only needs a non-empty id to pass; the real
+      // authoritative id is re-resolved in the confirm action, never carried here.
+      appointment_id: existing.id,
       date: merged.date,
       time_slot: merged.time_slot,
       service_type: merged.service_type,
@@ -1043,9 +1096,9 @@ const proposeEditAppointment: AgentWriteTool = {
       : bookingLocationLabel(v.location) ?? v.location;
 
     const changes: string[] = [];
-    if (optionalString(input.date) && merged.date !== existing.date)
+    if (optionalString(input.new_date) && merged.date !== existing.date)
       changes.push(`date → ${merged.date}`);
-    if (optionalString(input.time_slot) && merged.time_slot !== (existing.time_slot ?? ""))
+    if (optionalString(input.new_time_slot) && merged.time_slot !== (existing.time_slot ?? ""))
       changes.push(`time → ${merged.time_slot}`);
     if (optionalString(input.service_type)) changes.push(`service → ${serviceLabel(v.service_type) ?? v.service_type}`);
     if (optionalString(input.location)) changes.push(`location → ${resolvedLocationLabel}`);
@@ -1058,7 +1111,9 @@ const proposeEditAppointment: AgentWriteTool = {
       kind: "edit_appointment",
       mode: "reschedule_change",
       clientId,
-      appointmentId,
+      petId,
+      targetDate: resolvedTargetDate,
+      targetTimeSlot: resolvedTargetTime,
       ownerName,
       petName,
       date: v.date,
