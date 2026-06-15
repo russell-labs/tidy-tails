@@ -1300,9 +1300,12 @@ const proposeSendText: AgentWriteTool = {
   name: "propose_send_text",
   description:
     "Propose sending a customer text (does NOT send it — the operator confirms the exact " +
-    "wording first, and nothing is ever auto-sent). For `mode` 'reminder', pass `client_id` " +
-    "and `appointment_id` (from find_household / get_schedule) and the `message` you drafted " +
-    "from the operator's instruction (do not invent appointment facts). For `mode` 'reply' " +
+    "wording first, and nothing is ever auto-sent). For `mode` 'reminder', identify the visit " +
+    "by `client_id` and `pet_id` (from find_household) plus `date` (YYYY-MM-DD) — the visit's " +
+    "CURRENT date from get_schedule, used to FIND it (you do NOT handle appointment ids). If the " +
+    "pet has more than one visit that day, also pass `time_slot` (the visit's current time) to " +
+    "say which; if you don't know it, ask the operator — never guess. Also pass the `message` you " +
+    "drafted from the operator's instruction (do not invent appointment facts). For `mode` 'reply' " +
     "(replying to a customer's inbound text), pass the `sms_id` being replied to, the drafted " +
     "`message`, and `recipient_label` (the customer's name). Always show the operator the full " +
     "wording to confirm before anything is sent.",
@@ -1311,9 +1314,17 @@ const proposeSendText: AgentWriteTool = {
     properties: {
       mode: { type: "string", enum: ["reminder", "reply"] },
       message: { type: "string" },
-      client_id: { type: "string" },
-      appointment_id: { type: "string" },
-      sms_id: { type: "string" },
+      client_id: { type: "string", description: "Client id from find_household (reminder mode)." },
+      pet_id: { type: "string", description: "Pet id from find_household (reminder mode)." },
+      date: {
+        type: "string",
+        description: "The visit's CURRENT date (ISO YYYY-MM-DD), used to find it (reminder mode).",
+      },
+      time_slot: {
+        type: "string",
+        description: "The visit's CURRENT time, to pick which visit when the pet has two that day.",
+      },
+      sms_id: { type: "string", description: "Inbound message id being replied to (reply mode)." },
       recipient_label: { type: "string" },
     },
     required: ["mode", "message"],
@@ -1339,7 +1350,10 @@ const proposeSendText: AgentWriteTool = {
     }
 
     const clientId = requireString(input.client_id, "client_id");
-    const appointmentId = requireString(input.appointment_id, "appointment_id");
+    const petId = requireString(input.pet_id, "pet_id");
+    const targetDate = requireIsoDate(input.date, "date");
+    const targetTimeInput = optionalString(input.time_slot) || null;
+
     const dataset = await loadDataset();
     const client = dataset.clients.find((c) => c.id === clientId);
     if (!client) {
@@ -1347,12 +1361,53 @@ const proposeSendText: AgentWriteTool = {
         `No client with id ${JSON.stringify(clientId)}. Use find_household to look one up.`,
       );
     }
+    const pet = dataset.pets.find((p) => p.id === petId && p.client_id === clientId);
+    if (!pet) {
+      throw new AgentToolError(
+        "That pet isn't on this client's file. Re-check with find_household.",
+      );
+    }
+
+    // Identify the exact visit by pet + date (+ time) — the SAME resolver the
+    // confirm action re-runs server-side to re-resolve the authoritative id. A
+    // same-day duplicate disambiguates by time or is refused; never a guess.
+    const match = findAppointmentByPetDate(dataset.appointments, {
+      clientId,
+      petId,
+      date: targetDate,
+      timeSlot: targetTimeInput,
+    });
+    if (match.kind === "none") {
+      throw new AgentToolError(
+        `No appointment for ${pet.name} on ${targetDate}. Check get_schedule or get_pet_history for the date.`,
+      );
+    }
+    if (match.kind === "ambiguous") {
+      throw new AgentToolError(
+        `${pet.name} has more than one visit on ${targetDate} (${match.times.join(", ")}). ` +
+          "Check get_schedule for the times or ask the operator which one, then pass it as `time_slot`.",
+      );
+    }
+    const existing = match.appointment;
+
+    // A reminder is only for a still-BOOKED visit. Resolving by an explicit date
+    // can land on a completed or cancelled visit on that day; refuse rather than
+    // draft a reminder for one (mirrors the no-show guard's booked-only rule).
+    if ((existing.status ?? "booked") !== "booked") {
+      throw new AgentToolError(
+        `${pet.name}'s visit on ${targetDate} is ${existing.status} — there's no booked appointment to remind about.`,
+      );
+    }
+
+    // Build the reminder context (pet · date · time) from the resolved visit. The
+    // id is resolved internally — never supplied by the model — so a grouped
+    // same-slot context is safe to derive here.
     const target = buildReminderTarget(dataset.appointments, dataset.pets, {
-      appointmentId,
+      appointmentId: existing.id,
     });
     if (!target) {
       throw new AgentToolError(
-        "I couldn't find that appointment to remind about. Re-check with get_schedule.",
+        "I couldn't build that reminder. Re-check with get_schedule.",
       );
     }
     const validation = validateReminderInput({ phone: client.phone, message });
@@ -1371,7 +1426,11 @@ const proposeSendText: AgentWriteTool = {
       kind: "send_text",
       mode: "reminder",
       clientId,
-      appointmentId,
+      petId,
+      // Preserve the resolved visit's OWN date/time as the re-resolution tuple so
+      // the confirm action finds the same visit server-side before sending.
+      targetDate: existing.date,
+      targetTimeSlot: existing.time_slot ?? null,
       recipientLabel: fullName(client.first_name, client.last_name),
       toNumber: client.phone,
       context: contextBits.join(" · "),

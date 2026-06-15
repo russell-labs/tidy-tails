@@ -476,7 +476,9 @@ const SEND_REMINDER: SendTextProposal = {
   kind: "send_text",
   mode: "reminder",
   clientId: "client-1",
-  appointmentId: "appt-1",
+  petId: "pet-1",
+  targetDate: "2026-07-20", // the visit's CURRENT date — re-resolves the id (matches EDIT_APPT_RECORD → appt-1)
+  targetTimeSlot: "10:30am",
   recipientLabel: "Mary Jones",
   toNumber: "705-555-0101",
   context: "Full groom · Jul 12 · 9:00am",
@@ -656,15 +658,26 @@ describe("confirmAgentProposal — log daily income", () => {
 });
 
 describe("confirmAgentProposal — send text (never auto-sends)", () => {
-  it("dispatches a reminder to prepareReminder with the drafted message + number", async () => {
+  it("dispatches a reminder to prepareReminder, re-resolving the appointment id server-side from pet + date", async () => {
+    getClientRecordMock.mockResolvedValue(EDIT_APPT_RECORD);
     prepareReminderMock.mockResolvedValue({ status: "sent", summary: {} } as never);
     const result = await confirmAgentProposal(SEND_REMINDER);
     expect(result.status).toBe("saved");
     const form = prepareReminderMock.mock.calls[0][1] as FormData;
     expect(form.get("client_id")).toBe("client-1");
-    expect(form.get("appointment_id")).toBe("appt-1");
+    expect(form.get("appointment_id")).toBe("appt-1"); // re-resolved server-side, not trusted from the client
     expect(form.get("to_number")).toBe("705-555-0101");
     expect(form.get("message")).toBe(SEND_REMINDER.message);
+    expect(form.get("audit_source")).toBe("agent");
+  });
+
+  it("fails a reminder safe when the appointment can't be re-resolved (no send)", async () => {
+    getClientRecordMock.mockResolvedValue(
+      clientRecord({ client: { id: "client-1" }, appointments: [] }),
+    );
+    const result = await confirmAgentProposal(SEND_REMINDER);
+    expect(result.status).toBe("error");
+    expect(prepareReminderMock).not.toHaveBeenCalled();
   });
 
   it("dispatches a reply to sendInboxSmsReply with the sms_id + drafted message", async () => {
