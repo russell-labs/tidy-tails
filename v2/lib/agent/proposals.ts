@@ -262,13 +262,23 @@ export type LogDailyIncomeProposal = {
  * BOTH always draft → confirm → send: nothing is sent until Sam taps Confirm, and
  * the FULL drafted message is shown verbatim on the card. The reply path is the
  * agent's only customer-text injection surface — see the messaging reply seam.
+ *
+ * REMINDER — TARGET, NOT ID: the read tools never expose an appointment id, so the
+ * model can't supply one. The reminder's visit is identified by the re-resolution
+ * tuple (`petId` + `targetDate` + `targetTimeSlot`) — the visit's CURRENT date (and
+ * its time, to break a same-day tie) — exactly like edit_appointment. The confirm
+ * action re-resolves the authoritative appointment id server-side from this tuple
+ * against org-scoped (RLS) data, so a client-tampered proposal can't redirect or
+ * fabricate the target; a non-match fails safe (no send).
  */
 export type SendTextProposal =
   | {
       kind: "send_text";
       mode: "reminder";
       clientId: string;
-      appointmentId: string;
+      petId: string;
+      targetDate: string; // the visit's CURRENT date — used to re-resolve the id
+      targetTimeSlot: string | null; // the visit's CURRENT time — disambiguates a same-day duplicate
       recipientLabel: string;
       toNumber: string;
       context: string;

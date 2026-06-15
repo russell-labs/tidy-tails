@@ -400,24 +400,40 @@ async function confirmEditPet(proposal: EditPetProposal): Promise<AgentConfirmRe
 }
 
 /**
- * Re-resolve the authoritative appointment id from the proposal's re-resolution
- * tuple (pet + current date + time) against org-scoped data — the model never
- * supplies an id, and a tampered tuple can only ever resolve within this org.
- * Returns null when the visit can't be uniquely re-resolved (gone, or a same-day
- * duplicate that the stored time can't disambiguate) — caller errors, no write.
+ * Re-resolve the authoritative appointment id from a re-resolution tuple
+ * (pet + the visit's current date + time) against org-scoped data — the model
+ * never supplies an id, and a tampered tuple can only ever resolve within this
+ * org (getClientRecord is RLS + org_id bound). Returns null when the visit can't
+ * be uniquely re-resolved (gone, or a same-day duplicate that the stored time
+ * can't disambiguate) — caller errors, no write. Shared by edit_appointment and
+ * the send_text reminder so both re-resolve identically.
  */
+async function resolveAppointmentIdByTuple(
+  clientId: string,
+  petId: string,
+  date: string,
+  timeSlot: string | null,
+): Promise<string | null> {
+  const record = await getClientRecord(clientId);
+  if (!record) return null;
+  const match = findAppointmentByPetDate(record.appointments, {
+    clientId,
+    petId,
+    date,
+    timeSlot,
+  });
+  return match.kind === "found" ? match.appointment.id : null;
+}
+
 async function resolveAppointmentId(
   proposal: EditAppointmentProposal,
 ): Promise<string | null> {
-  const record = await getClientRecord(proposal.clientId);
-  if (!record) return null;
-  const match = findAppointmentByPetDate(record.appointments, {
-    clientId: proposal.clientId,
-    petId: proposal.petId,
-    date: proposal.targetDate,
-    timeSlot: proposal.targetTimeSlot,
-  });
-  return match.kind === "found" ? match.appointment.id : null;
+  return resolveAppointmentIdByTuple(
+    proposal.clientId,
+    proposal.petId,
+    proposal.targetDate,
+    proposal.targetTimeSlot,
+  );
 }
 
 async function confirmEditAppointment(
@@ -545,9 +561,25 @@ async function confirmSendText(
     return mapInboxState(state, `Replied to ${proposal.recipientLabel}.`);
   }
 
+  // Re-resolve the appointment id server-side from the proposal's pet + current
+  // date (+ time) — the model never supplies an id, and a non-match fails safe
+  // (no send). Same re-resolution the edit_appointment path uses.
+  const appointmentId = await resolveAppointmentIdByTuple(
+    proposal.clientId,
+    proposal.petId,
+    proposal.targetDate,
+    proposal.targetTimeSlot,
+  );
+  if (!appointmentId) {
+    return {
+      status: "error",
+      message: "That appointment couldn't be found anymore. Nothing was sent.",
+    };
+  }
+
   const form = new FormData();
   form.set("client_id", proposal.clientId);
-  form.set("appointment_id", proposal.appointmentId);
+  form.set("appointment_id", appointmentId);
   form.set("to_number", proposal.toNumber);
   form.set("message", proposal.message);
   form.set(AGENT_SOURCE_FIELD, AGENT_SOURCE_VALUE);

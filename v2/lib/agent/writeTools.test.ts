@@ -635,7 +635,7 @@ describe("propose_log_daily_income", () => {
 });
 
 describe("propose_send_text", () => {
-  it("drafts a reminder, resolving the recipient number from the household", async () => {
+  it("drafts a reminder, resolving the appointment by pet + date (no appointment id needed)", async () => {
     const booked = appointment({
       id: "appt-r",
       client_id: "client-1",
@@ -648,14 +648,65 @@ describe("propose_send_text", () => {
     const proposal = (await runAgentWriteTool("propose_send_text", {
       mode: "reminder",
       client_id: "client-1",
-      appointment_id: "appt-r",
+      pet_id: "pet-1",
+      date: "2026-07-20",
       message: "Hi Mary, reminder Kiwi is booked for Monday at 10:30am.",
     })) as SendTextProposal;
 
     expect(proposal.kind).toBe("send_text");
     if (proposal.mode !== "reminder") throw new Error("expected reminder");
+    // Carries the re-resolution tuple (pet + the visit's CURRENT date/time), NOT an
+    // appointment id — the read tools never expose ids, so the model can't supply one.
+    expect(proposal.petId).toBe("pet-1");
+    expect(proposal.targetDate).toBe("2026-07-20");
+    expect(proposal.targetTimeSlot).toBe("10:30am");
+    expect(proposal).not.toHaveProperty("appointmentId");
     expect(proposal.toNumber).toContain("705");
     expect(proposal.message).toContain("Kiwi");
+  });
+
+  it("refuses a reminder when the pet has no visit on that date (asks, never guesses)", async () => {
+    loadDatasetMock.mockResolvedValue(dataset({ appointments: [] }));
+    await expect(
+      runAgentWriteTool("propose_send_text", {
+        mode: "reminder",
+        client_id: "client-1",
+        pet_id: "pet-1",
+        date: "2026-07-20",
+        message: "Reminder for Kiwi.",
+      }),
+    ).rejects.toBeInstanceOf(AgentToolError);
+  });
+
+  it("refuses a same-day duplicate a time can't disambiguate (lists the times)", async () => {
+    const am = appointment({ id: "appt-am", pet_id: "pet-1", date: "2026-07-20", time_slot: "9:00am", status: "booked" });
+    const pm = appointment({ id: "appt-pm", pet_id: "pet-1", date: "2026-07-20", time_slot: "2:00pm", status: "booked" });
+    loadDatasetMock.mockResolvedValue(dataset({ appointments: [am, pm] }));
+    await expect(
+      runAgentWriteTool("propose_send_text", {
+        mode: "reminder",
+        client_id: "client-1",
+        pet_id: "pet-1",
+        date: "2026-07-20",
+        message: "Reminder for Kiwi.",
+      }),
+    ).rejects.toThrow(/9:00am|2:00pm/);
+  });
+
+  it("disambiguates a same-day duplicate when the visit time is given", async () => {
+    const am = appointment({ id: "appt-am", pet_id: "pet-1", date: "2026-07-20", time_slot: "9:00am", status: "booked" });
+    const pm = appointment({ id: "appt-pm", pet_id: "pet-1", date: "2026-07-20", time_slot: "2:00pm", status: "booked" });
+    loadDatasetMock.mockResolvedValue(dataset({ appointments: [am, pm] }));
+    const proposal = (await runAgentWriteTool("propose_send_text", {
+      mode: "reminder",
+      client_id: "client-1",
+      pet_id: "pet-1",
+      date: "2026-07-20",
+      time_slot: "2:00pm",
+      message: "Reminder for Kiwi.",
+    })) as SendTextProposal;
+    if (proposal.mode !== "reminder") throw new Error("expected reminder");
+    expect(proposal.targetTimeSlot).toBe("2:00pm");
   });
 
   it("drafts a reply to a specific inbound message WITHOUT loading any customer text here", async () => {
