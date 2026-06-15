@@ -466,11 +466,11 @@ describe("propose_edit_appointment", () => {
     price: 70,
   });
 
-  it("reschedules (changes the date) on the batched surface", async () => {
+  it("reschedules (changes the date) on the batched surface — household + dog by name", async () => {
     loadDatasetMock.mockResolvedValue(dataset({ appointments: [booked] }));
     const proposal = (await runAgentWriteTool("propose_edit_appointment", {
-      client_id: "client-1",
-      pet_id: "pet-1",
+      household: "Mary Jones",
+      pet: "Kiwi",
       date: "2026-07-20", // current date — identifies the visit
       mode: "change",
       new_date: "2026-07-21", // reschedule target
@@ -481,7 +481,10 @@ describe("propose_edit_appointment", () => {
     expect(proposal.date).toBe("2026-07-21"); // the NEW date written
     expect(proposal.targetDate).toBe("2026-07-20"); // re-resolution tuple = current date
     expect(proposal.targetTimeSlot).toBe("10:30am");
-    expect(proposal.petId).toBe("pet-1");
+    // Carries names, NOT ids — confirm re-resolves them.
+    expect(proposal).not.toHaveProperty("petId");
+    expect(proposal.householdName).toBe("Mary Jones");
+    expect(proposal.petQuery).toBe("Kiwi");
     expect(proposal.service).toBe("Full groom"); // preserved
     expect(proposal.changes).toContain("date → 2026-07-21");
   });
@@ -489,8 +492,8 @@ describe("propose_edit_appointment", () => {
   it("changes a field WITHOUT moving the visit (keeps the current date when no new_date)", async () => {
     loadDatasetMock.mockResolvedValue(dataset({ appointments: [booked] }));
     const proposal = (await runAgentWriteTool("propose_edit_appointment", {
-      client_id: "client-1",
-      pet_id: "pet-1",
+      household: "Mary Jones",
+      pet: "Kiwi",
       date: "2026-07-20",
       mode: "change",
       service_type: "bath_only",
@@ -505,22 +508,22 @@ describe("propose_edit_appointment", () => {
   it("cancels a booking", async () => {
     loadDatasetMock.mockResolvedValue(dataset({ appointments: [booked] }));
     const proposal = (await runAgentWriteTool("propose_edit_appointment", {
-      client_id: "client-1",
-      pet_id: "pet-1",
+      household: "Mary Jones",
+      pet: "Kiwi",
       date: "2026-07-20",
       mode: "cancel",
     })) as EditAppointmentProposal;
     expect(proposal.mode).toBe("cancel");
     if (proposal.mode !== "cancel") throw new Error("expected cancel");
     expect(proposal.targetDate).toBe("2026-07-20");
-    expect(proposal.petId).toBe("pet-1");
+    expect(proposal.petQuery).toBe("Kiwi");
   });
 
   it("marks a booked visit as a no-show (keeps the record)", async () => {
     loadDatasetMock.mockResolvedValue(dataset({ appointments: [booked] }));
     const proposal = (await runAgentWriteTool("propose_edit_appointment", {
-      client_id: "client-1",
-      pet_id: "pet-1",
+      household: "Mary Jones",
+      pet: "Kiwi",
       date: "2026-07-20",
       mode: "no_show",
     })) as EditAppointmentProposal;
@@ -536,9 +539,21 @@ describe("propose_edit_appointment", () => {
     loadDatasetMock.mockResolvedValue(dataset({ appointments: [booked] }));
     await expect(
       runAgentWriteTool("propose_edit_appointment", {
-        client_id: "client-1",
-        pet_id: "pet-1",
+        household: "Mary Jones",
+        pet: "Kiwi",
         date: "2026-08-01", // no visit that day
+        mode: "cancel",
+      }),
+    ).rejects.toBeInstanceOf(AgentToolError);
+  });
+
+  it("asks (does not guess) when the household name matches none", async () => {
+    loadDatasetMock.mockResolvedValue(dataset({ appointments: [booked] }));
+    await expect(
+      runAgentWriteTool("propose_edit_appointment", {
+        household: "Nobody Here",
+        pet: "Kiwi",
+        date: "2026-07-20",
         mode: "cancel",
       }),
     ).rejects.toBeInstanceOf(AgentToolError);
@@ -567,8 +582,8 @@ describe("propose_edit_appointment", () => {
     // No time → ambiguous, must refuse.
     await expect(
       runAgentWriteTool("propose_edit_appointment", {
-        client_id: "client-1",
-        pet_id: "pet-1",
+        household: "Mary Jones",
+        pet: "Kiwi",
         date: "2026-07-20",
         mode: "cancel",
       }),
@@ -576,8 +591,8 @@ describe("propose_edit_appointment", () => {
 
     // With the disambiguating time → resolves the RIGHT visit's tuple.
     const proposal = (await runAgentWriteTool("propose_edit_appointment", {
-      client_id: "client-1",
-      pet_id: "pet-1",
+      household: "Mary Jones",
+      pet: "Kiwi",
       date: "2026-07-20",
       time_slot: "2:00pm",
       mode: "cancel",
@@ -598,8 +613,8 @@ describe("propose_edit_appointment", () => {
     loadDatasetMock.mockResolvedValue(dataset({ appointments: [completed] }));
     await expect(
       runAgentWriteTool("propose_edit_appointment", {
-        client_id: "client-1",
-        pet_id: "pet-1",
+        household: "Mary Jones",
+        pet: "Kiwi",
         date: "2026-06-01",
         mode: "no_show",
       }),
@@ -626,8 +641,8 @@ describe("propose_edit_appointment", () => {
     });
     loadDatasetMock.mockResolvedValue(dataset({ appointments: [oneToOneVisit] }));
     const proposal = (await runAgentWriteTool("propose_edit_appointment", {
-      client_id: "client-1",
-      pet_id: "pet-1",
+      household: "Mary Jones",
+      pet: "Kiwi",
       date: "2026-07-20",
       mode: "change",
       new_date: "2026-07-21",
@@ -657,8 +672,8 @@ describe("propose_edit_appointment", () => {
     loadDatasetMock.mockResolvedValue(dataset({ appointments: [oneToOneVisit] }));
     await expect(
       runAgentWriteTool("propose_edit_appointment", {
-        client_id: "client-1",
-        pet_id: "pet-1",
+        household: "Mary Jones",
+        pet: "Kiwi",
         date: "2026-07-20",
         mode: "change",
         location: "Old Studio",
@@ -689,8 +704,8 @@ describe("propose_edit_appointment", () => {
     });
     loadDatasetMock.mockResolvedValue(dataset({ appointments: [oneToOneVisit] }));
     const proposal = (await runAgentWriteTool("propose_edit_appointment", {
-      client_id: "client-1",
-      pet_id: "pet-1",
+      household: "Mary Jones",
+      pet: "Kiwi",
       date: "2026-07-20",
       mode: "change",
       location: "Gina's",

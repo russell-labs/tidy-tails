@@ -475,25 +475,25 @@ async function resolveAppointmentIdByTuple(
   return match.kind === "found" ? match.appointment.id : null;
 }
 
-async function resolveAppointmentId(
-  proposal: EditAppointmentProposal,
-): Promise<string | null> {
-  return resolveAppointmentIdByTuple(
-    proposal.clientId,
-    proposal.petId,
-    proposal.targetDate,
-    proposal.targetTimeSlot,
-  );
-}
-
 async function confirmEditAppointment(
   proposal: EditAppointmentProposal,
 ): Promise<AgentConfirmResult> {
-  // Re-resolve the appointment id server-side from the proposal's pet + current
-  // date (+ time) using the SAME resolver the propose tool used, so a
-  // client-tampered proposal can't redirect the write to another visit. The read
-  // is org-scoped (RLS + org_id), so resolution stays bound to this org.
-  const appointmentId = await resolveAppointmentId(proposal);
+  // Re-resolve household + dog + the appointment id server-side from the
+  // proposal's NAMES and the visit's current date/time — the model never supplies
+  // an id, and a stale/tampered name resolves only within this org (RLS) or fails
+  // safe. Same matcher + appointment resolver the propose tool used.
+  const household = await reResolveHousehold(proposal.householdName, proposal.householdPhone);
+  if (!household) return { status: "error", message: HOUSEHOLD_GONE };
+  const pet = reResolvePet(household.dataset, household.clientId, proposal.petQuery);
+  if (!pet) return { status: "error", message: PET_GONE };
+  const clientId = household.clientId;
+
+  const appointmentId = await resolveAppointmentIdByTuple(
+    clientId,
+    pet.petId,
+    proposal.targetDate,
+    proposal.targetTimeSlot,
+  );
   if (!appointmentId) {
     return {
       status: "error",
@@ -503,7 +503,7 @@ async function confirmEditAppointment(
 
   if (proposal.mode === "cancel") {
     const form = new FormData();
-    form.set("client_id", proposal.clientId);
+    form.set("client_id", clientId);
     form.set("appointment_id", appointmentId);
     // No send_cancellation_text and no group scope: an agent cancel never
     // auto-texts the customer and only ever touches the one resolved visit.
@@ -513,7 +513,7 @@ async function confirmEditAppointment(
 
   if (proposal.mode === "no_show") {
     const form = new FormData();
-    form.set("client_id", proposal.clientId);
+    form.set("client_id", clientId);
     form.set("appointment_id", appointmentId);
     form.set(AGENT_SOURCE_FIELD, AGENT_SOURCE_VALUE);
     const state = await markAppointmentNoShow({ status: "idle" }, form);
@@ -521,7 +521,7 @@ async function confirmEditAppointment(
   }
 
   const form = new FormData();
-  form.set("client_id", proposal.clientId);
+  form.set("client_id", clientId);
   form.set("appointment_id", appointmentId);
   form.set("date", proposal.date);
   form.set("time_slot", proposal.timeSlot);

@@ -247,6 +247,59 @@ describe("confirmAgentProposal — booking", () => {
   });
 });
 
+// TT-023: the model carries NAMES, not ids. The confirm action re-resolves the
+// authoritative client_id + pet_id server-side from the org-scoped loader, so a
+// fabricated/tampered/stale attribute can only ever resolve within THIS org (RLS)
+// or fail safe — no write. (Tenancy itself is the RLS boundary, exercised by
+// supabase/tests/cross_tenant_isolation.sql; these pin the confirm-path logic.)
+describe("confirmAgentProposal — re-resolves ids from names server-side (no model id)", () => {
+  it("books with the org's REAL ids resolved from the household + dog names", async () => {
+    loadDatasetMock.mockResolvedValue(
+      confirmDataset({
+        clients: [client({ id: "real-7", first_name: "Mary", last_name: "Jones" })],
+        pets: [pet({ id: "real-pet-9", client_id: "real-7", name: "Kiwi" })],
+      }) as never,
+    );
+    createBookingMock.mockResolvedValue({ status: "saved", summary: { petName: "Kiwi" } } as never);
+    await confirmAgentProposal(BOOK); // BOOK carries "Mary Jones"/"Kiwi" — no ids
+    const form = createBookingMock.mock.calls[0][1] as FormData;
+    expect(form.get("client_id")).toBe("real-7"); // resolved server-side, never from the model
+    expect(form.get("pet_ids")).toBe("real-pet-9");
+  });
+
+  it("fails safe (no write) when the household name resolves to nothing in this org", async () => {
+    loadDatasetMock.mockResolvedValue(
+      confirmDataset({
+        clients: [client({ id: "c-other", first_name: "Someone", last_name: "Else" })],
+        pets: [],
+      }) as never,
+    );
+    const result = await confirmAgentProposal(BOOK);
+    expect(result.status).toBe("error");
+    expect(createBookingMock).not.toHaveBeenCalled();
+  });
+
+  it("an id-shaped attribute can't redirect the write — it's treated as a name and resolves nothing", async () => {
+    // A tampered proposal carrying an id-looking household string still only ever
+    // resolves against THIS org's data by name → matches nothing → no write.
+    const tampered = { ...BOOK, householdName: "client-1" };
+    loadDatasetMock.mockResolvedValue(confirmDataset() as never); // Mary Jones / Kiwi
+    const result = await confirmAgentProposal(tampered);
+    expect(result.status).toBe("error");
+    expect(createBookingMock).not.toHaveBeenCalled();
+  });
+
+  it("re-resolves the edit target household + dog + appointment from names", async () => {
+    getClientRecordMock.mockResolvedValue(EDIT_APPT_RECORD);
+    editAppointmentMock.mockResolvedValue({ status: "saved", summary: { petName: "Kiwi", ownerName: "Mary Jones" } } as never);
+    const result = await confirmAgentProposal(EDIT_APPT_CHANGE); // names only
+    expect(result.status).toBe("saved");
+    const form = editAppointmentMock.mock.calls[0][1] as FormData;
+    expect(form.get("client_id")).toBe("client-1"); // re-resolved from "Mary Jones"
+    expect(form.get("appointment_id")).toBe("appt-1"); // re-resolved from pet + current date
+  });
+});
+
 describe("confirmAgentProposal — add tip", () => {
   it("re-resolves the completed groom server-side and marks it paid with the new total", async () => {
     getClientRecordMock.mockResolvedValue(
@@ -405,8 +458,9 @@ const EDIT_PET: EditPetProposal = {
 const EDIT_APPT_CHANGE: EditAppointmentProposal = {
   kind: "edit_appointment",
   mode: "reschedule_change",
-  clientId: "client-1",
-  petId: "pet-1",
+  householdName: "Mary Jones",
+  householdPhone: null,
+  petQuery: "Kiwi",
   targetDate: "2026-07-20", // the visit's CURRENT date — re-resolves the id
   targetTimeSlot: "10:30am",
   ownerName: "Mary Jones",
@@ -429,8 +483,9 @@ const EDIT_APPT_CHANGE: EditAppointmentProposal = {
 const EDIT_APPT_CANCEL: EditAppointmentProposal = {
   kind: "edit_appointment",
   mode: "cancel",
-  clientId: "client-1",
-  petId: "pet-1",
+  householdName: "Mary Jones",
+  householdPhone: null,
+  petQuery: "Kiwi",
   targetDate: "2026-07-20",
   targetTimeSlot: "10:30am",
   ownerName: "Mary Jones",
@@ -442,8 +497,9 @@ const EDIT_APPT_CANCEL: EditAppointmentProposal = {
 const EDIT_APPT_NO_SHOW: EditAppointmentProposal = {
   kind: "edit_appointment",
   mode: "no_show",
-  clientId: "client-1",
-  petId: "pet-1",
+  householdName: "Mary Jones",
+  householdPhone: null,
+  petQuery: "Kiwi",
   targetDate: "2026-07-20",
   targetTimeSlot: "10:30am",
   ownerName: "Mary Jones",

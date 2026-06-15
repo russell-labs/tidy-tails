@@ -187,8 +187,9 @@ export type EditAppointmentProposal =
   | {
       kind: "edit_appointment";
       mode: "reschedule_change";
-      clientId: string;
-      petId: string;
+      householdName: string; // re-resolved to client_id in confirm — NOT an id
+      householdPhone: string | null;
+      petQuery: string; // the dog's name — re-resolved to pet_id in confirm
       targetDate: string; // the visit's CURRENT date — used to re-resolve the id
       targetTimeSlot: string | null; // the visit's CURRENT time — disambiguates a same-day duplicate
       ownerName: string;
@@ -210,8 +211,9 @@ export type EditAppointmentProposal =
   | {
       kind: "edit_appointment";
       mode: "cancel";
-      clientId: string;
-      petId: string;
+      householdName: string;
+      householdPhone: string | null;
+      petQuery: string;
       targetDate: string;
       targetTimeSlot: string | null;
       ownerName: string;
@@ -222,8 +224,9 @@ export type EditAppointmentProposal =
   | {
       kind: "edit_appointment";
       mode: "no_show";
-      clientId: string;
-      petId: string;
+      householdName: string;
+      householdPhone: string | null;
+      petQuery: string;
       targetDate: string;
       targetTimeSlot: string | null;
       ownerName: string;

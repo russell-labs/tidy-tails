@@ -27,7 +27,6 @@ import {
   SERVICE_TYPES,
   bookingLocationLabel,
   findOwnedPet,
-  findOwnedPets,
   formatPetNames,
   type ServiceType,
 } from "@/lib/booking";
@@ -991,8 +990,9 @@ const proposeEditAppointment: AgentWriteTool = {
   name: "propose_edit_appointment",
   description:
     "Propose changing, cancelling, or marking an existing appointment as a no-show (does NOT " +
-    "save it — the operator confirms a card first). Identify the visit by `client_id` and " +
-    "`pet_id` (from find_household) plus `date` (YYYY-MM-DD) — the visit's CURRENT date, used to " +
+    "save it — the operator confirms a card first). Identify the visit by `household` (the owner's " +
+    "name — a NAME, never an id; optionally `phone` to disambiguate) and `pet` (the dog's name) " +
+    "plus `date` (YYYY-MM-DD) — the visit's CURRENT date, used to " +
     "FIND it (NOT a new date). If the pet has more than one visit that day, also pass `time_slot` " +
     "(the visit's current time) to say which; if you don't know it, ask the operator — never guess. " +
     "Then `mode`: 'change' to reschedule or edit it — pass `new_date` (YYYY-MM-DD) and/or " +
@@ -1006,8 +1006,9 @@ const proposeEditAppointment: AgentWriteTool = {
   input_schema: {
     type: "object",
     properties: {
-      client_id: { type: "string", description: "Client id from find_household." },
-      pet_id: { type: "string", description: "Pet id from find_household." },
+      household: { type: "string", description: "The owner's name (NOT an id), e.g. 'Maple Greenwood'." },
+      phone: { type: "string", description: "Optional phone to disambiguate two same-name households." },
+      pet: { type: "string", description: "The dog's name, e.g. 'Biscuit'." },
       date: {
         type: "string",
         description: "The visit's CURRENT date (ISO YYYY-MM-DD), used to find it — not a new date.",
@@ -1027,12 +1028,12 @@ const proposeEditAppointment: AgentWriteTool = {
       payment_status: { type: "string", enum: ["paid", "waiting"] },
       notes: { type: "string" },
     },
-    required: ["client_id", "pet_id", "date", "mode"],
+    required: ["household", "pet", "date", "mode"],
     additionalProperties: false,
   },
   propose: async (input): Promise<EditAppointmentProposal> => {
-    const clientId = requireString(input.client_id, "client_id");
-    const petId = requireString(input.pet_id, "pet_id");
+    const household = householdInputFrom(input);
+    const petInput = requireString(input.pet, "pet");
     const targetDate = requireIsoDate(input.date, "date");
     const targetTimeInput = optionalString(input.time_slot) || null;
     const mode = optionalString(input.mode);
@@ -1042,20 +1043,11 @@ const proposeEditAppointment: AgentWriteTool = {
     const orgLocationNames = org.locations.map((entry) => entry.name);
 
     const dataset = await loadDataset();
-    const client = dataset.clients.find((c) => c.id === clientId);
-    if (!client) {
-      throw new AgentToolError(
-        `No client with id ${JSON.stringify(clientId)}. Use find_household to look one up.`,
-      );
-    }
+    // Resolve the household + dog BY NAME (no ids); the confirm action re-resolves
+    // the same way. petId is the canonical row used to find the visit below.
+    const { clientId, client } = resolveHouseholdOrAsk(dataset, household);
     const ownerName = fullName(client.first_name, client.last_name);
-    const petName =
-      dataset.pets.find((p) => p.id === petId && p.client_id === clientId)?.name ?? null;
-    if (!petName) {
-      throw new AgentToolError(
-        "That pet isn't on this client's file. Re-check with find_household.",
-      );
-    }
+    const { petId, petName } = resolvePetOrAsk(dataset, clientId, ownerName, petInput);
 
     // Resolve the exact visit by pet + date (+ time) — the same resolver the
     // confirm action re-runs server-side. A same-day duplicate disambiguates by
@@ -1088,8 +1080,9 @@ const proposeEditAppointment: AgentWriteTool = {
       return {
         kind: "edit_appointment",
         mode: "cancel",
-        clientId,
-        petId,
+        householdName: household.name,
+        householdPhone: household.phone,
+        petQuery: petName,
         targetDate: resolvedTargetDate,
         targetTimeSlot: resolvedTargetTime,
         ownerName,
@@ -1110,8 +1103,9 @@ const proposeEditAppointment: AgentWriteTool = {
       return {
         kind: "edit_appointment",
         mode: "no_show",
-        clientId,
-        petId,
+        householdName: household.name,
+        householdPhone: household.phone,
+        petQuery: petName,
         targetDate: resolvedTargetDate,
         targetTimeSlot: resolvedTargetTime,
         ownerName,
@@ -1218,8 +1212,9 @@ const proposeEditAppointment: AgentWriteTool = {
     return {
       kind: "edit_appointment",
       mode: "reschedule_change",
-      clientId,
-      petId,
+      householdName: household.name,
+      householdPhone: household.phone,
+      petQuery: petName,
       targetDate: resolvedTargetDate,
       targetTimeSlot: resolvedTargetTime,
       ownerName,

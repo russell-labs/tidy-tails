@@ -96,8 +96,9 @@ const DELETE: DeleteHouseholdProposal = {
 const CANCEL: EditAppointmentProposal = {
   kind: "edit_appointment",
   mode: "cancel",
-  clientId: "c1",
-  petId: "p1",
+  householdName: "Rosanne Adams",
+  householdPhone: null,
+  petQuery: "Kiwi",
   targetDate: "2026-07-11",
   targetTimeSlot: "10:30am",
   ownerName: "Rosanne Adams",
