@@ -31,9 +31,13 @@
 
 import { isAgentEnabled, isAgentWritesEnabled } from "@/lib/writeGate";
 import { getCurrentUser } from "@/lib/supabase/server";
-import { getClientRecord } from "@/lib/data/repo";
+import { getClientRecord, loadDataset, type Dataset } from "@/lib/data/repo";
 import { loadOrgSettings } from "@/lib/orgSettings.server";
 import { findAppointmentByPetDate } from "@/lib/editAppointment";
+import {
+  resolveHouseholdLoosely,
+  resolvePetWithinHousehold,
+} from "@/lib/householdMatch";
 import {
   PROPOSAL_KINDS,
   type AddHouseholdProposal,
@@ -90,6 +94,40 @@ const AGENT_SOURCE_VALUE = "agent";
 function setMoney(form: FormData, field: string, value: number | null): void {
   form.set(field, value == null ? "" : String(value));
 }
+
+/**
+ * Re-resolve the authoritative client id from the proposal's household NAME
+ * (+ optional phone) against org-scoped (RLS) data, using the SAME matcher the
+ * propose tool used. The model never supplies a client id, and a tampered/stale
+ * name can only ever resolve within this org or fail safe (null → caller errors,
+ * no write). Returns the org dataset too so pets resolve from the same load.
+ */
+async function reResolveHousehold(
+  name: string,
+  phone: string | null,
+): Promise<{ clientId: string; dataset: Dataset } | null> {
+  const dataset = await loadDataset();
+  const result = resolveHouseholdLoosely({ name, phone }, dataset.clients, dataset.pets);
+  if (result.kind !== "matched") return null;
+  return { clientId: result.clientId, dataset };
+}
+
+/** Re-resolve a pet within the resolved household by NAME (collapsing split rows). */
+function reResolvePet(
+  dataset: Dataset,
+  clientId: string,
+  petQuery: string,
+): { petId: string; groupPetIds: string[] } | null {
+  const pets = dataset.pets.filter((p) => p.client_id === clientId);
+  const appts = dataset.appointments.filter((a) => a.client_id === clientId);
+  const result = resolvePetWithinHousehold(petQuery, pets, appts);
+  return result.kind === "matched"
+    ? { petId: result.petId, groupPetIds: result.groupPetIds }
+    : null;
+}
+
+const HOUSEHOLD_GONE = "That household couldn't be found anymore. Nothing was saved.";
+const PET_GONE = "That dog couldn't be found anymore. Nothing was saved.";
 
 /** Perform the write Sam just confirmed. The model never calls this — only her tap does. */
 export async function confirmAgentProposal(
@@ -167,9 +205,21 @@ function setOptional(form: FormData, field: string, value: string | null): void 
 async function confirmBooking(
   proposal: BookAppointmentProposal,
 ): Promise<AgentConfirmResult> {
+  // Re-resolve the household + each dog server-side from the proposal's NAMES
+  // (the model never supplies an id). Org-scoped, so resolution stays in this org;
+  // a name that no longer resolves fails safe — nothing is booked.
+  const household = await reResolveHousehold(proposal.householdName, proposal.householdPhone);
+  if (!household) return { status: "error", message: HOUSEHOLD_GONE };
+  const petIds: string[] = [];
+  for (const query of proposal.petQueries) {
+    const pet = reResolvePet(household.dataset, household.clientId, query);
+    if (!pet) return { status: "error", message: PET_GONE };
+    petIds.push(pet.petId);
+  }
+
   const org = await loadOrgSettings();
   const form = new FormData();
-  form.set("client_id", proposal.clientId);
+  form.set("client_id", household.clientId);
   form.set("date", proposal.date);
   form.set("time_slot", proposal.timeSlot);
   form.set("service_type", proposal.serviceType);
@@ -178,14 +228,14 @@ async function confirmBooking(
   form.set(AGENT_SOURCE_FIELD, AGENT_SOURCE_VALUE);
 
   if (org.schedulingStyle === "one_to_one") {
-    form.set("pet_id", proposal.petIds[0] ?? "");
+    form.set("pet_id", petIds[0] ?? "");
     form.set("duration_minutes", String(proposal.durationMinutes ?? ""));
     const state = await createOneToOneBooking({ status: "idle" }, form);
     return mapOneToOneState(state);
   }
 
   // Batched surface: one row per pet (comma-separated ids), no customer text.
-  form.set("pet_ids", proposal.petIds.join(","));
+  form.set("pet_ids", petIds.join(","));
   const state = await createBooking({ status: "idle" }, form);
   return mapBookingState(state);
 }

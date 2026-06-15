@@ -100,8 +100,8 @@ describe("runAgent — provider-agnostic read-only tool loop", () => {
   it("a propose tool short-circuits the loop and returns the proposal (no write)", async () => {
     const { provider, calls } = fakeProvider([
       toolTurn("propose_book_appointment", {
-        client_id: "client-1",
-        pet_ids: ["pet-1"],
+        household: "Mary Jones",
+        pets: ["Kiwi"],
         date: "2026-07-11",
         time_slot: "10:00am",
         service_type: "full_groom",

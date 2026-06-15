@@ -28,6 +28,14 @@ export type SearchResult = {
   household: SearchHousehold;
   /** Higher is a stronger match. Opaque ordering value — not for display. */
   score: number;
+  /**
+   * The match-quality TIER that bound this result: the weakest token's best
+   * quality (one of MATCH_QUALITY). Because every token must match, the weakest
+   * is what the whole match rests on. Unlike `score`, this carries no bonus, so a
+   * write-side resolver can rule matched/ambiguous off match strength alone and
+   * never let an active-pet bonus silently pick one same-name household.
+   */
+  quality: number;
   matchedFields: MatchField[];
   /** Pets whose name matched the query — the data the UI needs to point at
    *  *which* "Bella" when a pet name is shared across households. */
@@ -42,6 +50,9 @@ const SUBSTRING = 40;
 const FUZZY = 20;
 const NO_MATCH = 0;
 const ACTIVE_PET_BONUS = 5;
+
+/** The match-quality tiers a result can bind at (see SearchResult.quality). */
+export const MATCH_QUALITY = { EXACT, PREFIX, SUBSTRING, FUZZY, NO_MATCH } as const;
 
 /** Levenshtein edit distance between `a` and `b`, abandoned once it exceeds `max`. */
 function editDistance(a: string, b: string, max: number): number {
@@ -70,8 +81,12 @@ function fuzzyBudget(tokenLength: number): number {
   return 2;
 }
 
-/** Best match quality of `token` against one (already lower-cased) field value. */
-function textQuality(token: string, field: string): number {
+/**
+ * Best match quality of `token` against one (already lower-cased) field value.
+ * Exported so the write-side pet resolver scores pet names on the SAME tiers as
+ * household search — reads and writes never disagree on what "matches".
+ */
+export function textQuality(token: string, field: string): number {
   if (!field) return NO_MATCH;
   if (field === token) return EXACT;
   if (field.startsWith(token)) return PREFIX;
@@ -118,6 +133,7 @@ export function searchHouseholds(
     return [...households].sort(byName).map((household) => ({
       household,
       score: 0,
+      quality: NO_MATCH,
       matchedFields: [],
       matchedPetIds: [],
     }));
@@ -136,6 +152,7 @@ export function searchHouseholds(
     }));
 
     let total = 0;
+    let minTokenQuality = EXACT; // the weakest token caps the result's quality
     let everyTokenMatched = true;
     const fields = new Set<MatchField>();
     const petIds = new Set<string>();
@@ -177,6 +194,7 @@ export function searchHouseholds(
       }
 
       total += best;
+      if (best < minTokenQuality) minTokenQuality = best;
       if (bestField) fields.add(bestField);
       // Record pet hits whenever this token matched a pet, even if another
       // field scored higher — the UI still wants to point at the matched pet.
@@ -195,6 +213,7 @@ export function searchHouseholds(
         (household.pets.some((p) => petIds.has(p.id) && !p.passedAway)
           ? ACTIVE_PET_BONUS
           : 0),
+      quality: minTokenQuality,
       matchedFields: FIELD_ORDER.filter((f) => fields.has(f)),
       // Keep the household's own pet order.
       matchedPetIds: household.pets

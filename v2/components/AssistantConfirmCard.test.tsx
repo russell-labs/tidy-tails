@@ -18,9 +18,10 @@ import {
 
 const PROPOSAL: BookAppointmentProposal = {
   kind: "book_appointment",
-  clientId: "c1",
+  householdName: "Rosanne Adams",
+  householdPhone: null,
   ownerName: "Rosanne Adams",
-  petIds: ["p1"],
+  petQueries: ["Kiwi"],
   petNames: "Kiwi",
   date: "2026-07-11",
   timeSlot: "10:00am",

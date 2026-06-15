@@ -15,12 +15,21 @@ import { formatDate, formatMoney } from "@/lib/format";
 import type { ServiceType } from "@/lib/booking";
 import type { PaymentMethod, PaymentStatus } from "@/lib/payments";
 
-/** Propose a new booking (works for both the batched and 1:1 surfaces). */
+/**
+ * Propose a new booking (works for both the batched and 1:1 surfaces).
+ *
+ * NO IDS FROM THE MODEL: the household and pets are carried as natural attributes
+ * (`householdName` + optional `householdPhone`, `petQueries`), NOT client/pet ids.
+ * The confirm action re-resolves the authoritative client_id + pet_ids server-side
+ * from these against org-scoped (RLS) data, so a fabricated or tampered id can't
+ * exist or redirect the write. `ownerName`/`petNames` are display labels only.
+ */
 export type BookAppointmentProposal = {
   kind: "book_appointment";
-  clientId: string;
+  householdName: string;
+  householdPhone: string | null;
   ownerName: string;
-  petIds: string[];
+  petQueries: string[]; // the pet names to re-resolve to ids in confirm
   petNames: string; // display label, already formatted ("Kiwi" / "Kiwi and Coco")
   date: string; // ISO YYYY-MM-DD
   timeSlot: string; // free-text drop-off / start time, e.g. "10:00am"

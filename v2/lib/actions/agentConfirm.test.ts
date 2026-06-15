@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { appointment, clientRecord } from "@/lib/actions/actionTestSupport";
+import { appointment, client, clientRecord, pet } from "@/lib/actions/actionTestSupport";
 import { DEFAULT_ORG_SETTINGS } from "@/lib/orgSettings";
 import type {
   AddTipProposal,
@@ -27,7 +27,7 @@ vi.mock("@/lib/data/repo", async () => {
   const actual = await vi.importActual<typeof import("@/lib/data/repo")>(
     "@/lib/data/repo",
   );
-  return { ...actual, getClientRecord: vi.fn() };
+  return { ...actual, getClientRecord: vi.fn(), loadDataset: vi.fn() };
 });
 vi.mock("./appointments", () => ({ createBooking: vi.fn() }));
 vi.mock("./oneToOneBooking", () => ({ createOneToOneBooking: vi.fn() }));
@@ -50,7 +50,7 @@ vi.mock("./inbox", () => ({ sendInboxSmsReply: vi.fn() }));
 const { isAgentEnabled, isAgentWritesEnabled } = await import("@/lib/writeGate");
 const { getCurrentUser } = await import("@/lib/supabase/server");
 const { loadOrgSettings } = await import("@/lib/orgSettings.server");
-const { getClientRecord } = await import("@/lib/data/repo");
+const { getClientRecord, loadDataset } = await import("@/lib/data/repo");
 const { createBooking } = await import("./appointments");
 const { createOneToOneBooking } = await import("./oneToOneBooking");
 const { markAppointmentPaid } = await import("./appointmentPayment");
@@ -73,6 +73,21 @@ const isAgentWritesEnabledMock = vi.mocked(isAgentWritesEnabled);
 const getCurrentUserMock = vi.mocked(getCurrentUser);
 const loadOrgSettingsMock = vi.mocked(loadOrgSettings);
 const getClientRecordMock = vi.mocked(getClientRecord);
+const loadDatasetMock = vi.mocked(loadDataset);
+
+/** The org dataset the confirm action re-resolves household + pet ids from. */
+function confirmDataset(overrides: {
+  clients?: ReturnType<typeof client>[];
+  pets?: ReturnType<typeof pet>[];
+  appointments?: ReturnType<typeof appointment>[];
+} = {}) {
+  return {
+    clients: overrides.clients ?? [client({ id: "client-1", first_name: "Mary", last_name: "Jones" })],
+    pets: overrides.pets ?? [pet({ id: "pet-1", client_id: "client-1", name: "Kiwi" })],
+    appointments: overrides.appointments ?? [],
+    vaccinations: [],
+  };
+}
 const createBookingMock = vi.mocked(createBooking);
 const createOneToOneBookingMock = vi.mocked(createOneToOneBooking);
 const markAppointmentPaidMock = vi.mocked(markAppointmentPaid);
@@ -91,9 +106,10 @@ const sendInboxSmsReplyMock = vi.mocked(sendInboxSmsReply);
 
 const BOOK: BookAppointmentProposal = {
   kind: "book_appointment",
-  clientId: "client-1",
+  householdName: "Mary Jones",
+  householdPhone: null,
   ownerName: "Mary Jones",
-  petIds: ["pet-1"],
+  petQueries: ["Kiwi"],
   petNames: "Kiwi",
   date: "2026-07-11",
   timeSlot: "10:00am",
@@ -143,6 +159,7 @@ beforeEach(() => {
   isAgentWritesEnabledMock.mockReturnValue(true);
   getCurrentUserMock.mockResolvedValue({ id: "user-1" } as never);
   loadOrgSettingsMock.mockResolvedValue(DEFAULT_ORG_SETTINGS);
+  loadDatasetMock.mockResolvedValue(confirmDataset() as never);
 });
 
 describe("confirmAgentProposal — gate & auth", () => {

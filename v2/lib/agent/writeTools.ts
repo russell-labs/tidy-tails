@@ -15,8 +15,13 @@
 // org-scoped dataset + settings, so RLS + the org_id guard still bound it, and
 // customer-authored free text is never loaded here.
 
-import { loadDataset } from "@/lib/data/repo";
+import { loadDataset, type Dataset } from "@/lib/data/repo";
 import { loadOrgSettings } from "@/lib/orgSettings.server";
+import {
+  resolveHouseholdLoosely,
+  resolvePetWithinHousehold,
+} from "@/lib/householdMatch";
+import type { Client } from "@/lib/data/types";
 import {
   BOOKING_LOCATIONS,
   SERVICE_TYPES,
@@ -133,16 +138,17 @@ function optionalMoney(value: unknown, field: string): number | null {
   return n;
 }
 
-function petIdsFrom(input: Record<string, unknown>): string[] {
-  const raw = input.pet_ids ?? input.pet_id;
+/** The dog name(s) the model named for a booking (one or more). */
+function petQueriesFrom(input: Record<string, unknown>): string[] {
+  const raw = input.pets ?? input.pet;
   const list = Array.isArray(raw) ? raw : raw == null ? [] : [raw];
-  const ids = list
-    .map((id) => (typeof id === "string" ? id.trim() : ""))
+  const names = list
+    .map((name) => (typeof name === "string" ? name.trim() : ""))
     .filter(Boolean);
-  if (ids.length === 0) {
-    throw new AgentToolError("`pet_ids` must name at least one pet.");
+  if (names.length === 0) {
+    throw new AgentToolError("`pets` must name at least one dog.");
   }
-  return Array.from(new Set(ids));
+  return Array.from(new Set(names));
 }
 
 /** Human list of the org's locations for an "ask which one" error. */
@@ -172,6 +178,69 @@ function resolveOrgLocationOrAsk(locations: readonly OrgLocation[], input: strin
   );
 }
 
+/** Attributes the model passes to identify a household — a name + optional phone. */
+type HouseholdInput = { name: string; phone: string | null };
+
+function householdInputFrom(input: Record<string, unknown>): HouseholdInput {
+  const name = requireString(input.household, "household");
+  const phoneRaw = typeof input.phone === "string" ? input.phone.trim() : "";
+  return { name, phone: phoneRaw || null };
+}
+
+/**
+ * Resolve the household the model named to an authoritative client, org-scoped,
+ * via the SAME matcher find_household uses. Ambiguous / no-match THROWS an
+ * AgentToolError that asks — never a guess. The model passes a NAME, never an id,
+ * so it can't fabricate one; the confirm action re-resolves the same way.
+ */
+function resolveHouseholdOrAsk(dataset: Dataset, attrs: HouseholdInput): { clientId: string; client: Client } {
+  const result = resolveHouseholdLoosely(attrs, dataset.clients, dataset.pets);
+  if (result.kind === "matched") {
+    const client = dataset.clients.find((c) => c.id === result.clientId);
+    if (client) return { clientId: result.clientId, client };
+    return { clientId: result.clientId, client: dataset.clients[0] };
+  }
+  if (result.kind === "ambiguous") {
+    throw new AgentToolError(
+      `More than one household matches "${attrs.name}" (${result.options.map((o) => o.label).join(", ")}). ` +
+        "Ask the operator which one — by the owner's full name or a phone number.",
+    );
+  }
+  throw new AgentToolError(
+    `I couldn't find a household for "${attrs.name}". Check find_household, or ask the operator for the owner's name or phone.`,
+  );
+}
+
+/**
+ * Resolve a pet the model named within an already-resolved household. Collapses
+ * split-duplicate rows to one animal and returns the whole group's pet ids so an
+ * existing appointment filed under any row can still be re-resolved. Ambiguous /
+ * no-match asks.
+ */
+function resolvePetOrAsk(
+  dataset: Dataset,
+  clientId: string,
+  ownerName: string,
+  petQuery: string,
+): { petId: string; groupPetIds: string[]; petName: string } {
+  const householdPets = dataset.pets.filter((p) => p.client_id === clientId);
+  const householdAppointments = dataset.appointments.filter((a) => a.client_id === clientId);
+  const result = resolvePetWithinHousehold(petQuery, householdPets, householdAppointments);
+  if (result.kind === "matched") {
+    const petName = householdPets.find((p) => p.id === result.petId)?.name ?? petQuery;
+    return { petId: result.petId, groupPetIds: result.groupPetIds, petName };
+  }
+  if (result.kind === "ambiguous") {
+    throw new AgentToolError(
+      `${ownerName} has more than one pet matching "${petQuery}" (${result.options.map((o) => o.name).join(", ")}). ` +
+        "Ask the operator which one.",
+    );
+  }
+  throw new AgentToolError(
+    `I couldn't find a pet named "${petQuery}" on ${ownerName}'s file. Check find_household.`,
+  );
+}
+
 // ---------------------------------------------------------------------------
 // propose_book_appointment — resolves a booking for either surface.
 // ---------------------------------------------------------------------------
@@ -181,10 +250,12 @@ const proposeBookAppointment: AgentWriteTool = {
   description:
     "Propose booking a new appointment for an existing dog (does NOT book it — the " +
     "operator confirms a card first). This is the tool for ANY booking/scheduling " +
-    "request: look the dog up with find_household first, then book it here — never " +
-    "create the household or pet again for a dog already on file. " +
-    "Pass `client_id` and `pet_ids` (both from find_household), a concrete " +
-    "ISO `date` (YYYY-MM-DD), a `time_slot` (e.g. '10:00am'), and a `service_type` " +
+    "request for a dog already on file — never create the household or pet again. " +
+    "Identify the household by `household` (the owner's name as the operator said it — " +
+    "a NAME, never an id; you may confirm it with find_household but pass the name here), " +
+    "optionally `phone` to disambiguate same-name households, and the dog(s) by `pets` " +
+    "(their names). Also pass a concrete ISO `date` (YYYY-MM-DD), a `time_slot` " +
+    "(e.g. '10:00am'), and a `service_type` " +
     "(one of full_groom, puppy_groom, bath_only, nail_trim, other). Optional `fee`. " +
     "`location` is REQUIRED: gina or annette for a batched business (it sets the " +
     "payout split), or one of the operator's locations for a 1:1 business, which " +
@@ -192,15 +263,16 @@ const proposeBookAppointment: AgentWriteTool = {
     "named in her OWN words (e.g. 'Gina's', 'the salon', a street) — it is matched to " +
     "a configured location for you, so don't demand exact wording; read get_locations " +
     "to see the configured ones. If it can't be matched you'll get the list to ask from. " +
-    "Resolve the client and pets first; never propose on a guess.",
+    "If the household or a dog is ambiguous, you'll be told to ask which — never propose on a guess.",
   input_schema: {
     type: "object",
     properties: {
-      client_id: { type: "string", description: "Client id from find_household." },
-      pet_ids: {
+      household: { type: "string", description: "The owner's name (NOT an id), e.g. 'Maple Greenwood'." },
+      phone: { type: "string", description: "Optional phone to disambiguate two same-name households." },
+      pets: {
         type: "array",
         items: { type: "string" },
-        description: "Pet ids from find_household (one or more for a multi-pet booking).",
+        description: "The dog name(s) to book, e.g. ['Biscuit'] or ['Coco','Kiwi'].",
       },
       date: { type: "string", description: "ISO YYYY-MM-DD." },
       time_slot: { type: "string", description: "Drop-off / start time, e.g. '10:00am'." },
@@ -213,12 +285,12 @@ const proposeBookAppointment: AgentWriteTool = {
       location: { type: "string", description: "Location (gina/annette for batched; an org location name for 1:1)." },
       duration_minutes: { type: "integer", description: "1:1 block length in minutes (required for 1:1)." },
     },
-    required: ["client_id", "pet_ids", "date", "time_slot", "service_type"],
+    required: ["household", "pets", "date", "time_slot", "service_type"],
     additionalProperties: false,
   },
   propose: async (input): Promise<BookAppointmentProposal> => {
-    const clientId = requireString(input.client_id, "client_id");
-    const petIds = petIdsFrom(input);
+    const household = householdInputFrom(input);
+    const petQueries = petQueriesFrom(input);
     const date = requireIsoDate(input.date, "date");
     const timeSlot = requireString(input.time_slot, "time_slot");
     const serviceType = requireServiceType(input.service_type);
@@ -227,18 +299,13 @@ const proposeBookAppointment: AgentWriteTool = {
       typeof input.location === "string" ? input.location.trim() : "";
 
     const dataset = await loadDataset();
-    const client = dataset.clients.find((c) => c.id === clientId);
-    if (!client) {
-      throw new AgentToolError(
-        `No client with id ${JSON.stringify(clientId)}. Use find_household to look one up.`,
-      );
-    }
-    const pets = findOwnedPets(dataset.pets, petIds, clientId);
-    if (!pets) {
-      throw new AgentToolError(
-        "One of those pets isn't on this client's file. Re-check with find_household.",
-      );
-    }
+    const { clientId, client } = resolveHouseholdOrAsk(dataset, household);
+    const ownerName = fullName(client.first_name, client.last_name);
+    // Resolve each named dog to a real pet on this household (collapsing split
+    // duplicates); the model never supplies a pet id.
+    const resolvedPets = petQueries.map((query) =>
+      resolvePetOrAsk(dataset, clientId, ownerName, query),
+    );
 
     const org = await loadOrgSettings();
     let location: string | null = null;
@@ -281,10 +348,11 @@ const proposeBookAppointment: AgentWriteTool = {
 
     return {
       kind: "book_appointment",
-      clientId,
-      ownerName: fullName(client.first_name, client.last_name),
-      petIds,
-      petNames: formatPetNames(pets.map((pet) => pet.name)),
+      householdName: household.name,
+      householdPhone: household.phone,
+      ownerName,
+      petQueries: resolvedPets.map((p) => p.petName),
+      petNames: formatPetNames(resolvedPets.map((p) => p.petName)),
       date,
       timeSlot,
       serviceType,

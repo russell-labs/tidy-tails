@@ -85,11 +85,11 @@ describe("AGENT_WRITE_TOOL_NAMES", () => {
 });
 
 describe("propose_book_appointment (batched)", () => {
-  it("resolves owner, pet, service, and location into a booking proposal", async () => {
+  it("resolves the household + dog BY NAME (no ids) into a booking proposal", async () => {
     loadDatasetMock.mockResolvedValue(dataset());
     const proposal = (await runAgentWriteTool("propose_book_appointment", {
-      client_id: "client-1",
-      pet_ids: ["pet-1"],
+      household: "Mary Jones",
+      pets: ["Kiwi"],
       date: "2026-07-11",
       time_slot: "10:00am",
       service_type: "full_groom",
@@ -98,10 +98,13 @@ describe("propose_book_appointment (batched)", () => {
     })) as BookAppointmentProposal;
 
     expect(proposal.kind).toBe("book_appointment");
-    expect(proposal.clientId).toBe("client-1");
-    expect(proposal.petIds).toEqual(["pet-1"]);
-    expect(proposal.petNames).toBe("Kiwi");
+    // Carries natural attributes, NOT ids — confirm re-resolves them.
+    expect(proposal).not.toHaveProperty("clientId");
+    expect(proposal).not.toHaveProperty("petIds");
+    expect(proposal.householdName).toBe("Mary Jones");
     expect(proposal.ownerName).toBe("Mary Jones");
+    expect(proposal.petQueries).toEqual(["Kiwi"]);
+    expect(proposal.petNames).toBe("Kiwi");
     expect(proposal.service).toBe("Full groom");
     expect(proposal.fee).toBe(50);
     expect(proposal.location).toBe("gina");
@@ -109,17 +112,32 @@ describe("propose_book_appointment (batched)", () => {
     expect(proposal.durationMinutes).toBeNull();
   });
 
-  it("rejects a pet that is not on the client's file (never proposes on a guess)", async () => {
+  it("rejects a dog that is not on the household (never proposes on a guess)", async () => {
     loadDatasetMock.mockResolvedValue(
       dataset({ pets: [pet({ id: "pet-1", client_id: "someone-else" })] }),
     );
     await expect(
       runAgentWriteTool("propose_book_appointment", {
-        client_id: "client-1",
-        pet_ids: ["pet-1"],
+        household: "Mary Jones",
+        pets: ["Kiwi"],
         date: "2026-07-11",
         time_slot: "10:00am",
         service_type: "full_groom",
+        location: "gina",
+      }),
+    ).rejects.toBeInstanceOf(AgentToolError);
+  });
+
+  it("asks (does not guess) when the household name matches none", async () => {
+    loadDatasetMock.mockResolvedValue(dataset());
+    await expect(
+      runAgentWriteTool("propose_book_appointment", {
+        household: "Nobody Here",
+        pets: ["Kiwi"],
+        date: "2026-07-11",
+        time_slot: "10:00am",
+        service_type: "full_groom",
+        location: "gina",
       }),
     ).rejects.toBeInstanceOf(AgentToolError);
   });
@@ -128,8 +146,8 @@ describe("propose_book_appointment (batched)", () => {
     loadDatasetMock.mockResolvedValue(dataset());
     await expect(
       runAgentWriteTool("propose_book_appointment", {
-        client_id: "client-1",
-        pet_ids: ["pet-1"],
+        household: "Mary Jones",
+        pets: ["Kiwi"],
         date: "2026-07-11",
         time_slot: "10:00am",
         service_type: "full_groom",
@@ -142,8 +160,8 @@ describe("propose_book_appointment (batched)", () => {
     loadDatasetMock.mockResolvedValue(dataset());
     await expect(
       runAgentWriteTool("propose_book_appointment", {
-        client_id: "client-1",
-        pet_ids: ["pet-1"],
+        household: "Mary Jones",
+        pets: ["Kiwi"],
         date: "2026-07-11",
         time_slot: "10:00am",
         service_type: "haircut",
@@ -165,8 +183,8 @@ describe("propose_book_appointment (one_to_one)", () => {
     loadDatasetMock.mockResolvedValue(dataset());
     await expect(
       runAgentWriteTool("propose_book_appointment", {
-        client_id: "client-1",
-        pet_ids: ["pet-1"],
+        household: "Mary Jones",
+        pets: ["Kiwi"],
         date: "2026-07-11",
         time_slot: "10:00am",
         service_type: "full_groom",
@@ -177,8 +195,8 @@ describe("propose_book_appointment (one_to_one)", () => {
   it("proposes a 1:1 booking with the resolved org location and duration", async () => {
     loadDatasetMock.mockResolvedValue(dataset());
     const proposal = (await runAgentWriteTool("propose_book_appointment", {
-      client_id: "client-1",
-      pet_ids: ["pet-1"],
+      household: "Mary Jones",
+      pets: ["Kiwi"],
       date: "2026-07-11",
       time_slot: "10:00am",
       service_type: "full_groom",
@@ -193,8 +211,8 @@ describe("propose_book_appointment (one_to_one)", () => {
   it("loose-matches a spoken location to the configured org location ('the studio' → Home Studio)", async () => {
     loadDatasetMock.mockResolvedValue(dataset());
     const proposal = (await runAgentWriteTool("propose_book_appointment", {
-      client_id: "client-1",
-      pet_ids: ["pet-1"],
+      household: "Mary Jones",
+      pets: ["Kiwi"],
       date: "2026-07-11",
       time_slot: "10:00am",
       service_type: "full_groom",
@@ -209,8 +227,8 @@ describe("propose_book_appointment (one_to_one)", () => {
     loadDatasetMock.mockResolvedValue(dataset());
     await expect(
       runAgentWriteTool("propose_book_appointment", {
-        client_id: "client-1",
-        pet_ids: ["pet-1"],
+        household: "Mary Jones",
+        pets: ["Kiwi"],
         date: "2026-07-11",
         time_slot: "10:00am",
         service_type: "full_groom",
@@ -232,8 +250,8 @@ describe("propose_book_appointment (one_to_one)", () => {
     loadDatasetMock.mockResolvedValue(dataset());
     await expect(
       runAgentWriteTool("propose_book_appointment", {
-        client_id: "client-1",
-        pet_ids: ["pet-1"],
+        household: "Mary Jones",
+        pets: ["Kiwi"],
         date: "2026-07-11",
         time_slot: "10:00am",
         service_type: "full_groom",
