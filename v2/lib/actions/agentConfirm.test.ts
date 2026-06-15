@@ -123,8 +123,9 @@ const BOOK: BookAppointmentProposal = {
 
 const TIP: AddTipProposal = {
   kind: "add_tip",
-  clientId: "client-1",
-  petId: "pet-1",
+  householdName: "Mary Jones",
+  householdPhone: null,
+  petQuery: "Kiwi",
   petName: "Kiwi",
   ownerName: "Mary Jones",
   appointmentDate: "2026-06-10",
@@ -139,8 +140,9 @@ const TIP: AddTipProposal = {
 
 const LOG: LogGroomProposal = {
   kind: "log_groom",
-  clientId: "client-1",
-  petId: "pet-1",
+  householdName: "Mary Jones",
+  householdPhone: null,
+  petQuery: "Kiwi",
   petName: "Kiwi",
   ownerName: "Mary Jones",
   date: "2026-06-12",
@@ -301,19 +303,20 @@ describe("confirmAgentProposal — re-resolves ids from names server-side (no mo
 });
 
 describe("confirmAgentProposal — add tip", () => {
-  it("re-resolves the completed groom server-side and marks it paid with the new total", async () => {
-    getClientRecordMock.mockResolvedValue(
-      clientRecord({
+  it("re-resolves household + dog + completed groom from names and marks it paid", async () => {
+    loadDatasetMock.mockResolvedValue(
+      confirmDataset({
         appointments: [
           appointment({
             id: "appt-done",
+            client_id: "client-1",
             pet_id: "pet-1",
             date: "2026-06-10",
             status: "completed",
             price: 50,
           }),
         ],
-      }),
+      }) as never,
     );
     markAppointmentPaidMock.mockResolvedValue({
       status: "saved",
@@ -321,19 +324,22 @@ describe("confirmAgentProposal — add tip", () => {
       message: "Marked Kiwi paid.",
     } as never);
 
-    const result = await confirmAgentProposal(TIP);
+    const result = await confirmAgentProposal(TIP); // carries names "Mary Jones"/"Kiwi"
 
     expect(result.status).toBe("saved");
     const form = markAppointmentPaidMock.mock.calls[0][1] as FormData;
-    expect(form.get("appointment_id")).toBe("appt-done"); // resolved server-side, not trusted from the client
+    expect(form.get("client_id")).toBe("client-1"); // re-resolved from the name
+    expect(form.get("appointment_id")).toBe("appt-done"); // resolved server-side, not from the client
     expect(form.get("paid_amount")).toBe("55");
     expect(form.get("payment_method")).toBe("interac");
     expect(form.get("audit_source")).toBe("agent");
   });
 
-  it("errors without calling the action when the groom can't be re-resolved", async () => {
-    getClientRecordMock.mockResolvedValue(
-      clientRecord({ appointments: [appointment({ status: "booked" })] }),
+  it("errors without calling the action when no completed groom can be re-resolved", async () => {
+    loadDatasetMock.mockResolvedValue(
+      confirmDataset({
+        appointments: [appointment({ client_id: "client-1", pet_id: "pet-1", status: "booked" })],
+      }) as never,
     );
     const result = await confirmAgentProposal(TIP);
     expect(result.status).toBe("error");

@@ -243,16 +243,24 @@ async function confirmBooking(
 async function confirmAddTip(
   proposal: AddTipProposal,
 ): Promise<AgentConfirmResult> {
-  // Re-resolve the appointment id server-side from the proposal's pet + date so
-  // we never trust a client-supplied id. Must still be a completed groom.
-  const record = await getClientRecord(proposal.clientId);
-  const target = record?.appointments.find(
+  // Re-resolve household + dog + the completed groom server-side from the
+  // proposal's NAMES + date — the model never supplies an id. A non-match (gone,
+  // or no longer a completed groom) fails safe. The pet group's ids are matched so
+  // a groom filed under a split-duplicate row is still found.
+  const household = await reResolveHousehold(proposal.householdName, proposal.householdPhone);
+  if (!household) return { status: "error", message: HOUSEHOLD_GONE };
+  const pet = reResolvePet(household.dataset, household.clientId, proposal.petQuery);
+  if (!pet) return { status: "error", message: PET_GONE };
+  const clientId = household.clientId;
+
+  const target = household.dataset.appointments.find(
     (appointment) =>
-      appointment.pet_id === proposal.petId &&
+      appointment.client_id === clientId &&
+      pet.groupPetIds.includes(appointment.pet_id) &&
       appointment.date === proposal.appointmentDate &&
       appointment.status === "completed",
   );
-  if (!record || !target) {
+  if (!target) {
     return {
       status: "error",
       message: "That groom couldn't be found anymore. Nothing was saved.",
@@ -260,7 +268,7 @@ async function confirmAddTip(
   }
 
   const form = new FormData();
-  form.set("client_id", proposal.clientId);
+  form.set("client_id", clientId);
   form.set("appointment_id", target.id);
   form.set("payment_method", proposal.paymentMethod);
   form.set("paid_amount", String(proposal.paidAmount));
@@ -273,9 +281,15 @@ async function confirmAddTip(
 async function confirmLogGroom(
   proposal: LogGroomProposal,
 ): Promise<AgentConfirmResult> {
+  // Re-resolve household + dog from names server-side; the model never supplies ids.
+  const household = await reResolveHousehold(proposal.householdName, proposal.householdPhone);
+  if (!household) return { status: "error", message: HOUSEHOLD_GONE };
+  const pet = reResolvePet(household.dataset, household.clientId, proposal.petQuery);
+  if (!pet) return { status: "error", message: PET_GONE };
+
   const form = new FormData();
-  form.set("client_id", proposal.clientId);
-  form.set("pet_id", proposal.petId);
+  form.set("client_id", household.clientId);
+  form.set("pet_id", pet.petId);
   form.set("date", proposal.date);
   form.set("service_type", proposal.serviceType);
   setMoney(form, "fee", proposal.fee);

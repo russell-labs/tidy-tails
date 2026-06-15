@@ -372,7 +372,8 @@ const proposeAddTip: AgentWriteTool = {
   name: "propose_add_tip",
   description:
     "Propose adding a tip to a COMPLETED groom (does NOT save it — the operator confirms a " +
-    "card first). Pass `pet_id` (from find_household) and `added_tip` (the dollar " +
+    "card first). Identify the dog by `household` (the owner's NAME, never an id; optionally " +
+    "`phone` to disambiguate) and `pet` (the dog's name), and pass `added_tip` (the dollar " +
     "amount to add). Optionally pass a concrete ISO `date` to target a specific " +
     "groom; otherwise the most recent completed groom is used. This marks the groom " +
     "paid and sets its tip — the confirm card discloses both. If there is no " +
@@ -380,15 +381,18 @@ const proposeAddTip: AgentWriteTool = {
   input_schema: {
     type: "object",
     properties: {
-      pet_id: { type: "string", description: "Pet id from find_household." },
+      household: { type: "string", description: "The owner's name (NOT an id)." },
+      phone: { type: "string", description: "Optional phone to disambiguate same-name households." },
+      pet: { type: "string", description: "The dog's name." },
       added_tip: { type: "number", description: "Dollar amount of tip to add." },
       date: { type: "string", description: "Optional ISO date of the groom to tip." },
     },
-    required: ["pet_id", "added_tip"],
+    required: ["household", "pet", "added_tip"],
     additionalProperties: false,
   },
   propose: async (input): Promise<AddTipProposal> => {
-    const petId = requireString(input.pet_id, "pet_id");
+    const household = householdInputFrom(input);
+    const petInput = requireString(input.pet, "pet");
     const addedTip = Number(input.added_tip);
     if (!Number.isFinite(addedTip) || addedTip <= 0) {
       throw new AgentToolError("`added_tip` must be a positive dollar amount.");
@@ -396,13 +400,9 @@ const proposeAddTip: AgentWriteTool = {
     const date = optionalIsoDate(input.date, "date");
 
     const dataset = await loadDataset();
-    const pet = dataset.pets.find((p) => p.id === petId);
-    if (!pet) {
-      throw new AgentToolError(
-        `No pet with id ${JSON.stringify(petId)}. Use find_household to look one up.`,
-      );
-    }
-    const owner = dataset.clients.find((c) => c.id === pet.client_id) ?? null;
+    const { clientId, client } = resolveHouseholdOrAsk(dataset, household);
+    const ownerName = fullName(client.first_name, client.last_name);
+    const { petId, petName } = resolvePetOrAsk(dataset, clientId, ownerName, petInput);
     const visits = petVisits(petId, dataset.pets, dataset.appointments);
 
     let target;
@@ -430,10 +430,11 @@ const proposeAddTip: AgentWriteTool = {
 
     return {
       kind: "add_tip",
-      clientId: pet.client_id,
-      petId,
-      petName: pet.name,
-      ownerName: owner ? fullName(owner.first_name, owner.last_name) : "Unknown owner",
+      householdName: household.name,
+      householdPhone: household.phone,
+      petQuery: petName,
+      petName,
+      ownerName,
       appointmentDate: target.date,
       service: target.service ?? null,
       fee,
@@ -454,7 +455,8 @@ const proposeLogGroom: AgentWriteTool = {
   name: "propose_log_groom",
   description:
     "Propose logging a completed groom (does NOT save it — the operator confirms a card " +
-    "first). Pass `client_id` and `pet_id` (from find_household), a concrete ISO " +
+    "first). Identify the dog by `household` (the owner's NAME, never an id; optionally " +
+    "`phone` to disambiguate) and `pet` (the dog's name), a concrete ISO " +
     "`date` (not in the future), and a `service_type` (full_groom, puppy_groom, " +
     "bath_only, nail_trim, other). Optional `fee`, `tip`, `payment_method` " +
     "(cash/interac/other, default cash), `payment_status` (paid/waiting, default " +
@@ -462,8 +464,9 @@ const proposeLogGroom: AgentWriteTool = {
   input_schema: {
     type: "object",
     properties: {
-      client_id: { type: "string", description: "Client id from find_household." },
-      pet_id: { type: "string", description: "Pet id from find_household." },
+      household: { type: "string", description: "The owner's name (NOT an id)." },
+      phone: { type: "string", description: "Optional phone to disambiguate same-name households." },
+      pet: { type: "string", description: "The dog's name." },
       date: { type: "string", description: "ISO YYYY-MM-DD; not in the future." },
       service_type: {
         type: "string",
@@ -476,26 +479,17 @@ const proposeLogGroom: AgentWriteTool = {
       payment_status: { type: "string", enum: ["paid", "waiting"] },
       notes: { type: "string", description: "Optional operator groom notes." },
     },
-    required: ["client_id", "pet_id", "date", "service_type"],
+    required: ["household", "pet", "date", "service_type"],
     additionalProperties: false,
   },
   propose: async (input): Promise<LogGroomProposal> => {
-    const clientId = requireString(input.client_id, "client_id");
-    const petId = requireString(input.pet_id, "pet_id");
+    const household = householdInputFrom(input);
+    const petInput = requireString(input.pet, "pet");
 
     const dataset = await loadDataset();
-    const client = dataset.clients.find((c) => c.id === clientId);
-    if (!client) {
-      throw new AgentToolError(
-        `No client with id ${JSON.stringify(clientId)}. Use find_household to look one up.`,
-      );
-    }
-    const pet = findOwnedPet(dataset.pets, petId, clientId);
-    if (!pet) {
-      throw new AgentToolError(
-        "That pet isn't on this client's file. Re-check with find_household.",
-      );
-    }
+    const { clientId, client } = resolveHouseholdOrAsk(dataset, household);
+    const ownerName = fullName(client.first_name, client.last_name);
+    const { petId, petName } = resolvePetOrAsk(dataset, clientId, ownerName, petInput);
 
     // Reuse the exact validator the gated logGroom action uses, so the card
     // only appears for input that will actually pass the write.
@@ -530,10 +524,11 @@ const proposeLogGroom: AgentWriteTool = {
 
     return {
       kind: "log_groom",
-      clientId,
-      petId,
-      petName: pet.name,
-      ownerName: fullName(client.first_name, client.last_name),
+      householdName: household.name,
+      householdPhone: household.phone,
+      petQuery: petName,
+      petName,
+      ownerName,
       date: value.date,
       serviceType: value.service_type,
       service: serviceLabel(value.service_type) ?? value.service_type,

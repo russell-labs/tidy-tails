@@ -277,11 +277,15 @@ describe("propose_add_tip", () => {
   it("resolves the most recent completed groom and computes the new total", async () => {
     loadDatasetMock.mockResolvedValue(dataset({ appointments: [completed] }));
     const proposal = (await runAgentWriteTool("propose_add_tip", {
-      pet_id: "pet-1",
+      household: "Mary Jones",
+      pet: "Kiwi",
       added_tip: 5,
     })) as AddTipProposal;
 
     expect(proposal.kind).toBe("add_tip");
+    expect(proposal).not.toHaveProperty("petId");
+    expect(proposal.householdName).toBe("Mary Jones");
+    expect(proposal.petQuery).toBe("Kiwi");
     expect(proposal.petName).toBe("Kiwi");
     expect(proposal.appointmentDate).toBe("2026-06-10");
     expect(proposal.fee).toBe(50);
@@ -297,14 +301,14 @@ describe("propose_add_tip", () => {
       dataset({ appointments: [appointment({ status: "booked" })] }),
     );
     await expect(
-      runAgentWriteTool("propose_add_tip", { pet_id: "pet-1", added_tip: 5 }),
+      runAgentWriteTool("propose_add_tip", { household: "Mary Jones", pet: "Kiwi", added_tip: 5 }),
     ).rejects.toBeInstanceOf(AgentToolError);
   });
 
   it("rejects a non-positive tip amount", async () => {
     loadDatasetMock.mockResolvedValue(dataset({ appointments: [completed] }));
     await expect(
-      runAgentWriteTool("propose_add_tip", { pet_id: "pet-1", added_tip: 0 }),
+      runAgentWriteTool("propose_add_tip", { household: "Mary Jones", pet: "Kiwi", added_tip: 0 }),
     ).rejects.toBeInstanceOf(AgentToolError);
   });
 });
@@ -313,8 +317,8 @@ describe("propose_log_groom", () => {
   it("resolves a complete groom-log proposal", async () => {
     loadDatasetMock.mockResolvedValue(dataset());
     const proposal = (await runAgentWriteTool("propose_log_groom", {
-      client_id: "client-1",
-      pet_id: "pet-1",
+      household: "Mary Jones",
+      pet: "Kiwi",
       date: "2026-06-12",
       service_type: "bath_only",
       fee: 35,
@@ -324,6 +328,9 @@ describe("propose_log_groom", () => {
     })) as LogGroomProposal;
 
     expect(proposal.kind).toBe("log_groom");
+    expect(proposal).not.toHaveProperty("petId");
+    expect(proposal.householdName).toBe("Mary Jones");
+    expect(proposal.petQuery).toBe("Kiwi");
     expect(proposal.petName).toBe("Kiwi");
     expect(proposal.service).toBe("Bath only");
     expect(proposal.fee).toBe(35);
@@ -336,8 +343,8 @@ describe("propose_log_groom", () => {
     loadDatasetMock.mockResolvedValue(dataset());
     await expect(
       runAgentWriteTool("propose_log_groom", {
-        client_id: "client-1",
-        pet_id: "pet-1",
+        household: "Mary Jones",
+        pet: "Kiwi",
         date: "2027-01-01",
         service_type: "bath_only",
       }),

@@ -123,7 +123,7 @@ describe("runAgent — provider-agnostic read-only tool loop", () => {
 
   it("feeds a propose tool error back so the model disambiguates (no proposal)", async () => {
     const { provider, calls } = fakeProvider([
-      toolTurn("propose_add_tip", { pet_id: "ghost", added_tip: 5 }),
+      toolTurn("propose_add_tip", { household: "Ghosts", pet: "Nobody", added_tip: 5 }),
       endTurn("I couldn't find that dog — which one did you mean?"),
     ]);
 

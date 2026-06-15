@@ -39,8 +39,9 @@ const BOOK: BookAppointmentProposal = {
 
 const TIP: AddTipProposal = {
   kind: "add_tip",
-  clientId: "c1",
-  petId: "p1",
+  householdName: "Rosanne Adams",
+  householdPhone: null,
+  petQuery: "Coco",
   petName: "Coco",
   ownerName: "Rosanne Adams",
   appointmentDate: "2026-07-10",
@@ -55,8 +56,9 @@ const TIP: AddTipProposal = {
 
 const LOG: LogGroomProposal = {
   kind: "log_groom",
-  clientId: "c1",
-  petId: "p1",
+  householdName: "Rosanne Adams",
+  householdPhone: null,
+  petQuery: "Bella",
   petName: "Bella",
   ownerName: "Rosanne Adams",
   date: "2026-07-09",

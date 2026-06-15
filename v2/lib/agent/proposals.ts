@@ -48,8 +48,9 @@ export type BookAppointmentProposal = {
  */
 export type AddTipProposal = {
   kind: "add_tip";
-  clientId: string;
-  petId: string;
+  householdName: string; // re-resolved to client_id in confirm — NOT an id
+  householdPhone: string | null;
+  petQuery: string; // the dog's name — re-resolved to pet_id in confirm
   petName: string;
   ownerName: string;
   appointmentDate: string; // ISO date of the resolved groom
@@ -65,8 +66,9 @@ export type AddTipProposal = {
 /** Propose logging a completed groom. Backed by the existing logGroom action. */
 export type LogGroomProposal = {
   kind: "log_groom";
-  clientId: string;
-  petId: string;
+  householdName: string; // re-resolved to client_id in confirm — NOT an id
+  householdPhone: string | null;
+  petQuery: string; // the dog's name — re-resolved to pet_id in confirm
   petName: string;
   ownerName: string;
   date: string; // ISO YYYY-MM-DD
