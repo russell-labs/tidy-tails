@@ -36,6 +36,8 @@ import {
 } from "@/lib/data/repo";
 import type { Appointment, Client, Pet } from "@/lib/data/types";
 import { readOperatorSettings } from "@/lib/operatorSettings.server";
+import { loadOrgSettings } from "@/lib/orgSettings.server";
+import { BOOKING_LOCATIONS, bookingLocationLabel } from "@/lib/booking";
 import { appointmentsForDay } from "@/lib/schedule";
 import { searchHouseholds, type SearchHousehold } from "@/lib/search";
 import { groupPetsForDisplay, lapsedClients } from "@/lib/derive";
@@ -467,6 +469,54 @@ const listLapsedClients: AgentReadTool = {
 };
 
 /**
+ * getLocations() — the org's configured locations, so the agent can MATCH a
+ * location the operator names ("Gina's", "the salon", a street) to a real
+ * configured one instead of demanding exact text. Read-only; org-scoped via
+ * loadOrgSettings (same RLS/org_id boundary as the other loaders). Operator data
+ * only — location names + addresses the org configured itself, never customer text.
+ */
+const getLocations: AgentReadTool = {
+  name: "get_locations",
+  description:
+    "List the locations this business works out of, so you can match a location the " +
+    "operator names (e.g. 'Gina's', 'the salon', a street) to a real configured one " +
+    "rather than asking for exact text. For a batched business these are the two payout " +
+    "shops (gina, annette); for a one-at-a-time business they are the operator's own " +
+    "locations with addresses. Returns each location's stored `name` (pass THAT as the " +
+    "`location` when booking or editing an appointment) and a display label. Read this " +
+    "when a booking or edit needs a location and you're unsure which configured one she means.",
+  input_schema: {
+    type: "object",
+    properties: {},
+    additionalProperties: false,
+  },
+  run: async () => {
+    const org = await loadOrgSettings();
+    if (org.schedulingStyle === "one_to_one") {
+      return {
+        schedulingStyle: org.schedulingStyle,
+        locations: org.locations.map((location) => ({
+          name: location.name,
+          label: location.name,
+          address: location.address || null,
+        })),
+      };
+    }
+    // Batched: the two fixed payout shops. The model already knows the gina/annette
+    // codes from the booking tool's enum; exposing them here keeps the surface
+    // uniform so "match the location" works the same way for every org.
+    return {
+      schedulingStyle: org.schedulingStyle,
+      locations: (BOOKING_LOCATIONS as readonly string[]).map((name) => ({
+        name,
+        label: bookingLocationLabel(name) ?? name,
+        address: null,
+      })),
+    };
+  },
+};
+
+/**
  * The complete read-only tool registry.
  *
  * INVARIANT: every entry is a read. There is no write/send/log/delete tool here
@@ -481,6 +531,7 @@ export const AGENT_READ_TOOLS: readonly AgentReadTool[] = [
   getGroomDetail,
   getDayIncome,
   listLapsedClients,
+  getLocations,
 ] as const;
 
 /** The exact set of registered read-tool names. */

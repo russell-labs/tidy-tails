@@ -26,7 +26,8 @@ import {
   formatPetNames,
   type ServiceType,
 } from "@/lib/booking";
-import { isOrgLocation, orgLocationAddress } from "@/lib/orgSettings";
+import { orgLocationAddress, type OrgLocation } from "@/lib/orgSettings";
+import { resolveLocationLoosely } from "@/lib/locationMatch";
 import { serviceCodeFromLabel, serviceLabel } from "@/lib/data/live";
 import { formatDate, fullName } from "@/lib/format";
 import {
@@ -144,6 +145,33 @@ function petIdsFrom(input: Record<string, unknown>): string[] {
   return Array.from(new Set(ids));
 }
 
+/** Human list of the org's locations for an "ask which one" error. */
+function listOrgLocations(locations: readonly OrgLocation[]): string {
+  if (locations.length === 0) return "the operator hasn't set up any locations yet";
+  return locations
+    .map((location) => (location.address ? `${location.name} (${location.address})` : location.name))
+    .join(", ");
+}
+
+/**
+ * Resolve a spoken 1:1 location to one of the org's CONFIGURED location names by
+ * loose match — so the agent never demands exact wording. Returns the configured
+ * NAME (which the gated action re-validates with isOrgLocation). Ambiguous or
+ * no-match THROWS an AgentToolError that lists the options and asks — never a guess.
+ */
+function resolveOrgLocationOrAsk(locations: readonly OrgLocation[], input: string): string {
+  const match = resolveLocationLoosely(input, locations);
+  if (match.kind === "matched") return match.name;
+  if (match.kind === "ambiguous") {
+    throw new AgentToolError(
+      `Which location do you mean — ${match.names.join(" or ")}? Ask the operator which one.`,
+    );
+  }
+  throw new AgentToolError(
+    `I couldn't match "${input}" to one of the operator's locations (${listOrgLocations(locations)}). Ask which one.`,
+  );
+}
+
 // ---------------------------------------------------------------------------
 // propose_book_appointment — resolves a booking for either surface.
 // ---------------------------------------------------------------------------
@@ -160,8 +188,11 @@ const proposeBookAppointment: AgentWriteTool = {
     "(one of full_groom, puppy_groom, bath_only, nail_trim, other). Optional `fee`. " +
     "`location` is REQUIRED: gina or annette for a batched business (it sets the " +
     "payout split), or one of the operator's locations for a 1:1 business, which " +
-    "ALSO needs `duration_minutes`. Ask the operator which location (and how long, " +
-    "for 1:1) if you don't have it. Resolve the client and pets first; never propose on a guess.",
+    "ALSO needs `duration_minutes`. For a 1:1 business pass the location the operator " +
+    "named in her OWN words (e.g. 'Gina's', 'the salon', a street) — it is matched to " +
+    "a configured location for you, so don't demand exact wording; read get_locations " +
+    "to see the configured ones. If it can't be matched you'll get the list to ask from. " +
+    "Resolve the client and pets first; never propose on a guess.",
   input_schema: {
     type: "object",
     properties: {
@@ -217,22 +248,21 @@ const proposeBookAppointment: AgentWriteTool = {
     if (org.schedulingStyle === "one_to_one") {
       if (!locationInput) {
         throw new AgentToolError(
-          "This is a one-at-a-time schedule. Ask the operator which of their locations, then pass `location`.",
+          `This is a one-at-a-time schedule. Which location is it at — ${listOrgLocations(org.locations)}? Pass it as \`location\`.`,
         );
       }
-      if (!isOrgLocation(org, locationInput)) {
-        throw new AgentToolError(
-          `${JSON.stringify(locationInput)} isn't one of the operator's locations.`,
-        );
-      }
+      // Loose-match the spoken location ("the studio", "Gina's", a street) to a
+      // configured org location; ambiguous / no-match asks rather than guessing.
+      // The gated booking action re-validates the resolved name with isOrgLocation.
+      const resolved = resolveOrgLocationOrAsk(org.locations, locationInput);
       const duration = Number(input.duration_minutes);
       if (!Number.isFinite(duration) || duration <= 0) {
         throw new AgentToolError(
           "Ask the operator how long the appointment is, then pass `duration_minutes`.",
         );
       }
-      location = locationInput;
-      locationLabel = orgLocationAddress(org, locationInput) ?? locationInput;
+      location = resolved;
+      locationLabel = orgLocationAddress(org, resolved) ?? resolved;
       durationMinutes = Math.round(duration);
     } else {
       // Batched: a location is REQUIRED — it drives the salon-payout split, so a
@@ -902,7 +932,9 @@ const proposeEditAppointment: AgentWriteTool = {
     "`payment_status`, `notes` to change those (untouched fields are kept); 'cancel' to remove the " +
     "booking; or 'no_show' to mark a still-booked visit as a no-show (keeps the record, never " +
     "deletes). `location` is gina/annette for a batched business or one of the operator's own " +
-    "locations for a 1:1 business; leave it out to keep the current one.",
+    "locations for a 1:1 business — for 1:1 you can name it loosely ('Gina's', 'the salon'); " +
+    "it's matched to a configured location for you (read get_locations). Leave it out to keep " +
+    "the current one.",
   input_schema: {
     type: "object",
     properties: {
@@ -1032,12 +1064,20 @@ const proposeEditAppointment: AgentWriteTool = {
       : existing.location === "gina" || existing.location === "annette"
         ? existing.location
         : "";
+    // Loose-match a spoken 1:1 location to a configured org location before merge
+    // (ambiguous / no-match asks); batched keeps the gina/annette enum unchanged,
+    // validated downstream by validateEditAppointment.
+    const spokenLocation = optionalString(input.location);
+    const requestedLocation =
+      spokenLocation && isOneToOne
+        ? resolveOrgLocationOrAsk(org.locations, spokenLocation)
+        : spokenLocation;
     const merged = {
       date: optionalString(input.new_date) || existing.date,
       time_slot: optionalString(input.new_time_slot) || (existing.time_slot ?? ""),
       service_type:
         optionalString(input.service_type) || (serviceCodeFromLabel(existing.service) ?? ""),
-      location: optionalString(input.location) || currentLocation,
+      location: requestedLocation || currentLocation,
       fee:
         input.fee != null
           ? String(input.fee)

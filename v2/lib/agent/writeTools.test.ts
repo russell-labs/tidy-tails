@@ -189,6 +189,59 @@ describe("propose_book_appointment (one_to_one)", () => {
     expect(proposal.location).toBe("Home Studio");
     expect(proposal.locationLabel).toContain("Bay");
   });
+
+  it("loose-matches a spoken location to the configured org location ('the studio' → Home Studio)", async () => {
+    loadDatasetMock.mockResolvedValue(dataset());
+    const proposal = (await runAgentWriteTool("propose_book_appointment", {
+      client_id: "client-1",
+      pet_ids: ["pet-1"],
+      date: "2026-07-11",
+      time_slot: "10:00am",
+      service_type: "full_groom",
+      location: "the studio",
+      duration_minutes: 90,
+    })) as BookAppointmentProposal;
+    // Resolved to the real configured name — the gated action re-validates it.
+    expect(proposal.location).toBe("Home Studio");
+  });
+
+  it("lists the options and asks when a spoken 1:1 location matches none", async () => {
+    loadDatasetMock.mockResolvedValue(dataset());
+    await expect(
+      runAgentWriteTool("propose_book_appointment", {
+        client_id: "client-1",
+        pet_ids: ["pet-1"],
+        date: "2026-07-11",
+        time_slot: "10:00am",
+        service_type: "full_groom",
+        location: "the airport",
+        duration_minutes: 90,
+      }),
+    ).rejects.toThrow(/Home Studio/); // error lists the configured option
+  });
+
+  it("asks which when a spoken 1:1 location is ambiguous across locations", async () => {
+    loadOrgSettingsMock.mockResolvedValue({
+      ...DEFAULT_ORG_SETTINGS,
+      schedulingStyle: "one_to_one",
+      locations: [
+        { name: "North Salon", address: "1 A St" },
+        { name: "South Salon", address: "2 B St" },
+      ],
+    });
+    loadDatasetMock.mockResolvedValue(dataset());
+    await expect(
+      runAgentWriteTool("propose_book_appointment", {
+        client_id: "client-1",
+        pet_ids: ["pet-1"],
+        date: "2026-07-11",
+        time_slot: "10:00am",
+        service_type: "full_groom",
+        location: "the salon",
+        duration_minutes: 90,
+      }),
+    ).rejects.toThrow(/North Salon|South Salon/);
+  });
 });
 
 describe("propose_add_tip", () => {
@@ -593,6 +646,39 @@ describe("propose_edit_appointment", () => {
         location: "Old Studio",
       }),
     ).rejects.toBeInstanceOf(AgentToolError);
+  });
+
+  it("loose-matches a spoken location on a 1:1 edit ('the studio' → Home Studio)", async () => {
+    const oneToOneVisit = appointment({
+      id: "appt-1to1",
+      pet_id: "pet-1",
+      client_id: "client-1",
+      date: "2026-07-20",
+      time_slot: "10:00am",
+      status: "booked",
+      service: "Full groom",
+      location: "Home Studio",
+      duration_minutes: 90,
+      price: 70,
+    });
+    loadOrgSettingsMock.mockResolvedValue({
+      ...DEFAULT_ORG_SETTINGS,
+      schedulingStyle: "one_to_one",
+      locations: [
+        { name: "Home Studio", address: "1 Bay St" },
+        { name: "Gina's Salon", address: "9 King St" },
+      ],
+    });
+    loadDatasetMock.mockResolvedValue(dataset({ appointments: [oneToOneVisit] }));
+    const proposal = (await runAgentWriteTool("propose_edit_appointment", {
+      client_id: "client-1",
+      pet_id: "pet-1",
+      date: "2026-07-20",
+      mode: "change",
+      location: "Gina's",
+    })) as EditAppointmentProposal;
+    if (proposal.mode !== "reschedule_change") throw new Error("expected reschedule_change");
+    expect(proposal.location).toBe("Gina's Salon"); // resolved from "Gina's"
   });
 });
 
