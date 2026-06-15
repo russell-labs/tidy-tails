@@ -1042,14 +1042,15 @@ const proposeEditAppointment: AgentWriteTool = {
     // the same way. petId is the canonical row used to find the visit below.
     const { clientId, client } = resolveHouseholdOrAsk(dataset, household);
     const ownerName = fullName(client.first_name, client.last_name);
-    const { petId, petName } = resolvePetOrAsk(dataset, clientId, ownerName, petInput);
+    const { petName, groupPetIds } = resolvePetOrAsk(dataset, clientId, ownerName, petInput);
 
     // Resolve the exact visit by pet + date (+ time) — the same resolver the
-    // confirm action re-runs server-side. A same-day duplicate disambiguates by
-    // time or is refused; it is never resolved to a guess.
+    // confirm action re-runs server-side. The pet's full group of ids is used so a
+    // split-duplicate visit filed under either row resolves. A same-day duplicate
+    // disambiguates by time or is refused; it is never resolved to a guess.
     const match = findAppointmentByPetDate(dataset.appointments, {
       clientId,
-      petId,
+      petId: groupPetIds,
       date: targetDate,
       timeSlot: targetTimeInput,
     });

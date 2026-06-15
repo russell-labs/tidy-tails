@@ -566,6 +566,29 @@ describe("propose_edit_appointment", () => {
     ).rejects.toBeInstanceOf(AgentToolError);
   });
 
+  it("resolves a split-duplicate pet's visit filed under the non-primary row (group-aware)", async () => {
+    // Chloe/Chloe split rows (Sam's prod has these). The newer row (p2) is the
+    // canonical/primary; the target visit is under the OLDER row (p1). A single
+    // canonical-id lookup would miss it — the group resolves it.
+    const chloeA = pet({ id: "p1", client_id: "client-1", name: "Chloe", breed: "Poodle" });
+    const chloeB = pet({ id: "p2", client_id: "client-1", name: "Chloe", breed: "Poodle" });
+    const oldVisit = appointment({ id: "appt-old", client_id: "client-1", pet_id: "p1", date: "2026-05-01", time_slot: "9:00am", status: "booked", service: "Full groom", location: "gina" });
+    const newVisit = appointment({ id: "appt-new", client_id: "client-1", pet_id: "p2", date: "2026-07-20", time_slot: "1:00pm", status: "booked", service: "Full groom", location: "gina" });
+    loadDatasetMock.mockResolvedValue(dataset({ pets: [chloeA, chloeB], appointments: [oldVisit, newVisit] }));
+    // BOTH visits belong to the one animal — both must resolve, whichever row is
+    // canonical. The one under the non-primary row is what a single-id lookup misses.
+    for (const visitDate of ["2026-05-01", "2026-07-20"]) {
+      const proposal = (await runAgentWriteTool("propose_edit_appointment", {
+        household: "Mary Jones",
+        pet: "Chloe",
+        date: visitDate,
+        mode: "cancel",
+      })) as EditAppointmentProposal;
+      if (proposal.mode !== "cancel") throw new Error("expected cancel");
+      expect(proposal.targetDate, `visit on ${visitDate}`).toBe(visitDate);
+    }
+  });
+
   it("disambiguates a same-day duplicate (asks which time) instead of acting on a guess", async () => {
     const morning = appointment({
       id: "appt-am",

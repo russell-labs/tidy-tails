@@ -474,7 +474,7 @@ async function confirmEditPet(proposal: EditPetProposal): Promise<AgentConfirmRe
  */
 async function resolveAppointmentIdByTuple(
   clientId: string,
-  petId: string,
+  petId: string | readonly string[],
   date: string,
   timeSlot: string | null,
 ): Promise<string | null> {
@@ -504,7 +504,7 @@ async function confirmEditAppointment(
 
   const appointmentId = await resolveAppointmentIdByTuple(
     clientId,
-    pet.petId,
+    pet.groupPetIds, // split-duplicate safe: match a visit filed under either row
     proposal.targetDate,
     proposal.targetTimeSlot,
   );

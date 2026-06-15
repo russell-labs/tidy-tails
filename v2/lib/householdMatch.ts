@@ -27,7 +27,6 @@ import { fullName } from "./format";
 export type HouseholdAttrs = {
   name: string;
   phone?: string | null;
-  email?: string | null;
 };
 
 export type HouseholdMatchResult =
@@ -53,11 +52,11 @@ function toSearchHousehold(client: Client, pets: Pet[]): SearchHousehold {
 }
 
 /**
- * Resolve a household from a name (+ optional phone/email) against the org's
- * clients. Phone is folded into the search query (searchHouseholds matches phone
- * digits); email is a tiebreaker only — searchHouseholds can't match it, so it is
- * never put in the query (that would zero out every result) and is applied only
- * to narrow an otherwise-ambiguous set.
+ * Resolve a household from a name (+ optional phone) against the org's clients.
+ * Phone is folded into the search query (searchHouseholds matches phone digits),
+ * which both narrows and disambiguates two same-name households. (Email-based
+ * disambiguation is a trivial follow-up once a propose tool exposes it; phone is
+ * the disambiguator Sam actually uses.)
  */
 export function resolveHouseholdLoosely(
   attrs: HouseholdAttrs,
@@ -70,16 +69,7 @@ export function resolveHouseholdLoosely(
   const phone = (attrs.phone ?? "").trim();
   const query = [name, phone].filter(Boolean).join(" ");
   const households = clients.map((client) => toSearchHousehold(client, pets));
-  let results = searchHouseholds(query, households);
-
-  const email = (attrs.email ?? "").trim().toLowerCase();
-  if (email && results.length > 1) {
-    const byEmail = results.filter((result) => {
-      const match = clients.find((client) => client.id === result.household.id);
-      return (match?.email ?? "").trim().toLowerCase() === email;
-    });
-    if (byEmail.length >= 1) results = byEmail;
-  }
+  const results = searchHouseholds(query, households);
 
   if (results.length === 0) return { kind: "none" };
 

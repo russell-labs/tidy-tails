@@ -343,12 +343,16 @@ function timeSlotLabel(timeSlot: string | null): string {
 
 export function findAppointmentByPetDate<T extends AppointmentMatchRow>(
   appointments: readonly T[],
-  criteria: { clientId: string; petId: string; date: string; timeSlot?: string | null },
+  // `petId` accepts a SET so a split-duplicate pet (Chloe/Chloe) resolves a visit
+  // filed under EITHER row — the same grouping the read screens use — instead of
+  // missing one filed under the non-canonical id.
+  criteria: { clientId: string; petId: string | readonly string[]; date: string; timeSlot?: string | null },
 ): AppointmentMatchResult<T> {
+  const petIds = Array.isArray(criteria.petId) ? criteria.petId : [criteria.petId];
   const candidates = appointments.filter(
     (a) =>
       a.client_id === criteria.clientId &&
-      a.pet_id === criteria.petId &&
+      petIds.includes(a.pet_id) &&
       a.date === criteria.date,
   );
   if (candidates.length === 0) return { kind: "none" };
