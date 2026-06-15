@@ -380,6 +380,9 @@ describe("propose_edit_pet", () => {
 });
 
 describe("propose_edit_appointment", () => {
+  // The visit is identified by pet + CURRENT date (+ time), never an id — the
+  // read tools don't expose ids. The proposal carries the re-resolution tuple
+  // (petId + targetDate + targetTimeSlot) the confirm action re-runs server-side.
   const booked = appointment({
     id: "appt-future",
     pet_id: "pet-1",
@@ -396,39 +399,121 @@ describe("propose_edit_appointment", () => {
     loadDatasetMock.mockResolvedValue(dataset({ appointments: [booked] }));
     const proposal = (await runAgentWriteTool("propose_edit_appointment", {
       client_id: "client-1",
-      appointment_id: "appt-future",
+      pet_id: "pet-1",
+      date: "2026-07-20", // current date — identifies the visit
       mode: "change",
-      date: "2026-07-21",
+      new_date: "2026-07-21", // reschedule target
     })) as EditAppointmentProposal;
 
     expect(proposal.kind).toBe("edit_appointment");
     if (proposal.mode !== "reschedule_change") throw new Error("expected reschedule_change");
-    expect(proposal.date).toBe("2026-07-21");
+    expect(proposal.date).toBe("2026-07-21"); // the NEW date written
+    expect(proposal.targetDate).toBe("2026-07-20"); // re-resolution tuple = current date
+    expect(proposal.targetTimeSlot).toBe("10:30am");
+    expect(proposal.petId).toBe("pet-1");
     expect(proposal.service).toBe("Full groom"); // preserved
+    expect(proposal.changes).toContain("date → 2026-07-21");
+  });
+
+  it("changes a field WITHOUT moving the visit (keeps the current date when no new_date)", async () => {
+    loadDatasetMock.mockResolvedValue(dataset({ appointments: [booked] }));
+    const proposal = (await runAgentWriteTool("propose_edit_appointment", {
+      client_id: "client-1",
+      pet_id: "pet-1",
+      date: "2026-07-20",
+      mode: "change",
+      service_type: "bath_only",
+    })) as EditAppointmentProposal;
+    if (proposal.mode !== "reschedule_change") throw new Error("expected reschedule_change");
+    expect(proposal.date).toBe("2026-07-20"); // unchanged — identifier date kept
+    expect(proposal.targetDate).toBe("2026-07-20");
+    expect(proposal.serviceType).toBe("bath_only");
+    expect(proposal.changes).toContain("service → Bath only");
   });
 
   it("cancels a booking", async () => {
     loadDatasetMock.mockResolvedValue(dataset({ appointments: [booked] }));
     const proposal = (await runAgentWriteTool("propose_edit_appointment", {
       client_id: "client-1",
-      appointment_id: "appt-future",
+      pet_id: "pet-1",
+      date: "2026-07-20",
       mode: "cancel",
     })) as EditAppointmentProposal;
     expect(proposal.mode).toBe("cancel");
+    if (proposal.mode !== "cancel") throw new Error("expected cancel");
+    expect(proposal.targetDate).toBe("2026-07-20");
+    expect(proposal.petId).toBe("pet-1");
   });
 
   it("marks a booked visit as a no-show (keeps the record)", async () => {
     loadDatasetMock.mockResolvedValue(dataset({ appointments: [booked] }));
     const proposal = (await runAgentWriteTool("propose_edit_appointment", {
       client_id: "client-1",
-      appointment_id: "appt-future",
+      pet_id: "pet-1",
+      date: "2026-07-20",
       mode: "no_show",
     })) as EditAppointmentProposal;
     expect(proposal.kind).toBe("edit_appointment");
     expect(proposal.mode).toBe("no_show");
     if (proposal.mode !== "no_show") throw new Error("expected no_show");
-    expect(proposal.appointmentId).toBe("appt-future");
+    expect(proposal.targetDate).toBe("2026-07-20");
+    expect(proposal.targetTimeSlot).toBe("10:30am");
     expect(proposal.date).toBe("2026-07-20");
+  });
+
+  it("refuses when no visit matches the pet + date (never guesses)", async () => {
+    loadDatasetMock.mockResolvedValue(dataset({ appointments: [booked] }));
+    await expect(
+      runAgentWriteTool("propose_edit_appointment", {
+        client_id: "client-1",
+        pet_id: "pet-1",
+        date: "2026-08-01", // no visit that day
+        mode: "cancel",
+      }),
+    ).rejects.toBeInstanceOf(AgentToolError);
+  });
+
+  it("disambiguates a same-day duplicate (asks which time) instead of acting on a guess", async () => {
+    const morning = appointment({
+      id: "appt-am",
+      pet_id: "pet-1",
+      client_id: "client-1",
+      date: "2026-07-20",
+      time_slot: "10:00am",
+      service: "Full groom",
+      status: "booked",
+    });
+    const afternoon = appointment({
+      id: "appt-pm",
+      pet_id: "pet-1",
+      client_id: "client-1",
+      date: "2026-07-20",
+      time_slot: "2:00pm",
+      service: "Bath only",
+      status: "booked",
+    });
+    loadDatasetMock.mockResolvedValue(dataset({ appointments: [morning, afternoon] }));
+    // No time → ambiguous, must refuse.
+    await expect(
+      runAgentWriteTool("propose_edit_appointment", {
+        client_id: "client-1",
+        pet_id: "pet-1",
+        date: "2026-07-20",
+        mode: "cancel",
+      }),
+    ).rejects.toBeInstanceOf(AgentToolError);
+
+    // With the disambiguating time → resolves the RIGHT visit's tuple.
+    const proposal = (await runAgentWriteTool("propose_edit_appointment", {
+      client_id: "client-1",
+      pet_id: "pet-1",
+      date: "2026-07-20",
+      time_slot: "2:00pm",
+      mode: "cancel",
+    })) as EditAppointmentProposal;
+    if (proposal.mode !== "cancel") throw new Error("expected cancel");
+    expect(proposal.targetTimeSlot).toBe("2:00pm");
+    expect(proposal.service).toBe("Bath only");
   });
 
   it("refuses a no-show on a non-booked visit (mirrors the action guard)", async () => {
@@ -443,7 +528,8 @@ describe("propose_edit_appointment", () => {
     await expect(
       runAgentWriteTool("propose_edit_appointment", {
         client_id: "client-1",
-        appointment_id: "appt-done",
+        pet_id: "pet-1",
+        date: "2026-06-01",
         mode: "no_show",
       }),
     ).rejects.toBeInstanceOf(AgentToolError);
@@ -470,9 +556,10 @@ describe("propose_edit_appointment", () => {
     loadDatasetMock.mockResolvedValue(dataset({ appointments: [oneToOneVisit] }));
     const proposal = (await runAgentWriteTool("propose_edit_appointment", {
       client_id: "client-1",
-      appointment_id: "appt-1to1",
+      pet_id: "pet-1",
+      date: "2026-07-20",
       mode: "change",
-      date: "2026-07-21",
+      new_date: "2026-07-21",
     })) as EditAppointmentProposal;
     expect(proposal.kind).toBe("edit_appointment");
     if (proposal.mode !== "reschedule_change") throw new Error("expected reschedule_change");
@@ -500,9 +587,10 @@ describe("propose_edit_appointment", () => {
     await expect(
       runAgentWriteTool("propose_edit_appointment", {
         client_id: "client-1",
-        appointment_id: "appt-1to1",
+        pet_id: "pet-1",
+        date: "2026-07-20",
         mode: "change",
-        date: "2026-07-21",
+        location: "Old Studio",
       }),
     ).rejects.toBeInstanceOf(AgentToolError);
   });

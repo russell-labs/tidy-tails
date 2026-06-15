@@ -389,10 +389,12 @@ const EDIT_APPT_CHANGE: EditAppointmentProposal = {
   kind: "edit_appointment",
   mode: "reschedule_change",
   clientId: "client-1",
-  appointmentId: "appt-1",
+  petId: "pet-1",
+  targetDate: "2026-07-20", // the visit's CURRENT date — re-resolves the id
+  targetTimeSlot: "10:30am",
   ownerName: "Mary Jones",
   petName: "Kiwi",
-  date: "2026-07-21",
+  date: "2026-07-21", // the NEW date written
   timeSlot: "10:30am",
   serviceType: "full_groom",
   service: "Full groom",
@@ -411,10 +413,12 @@ const EDIT_APPT_CANCEL: EditAppointmentProposal = {
   kind: "edit_appointment",
   mode: "cancel",
   clientId: "client-1",
-  appointmentId: "appt-1",
+  petId: "pet-1",
+  targetDate: "2026-07-20",
+  targetTimeSlot: "10:30am",
   ownerName: "Mary Jones",
   petName: "Kiwi",
-  date: "2026-07-21",
+  date: "2026-07-20",
   service: "Full groom",
 };
 
@@ -422,12 +426,30 @@ const EDIT_APPT_NO_SHOW: EditAppointmentProposal = {
   kind: "edit_appointment",
   mode: "no_show",
   clientId: "client-1",
-  appointmentId: "appt-1",
+  petId: "pet-1",
+  targetDate: "2026-07-20",
+  targetTimeSlot: "10:30am",
   ownerName: "Mary Jones",
   petName: "Kiwi",
-  date: "2026-07-21",
+  date: "2026-07-20",
   service: "Full groom",
 };
+
+/** The org-scoped record the confirm action re-resolves the appointment id from. */
+const EDIT_APPT_RECORD = clientRecord({
+  client: { id: "client-1" },
+  appointments: [
+    appointment({
+      id: "appt-1",
+      client_id: "client-1",
+      pet_id: "pet-1",
+      date: "2026-07-20",
+      time_slot: "10:30am",
+      status: "booked",
+      service: "Full groom",
+    }),
+  ],
+});
 
 const DELETE_HOUSEHOLD: DeleteHouseholdProposal = {
   kind: "delete_household",
@@ -523,12 +545,17 @@ describe("confirmAgentProposal — edit household / pet", () => {
 });
 
 describe("confirmAgentProposal — edit appointment", () => {
+  beforeEach(() => {
+    // Default: the visit is still on file, so re-resolution finds appt-1.
+    getClientRecordMock.mockResolvedValue(EDIT_APPT_RECORD);
+  });
+
   it("dispatches a reschedule/change to editAppointment with merged fields, agent-tagged", async () => {
     editAppointmentMock.mockResolvedValue({ status: "saved", summary: { petName: "Kiwi", ownerName: "Mary Jones" } } as never);
     const result = await confirmAgentProposal(EDIT_APPT_CHANGE);
     expect(result.status).toBe("saved");
     const form = editAppointmentMock.mock.calls[0][1] as FormData;
-    expect(form.get("appointment_id")).toBe("appt-1");
+    expect(form.get("appointment_id")).toBe("appt-1"); // re-resolved server-side from pet + current date
     expect(form.get("date")).toBe("2026-07-21");
     expect(form.get("service_type")).toBe("full_groom");
     expect(form.get("location")).toBe("gina");
@@ -560,6 +587,39 @@ describe("confirmAgentProposal — edit appointment", () => {
     expect(form.get("audit_source")).toBe("agent");
     expect(editAppointmentMock).not.toHaveBeenCalled();
     expect(deleteAppointmentMock).not.toHaveBeenCalled();
+  });
+
+  it("re-resolves the appointment id server-side — a tampered/stale tuple matching nothing writes nothing", async () => {
+    getClientRecordMock.mockResolvedValue(
+      clientRecord({
+        client: { id: "client-1" },
+        // The visit was moved/removed; nothing matches pet-1 on 2026-07-20.
+        appointments: [appointment({ id: "appt-9", pet_id: "pet-1", client_id: "client-1", date: "2026-09-09" })],
+      }),
+    );
+    const result = await confirmAgentProposal(EDIT_APPT_CANCEL);
+    expect(result.status).toBe("error");
+    expect(deleteAppointmentMock).not.toHaveBeenCalled();
+    expect(editAppointmentMock).not.toHaveBeenCalled();
+    expect(markAppointmentNoShowMock).not.toHaveBeenCalled();
+  });
+
+  it("re-resolves the RIGHT visit by time when the pet has two on the same date (no wrong write)", async () => {
+    getClientRecordMock.mockResolvedValue(
+      clientRecord({
+        client: { id: "client-1" },
+        appointments: [
+          appointment({ id: "appt-am", pet_id: "pet-1", client_id: "client-1", date: "2026-07-20", time_slot: "10:00am", status: "booked" }),
+          appointment({ id: "appt-pm", pet_id: "pet-1", client_id: "client-1", date: "2026-07-20", time_slot: "10:30am", status: "booked" }),
+        ],
+      }),
+    );
+    deleteAppointmentMock.mockResolvedValue({ status: "deleted", summary: { petName: "Kiwi" }, message: "Removed." } as never);
+    // EDIT_APPT_CANCEL.targetTimeSlot is "10:30am" → must hit appt-pm, not appt-am.
+    const result = await confirmAgentProposal(EDIT_APPT_CANCEL);
+    expect(result.status).toBe("saved");
+    const form = deleteAppointmentMock.mock.calls[0][1] as FormData;
+    expect(form.get("appointment_id")).toBe("appt-pm");
   });
 });
 

@@ -308,6 +308,71 @@ export function appointmentDeleteKind({
 }
 
 /**
+ * Resolve a single appointment by pet + date (+ time to disambiguate), the way
+ * the agent layer identifies a visit WITHOUT ever handling a raw appointment id.
+ *
+ * This is the ONE resolver used by BOTH the propose tool (to build the confirm
+ * card and disambiguate up front) and the confirm action (to re-resolve the
+ * authoritative id server-side before the write). Sharing it is what makes
+ * "a same-day duplicate disambiguates instead of writing the wrong visit" true
+ * by construction — the two paths cannot drift. It matches RAW on
+ * client_id + pet_id + date (never the display-grouped history, which can carry
+ * a sibling-duplicate pet's row under a different pet_id that the id re-resolve
+ * would then miss); time_slot is compared by exact trimmed string.
+ *
+ * Pure (no IO) so it is safe to import from the agent path and from client code.
+ */
+export type AppointmentMatchRow = {
+  id: string;
+  client_id: string;
+  pet_id: string;
+  date: string;
+  time_slot: string | null;
+};
+
+export type AppointmentMatchResult<T> =
+  | { kind: "found"; appointment: T }
+  | { kind: "none" }
+  | { kind: "ambiguous"; times: string[] };
+
+/** Display label for a row's time in a disambiguation prompt (never empty). */
+function timeSlotLabel(timeSlot: string | null): string {
+  const t = (timeSlot ?? "").trim();
+  return t === "" ? "(no time set)" : t;
+}
+
+export function findAppointmentByPetDate<T extends AppointmentMatchRow>(
+  appointments: readonly T[],
+  criteria: { clientId: string; petId: string; date: string; timeSlot?: string | null },
+): AppointmentMatchResult<T> {
+  const candidates = appointments.filter(
+    (a) =>
+      a.client_id === criteria.clientId &&
+      a.pet_id === criteria.petId &&
+      a.date === criteria.date,
+  );
+  if (candidates.length === 0) return { kind: "none" };
+  if (candidates.length === 1) return { kind: "found", appointment: candidates[0] };
+
+  // More than one visit for this pet on this date — only a time can break the
+  // tie. Compare on the exact stored string so the model can echo it back.
+  const wantTime = (criteria.timeSlot ?? "").trim();
+  if (wantTime !== "") {
+    const narrowed = candidates.filter(
+      (a) => (a.time_slot ?? "").trim() === wantTime,
+    );
+    if (narrowed.length === 1) return { kind: "found", appointment: narrowed[0] };
+  }
+
+  // No time, a time that matches none, or a time shared by two rows: refuse and
+  // surface the distinct stored times so the caller asks which — never a guess.
+  const times = Array.from(
+    new Set(candidates.map((a) => timeSlotLabel(a.time_slot))),
+  ).sort();
+  return { kind: "ambiguous", times };
+}
+
+/**
  * A no-show is a status transition that KEEPS the record. Only a still-`booked`
  * appointment can become a no-show: a completed groom is a logged business
  * record (edit/void it instead), and a cancellation or an existing no-show is
