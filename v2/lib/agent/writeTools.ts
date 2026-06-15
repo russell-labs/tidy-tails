@@ -969,12 +969,13 @@ const proposeEditAppointment: AgentWriteTool = {
     if (match.kind === "ambiguous") {
       throw new AgentToolError(
         `${petName} has more than one visit on ${targetDate} (${match.times.join(", ")}). ` +
-          "Ask the operator which time, then pass it as `time_slot`.",
+          "Check get_schedule for the times or ask the operator which one, then pass it as `time_slot`.",
       );
     }
     const existing = match.appointment;
-    // Preserve the resolved visit's own date/time as the re-resolution tuple, so
-    // the confirm action finds the SAME visit even after a reschedule moves it.
+    // Preserve the resolved visit's OWN date/time as the re-resolution tuple, so
+    // the confirm action finds the same visit by its current (pre-move) date/time
+    // before the write then moves it.
     const resolvedTargetDate = existing.date;
     const resolvedTargetTime = existing.time_slot ?? null;
 
