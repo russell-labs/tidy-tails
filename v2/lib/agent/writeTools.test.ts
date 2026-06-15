@@ -678,6 +678,27 @@ describe("propose_send_text", () => {
     ).rejects.toBeInstanceOf(AgentToolError);
   });
 
+  it("refuses a reminder for a visit that isn't a booked appointment (no reminding about a completed/cancelled visit)", async () => {
+    const completed = appointment({
+      id: "appt-c",
+      client_id: "client-1",
+      pet_id: "pet-1",
+      date: "2026-07-20",
+      time_slot: "10:30am",
+      status: "completed",
+    });
+    loadDatasetMock.mockResolvedValue(dataset({ appointments: [completed] }));
+    await expect(
+      runAgentWriteTool("propose_send_text", {
+        mode: "reminder",
+        client_id: "client-1",
+        pet_id: "pet-1",
+        date: "2026-07-20",
+        message: "Reminder for Kiwi.",
+      }),
+    ).rejects.toBeInstanceOf(AgentToolError);
+  });
+
   it("refuses a same-day duplicate a time can't disambiguate (lists the times)", async () => {
     const am = appointment({ id: "appt-am", pet_id: "pet-1", date: "2026-07-20", time_slot: "9:00am", status: "booked" });
     const pm = appointment({ id: "appt-pm", pet_id: "pet-1", date: "2026-07-20", time_slot: "2:00pm", status: "booked" });

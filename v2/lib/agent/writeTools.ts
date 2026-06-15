@@ -1345,6 +1345,15 @@ const proposeSendText: AgentWriteTool = {
     }
     const existing = match.appointment;
 
+    // A reminder is only for a still-BOOKED visit. Resolving by an explicit date
+    // can land on a completed or cancelled visit on that day; refuse rather than
+    // draft a reminder for one (mirrors the no-show guard's booked-only rule).
+    if ((existing.status ?? "booked") !== "booked") {
+      throw new AgentToolError(
+        `${pet.name}'s visit on ${targetDate} is ${existing.status} — there's no booked appointment to remind about.`,
+      );
+    }
+
     // Build the reminder context (pet · date · time) from the resolved visit. The
     // id is resolved internally — never supplied by the model — so a grouped
     // same-slot context is safe to derive here.
