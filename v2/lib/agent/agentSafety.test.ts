@@ -36,6 +36,7 @@ const EXPECTED_TOOLS = [
   "find_household",
   "get_day_income",
   "get_groom_detail",
+  "get_locations",
   "get_pet_history",
   "get_schedule",
   "list_lapsed_clients",
@@ -72,7 +73,7 @@ const WRITE_VERB = new RegExp(
 );
 
 describe("the READ tool registry stays read-only", () => {
-  it("registers exactly the six intended read tools", () => {
+  it("registers exactly the intended read tools", () => {
     expect([...AGENT_READ_TOOL_NAMES].sort()).toEqual([...EXPECTED_TOOLS]);
   });
 
@@ -202,6 +203,8 @@ const GOLDEN: { ask: string; tool: (typeof EXPECTED_TOOLS)[number] }[] = [
   { ask: "which clients are overdue for a visit", tool: "list_lapsed_clients" },
   { ask: "how much did I make Friday", tool: "get_day_income" },
   { ask: "what's today's total", tool: "get_day_income" },
+  { ask: "what are my locations", tool: "get_locations" },
+  { ask: "which shops do I work out of", tool: "get_locations" },
 ];
 
 describe("golden phrasing → tool mapping", () => {

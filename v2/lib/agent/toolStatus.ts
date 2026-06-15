@@ -13,6 +13,7 @@ const TOOL_STATUS: Record<string, string> = {
   get_groom_detail: "Checking your groom notes…",
   get_day_income: "Adding up the day…",
   list_lapsed_clients: "Finding clients due for a rebook…",
+  get_locations: "Checking your locations…",
 };
 
 /** A friendly "what the assistant is doing" phrase for a tool, with a safe default. */

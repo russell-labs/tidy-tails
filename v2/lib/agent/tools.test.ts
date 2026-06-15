@@ -5,6 +5,7 @@ import {
   pet,
 } from "@/lib/actions/actionTestSupport";
 import { DEFAULT_OPERATOR_SETTINGS } from "@/lib/operatorSettings";
+import { DEFAULT_ORG_SETTINGS } from "@/lib/orgSettings";
 import {
   AGENT_READ_TOOL_NAMES,
   AgentToolError,
@@ -30,8 +31,14 @@ vi.mock("@/lib/operatorSettings.server", () => ({
   readOperatorSettings: vi.fn(async () => DEFAULT_OPERATOR_SETTINGS),
 }));
 
+vi.mock("@/lib/orgSettings.server", () => ({
+  loadOrgSettings: vi.fn(),
+}));
+
 const { loadDataset } = await import("@/lib/data/repo");
 const loadDatasetMock = vi.mocked(loadDataset);
+const { loadOrgSettings } = await import("@/lib/orgSettings.server");
+const loadOrgSettingsMock = vi.mocked(loadOrgSettings);
 
 const TODAY = "2026-06-13";
 
@@ -40,6 +47,7 @@ beforeEach(() => {
   vi.useFakeTimers();
   // Pin "today" so date-defaulting tools are deterministic (todayISO uses local).
   vi.setSystemTime(new Date(`${TODAY}T09:00:00`));
+  loadOrgSettingsMock.mockResolvedValue(DEFAULT_ORG_SETTINGS); // batched default
 });
 
 function dataset(overrides: {
@@ -280,11 +288,12 @@ describe("dispatch", () => {
     await expect(runAgentTool("send_text", {})).rejects.toBeInstanceOf(AgentToolError);
   });
 
-  it("only knows the six read tools", () => {
+  it("only knows the intended read tools", () => {
     expect([...AGENT_READ_TOOL_NAMES].sort()).toEqual([
       "find_household",
       "get_day_income",
       "get_groom_detail",
+      "get_locations",
       "get_pet_history",
       "get_schedule",
       "list_lapsed_clients",
@@ -383,5 +392,36 @@ describe("get_groom_detail", () => {
     await expect(
       runAgentTool("get_groom_detail", { pet_id: "pet-1", date: "last week" }),
     ).rejects.toBeInstanceOf(AgentToolError);
+  });
+});
+
+describe("get_locations", () => {
+  it("returns the org's configured locations for a 1:1 business", async () => {
+    loadOrgSettingsMock.mockResolvedValue({
+      ...DEFAULT_ORG_SETTINGS,
+      schedulingStyle: "one_to_one",
+      locations: [
+        { name: "Gina's Salon", address: "12 King Street" },
+        { name: "Home Studio", address: "5 Maple Avenue" },
+      ],
+    });
+    const result = (await runAgentTool("get_locations", {})) as {
+      schedulingStyle: string;
+      locations: { name: string; label: string; address: string | null }[];
+    };
+    expect(result.schedulingStyle).toBe("one_to_one");
+    expect(result.locations.map((l) => l.name)).toEqual(["Gina's Salon", "Home Studio"]);
+    expect(result.locations[0].address).toBe("12 King Street");
+  });
+
+  it("returns the gina/annette options for a batched business with operator-facing labels", async () => {
+    loadOrgSettingsMock.mockResolvedValue(DEFAULT_ORG_SETTINGS); // batched
+    const result = (await runAgentTool("get_locations", {})) as {
+      schedulingStyle: string;
+      locations: { name: string; label: string }[];
+    };
+    expect(result.schedulingStyle).toBe("batched");
+    expect(result.locations.map((l) => l.name).sort()).toEqual(["annette", "gina"]);
+    expect(result.locations.find((l) => l.name === "gina")?.label).toContain("Gina");
   });
 });
