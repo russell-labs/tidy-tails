@@ -27,6 +27,24 @@ describe("resolveLocationLoosely", () => {
     });
   });
 
+  it("TT-024: matches the singular/possessive STEM the model often passes ('gina' → Gina's)", () => {
+    // The model frequently drops the possessive 's: it passes "gina" for "Gina's".
+    // "gina"/"gina's"/"ginas" must all resolve to the configured "Gina's Salon".
+    for (const spoken of ["gina", "Gina's", "ginas", "GINA"]) {
+      expect(resolveLocationLoosely(spoken, LOCATIONS), `for "${spoken}"`).toEqual({
+        kind: "matched",
+        name: "Gina's Salon",
+      });
+    }
+  });
+
+  it("TT-024: matches the stem within a natural phrase ('at gina's' → Gina's)", () => {
+    expect(resolveLocationLoosely("at gina's", LOCATIONS)).toEqual({
+      kind: "matched",
+      name: "Gina's Salon",
+    });
+  });
+
   it("matches a generic word ('the salon') when only one location fits", () => {
     expect(resolveLocationLoosely("the salon", LOCATIONS)).toEqual({
       kind: "matched",

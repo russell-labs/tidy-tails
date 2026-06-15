@@ -35,10 +35,21 @@ function normalize(value: string): string {
     .trim();
 }
 
+/**
+ * Fold a singular/possessive trailing "s" so the stem the model often passes
+ * matches the configured name: "gina" / "gina's" (→ "ginas") / "ginas" all compare
+ * equal to "Gina's". Only on tokens long enough that the trailing "s" is a
+ * possessive/plural, not part of a short word (so "st", "is" are left alone).
+ */
+function stem(token: string): string {
+  return token.length > 3 && token.endsWith("s") ? token.slice(0, -1) : token;
+}
+
 function contentTokens(value: string): string[] {
   return normalize(value)
     .split(" ")
-    .filter((token) => token.length > 0 && !STOPWORDS.has(token));
+    .filter((token) => token.length > 0 && !STOPWORDS.has(token))
+    .map(stem);
 }
 
 /**
