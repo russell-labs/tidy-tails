@@ -417,7 +417,8 @@ const ADD_HOUSEHOLD: AddHouseholdProposal = {
 
 const ADD_PET: AddPetProposal = {
   kind: "add_pet",
-  clientId: "client-1",
+  householdName: "Mary Jones",
+  householdPhone: null,
   ownerName: "Mary Jones",
   name: "Maple",
   breed: "Poodle",
@@ -430,7 +431,8 @@ const ADD_PET: AddPetProposal = {
 
 const EDIT_HOUSEHOLD: EditHouseholdProposal = {
   kind: "edit_household",
-  clientId: "client-1",
+  householdName: "Mary Jones",
+  householdPhone: null,
   ownerName: "Mary Jones",
   firstName: "Mary",
   lastName: "Jones",
@@ -446,8 +448,9 @@ const EDIT_HOUSEHOLD: EditHouseholdProposal = {
 
 const EDIT_PET: EditPetProposal = {
   kind: "edit_pet",
-  clientId: "client-1",
-  petId: "pet-1",
+  householdName: "Mary Jones",
+  householdPhone: null,
+  petQuery: "Kiwi",
   petName: "Kiwi",
   name: "Kiwi",
   breed: "Terrier",
@@ -532,7 +535,8 @@ const EDIT_APPT_RECORD = clientRecord({
 
 const DELETE_HOUSEHOLD: DeleteHouseholdProposal = {
   kind: "delete_household",
-  clientId: "client-1",
+  householdName: "Mary Jones",
+  householdPhone: null,
   ownerName: "Mary Jones",
   petNames: "Kiwi",
   petCount: 1,
@@ -554,12 +558,13 @@ const LOG_DAILY_INCOME: LogDailyIncomeProposal = {
 const SEND_REMINDER: SendTextProposal = {
   kind: "send_text",
   mode: "reminder",
-  clientId: "client-1",
-  petId: "pet-1",
+  householdName: "Mary Jones",
+  householdPhone: null,
+  petQuery: "Kiwi",
   targetDate: "2026-07-20", // the visit's CURRENT date — re-resolves the id (matches EDIT_APPT_RECORD → appt-1)
   targetTimeSlot: "10:30am",
   recipientLabel: "Mary Jones",
-  toNumber: "705-555-0101",
+  toNumber: "705-555-0101", // display only — confirm re-derives the send number from the record
   context: "Full groom · Jul 12 · 9:00am",
   message: "Hi Mary, reminder Kiwi is booked Saturday 9am.",
 };
@@ -743,9 +748,9 @@ describe("confirmAgentProposal — send text (never auto-sends)", () => {
     const result = await confirmAgentProposal(SEND_REMINDER);
     expect(result.status).toBe("saved");
     const form = prepareReminderMock.mock.calls[0][1] as FormData;
-    expect(form.get("client_id")).toBe("client-1");
+    expect(form.get("client_id")).toBe("client-1"); // re-resolved from "Mary Jones"
     expect(form.get("appointment_id")).toBe("appt-1"); // re-resolved server-side, not trusted from the client
-    expect(form.get("to_number")).toBe("705-555-0101");
+    expect(form.get("to_number")).toBe("7055550100"); // from the re-resolved record, NOT the proposal's toNumber
     expect(form.get("message")).toBe(SEND_REMINDER.message);
     expect(form.get("audit_source")).toBe("agent");
   });
@@ -774,6 +779,213 @@ describe("confirmAgentProposal — send text (never auto-sends)", () => {
     await confirmAgentProposal(LOG_DAILY_INCOME);
     expect(prepareReminderMock).not.toHaveBeenCalled();
     expect(sendInboxSmsReplyMock).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// TT-026 — the five formerly-deferred write paths now carry NAMES, not ids. The
+// confirm action re-resolves the authoritative client_id (+ pet_id / appointment /
+// recipient phone) server-side from the org-scoped loader, exactly like #57's
+// book/tip/groom/edit. A fabricated/tampered/stale attribute can only ever resolve
+// within THIS org (RLS) or fail safe — no write. (Tenancy itself is the RLS
+// boundary, exercised by supabase/tests/cross_tenant_isolation.sql; these pin the
+// confirm-path logic.)
+// ---------------------------------------------------------------------------
+
+/** Two distinct households that share the exact same name — must never auto-pick. */
+function twoSameNameDataset() {
+  return confirmDataset({
+    clients: [
+      client({ id: "c-a", first_name: "Mary", last_name: "Jones" }),
+      client({ id: "c-b", first_name: "Mary", last_name: "Jones" }),
+    ],
+    pets: [pet({ id: "pet-a", client_id: "c-a", name: "Kiwi" })],
+  });
+}
+
+/** An org with no household matching the proposal's "Mary Jones" name. */
+function strangerDataset() {
+  return confirmDataset({
+    clients: [client({ id: "c-other", first_name: "Someone", last_name: "Else" })],
+    pets: [],
+  });
+}
+
+describe("confirmAgentProposal — TT-026 add_pet re-resolves household from name", () => {
+  it("adds to the org's REAL client id resolved from the household name", async () => {
+    loadDatasetMock.mockResolvedValue(
+      confirmDataset({
+        clients: [client({ id: "real-7", first_name: "Mary", last_name: "Jones" })],
+        pets: [],
+      }) as never,
+    );
+    addPetMock.mockResolvedValue({ status: "saved", summary: { petName: "Maple", ownerName: "Mary Jones" } } as never);
+    await confirmAgentProposal(ADD_PET); // carries "Mary Jones" — no id
+    expect((addPetMock.mock.calls[0][1] as FormData).get("client_id")).toBe("real-7");
+  });
+
+  it("writes nothing when the household name matches no org household", async () => {
+    loadDatasetMock.mockResolvedValue(strangerDataset() as never);
+    const result = await confirmAgentProposal(ADD_PET);
+    expect(result.status).toBe("error");
+    expect(addPetMock).not.toHaveBeenCalled();
+  });
+
+  it("treats an id-shaped household attribute as a name → resolves nothing → no write", async () => {
+    loadDatasetMock.mockResolvedValue(confirmDataset() as never);
+    const result = await confirmAgentProposal({ ...ADD_PET, householdName: "client-1" });
+    expect(result.status).toBe("error");
+    expect(addPetMock).not.toHaveBeenCalled();
+  });
+
+  it("forces disambiguation for two same-name households (never auto-picks)", async () => {
+    loadDatasetMock.mockResolvedValue(twoSameNameDataset() as never);
+    const result = await confirmAgentProposal(ADD_PET);
+    expect(result.status).toBe("error");
+    expect(addPetMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("confirmAgentProposal — TT-026 edit_household re-resolves household from name", () => {
+  it("edits the org's REAL client id resolved from the household name", async () => {
+    loadDatasetMock.mockResolvedValue(
+      confirmDataset({
+        clients: [client({ id: "real-7", first_name: "Mary", last_name: "Jones" })],
+        pets: [],
+      }) as never,
+    );
+    editClientMock.mockResolvedValue({ status: "saved", summary: { ownerName: "Mary Jones" } } as never);
+    await confirmAgentProposal(EDIT_HOUSEHOLD);
+    expect((editClientMock.mock.calls[0][1] as FormData).get("client_id")).toBe("real-7");
+  });
+
+  it("writes nothing when the household name matches no org household", async () => {
+    loadDatasetMock.mockResolvedValue(strangerDataset() as never);
+    const result = await confirmAgentProposal(EDIT_HOUSEHOLD);
+    expect(result.status).toBe("error");
+    expect(editClientMock).not.toHaveBeenCalled();
+  });
+
+  it("forces disambiguation for two same-name households (never auto-picks)", async () => {
+    loadDatasetMock.mockResolvedValue(twoSameNameDataset() as never);
+    const result = await confirmAgentProposal(EDIT_HOUSEHOLD);
+    expect(result.status).toBe("error");
+    expect(editClientMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("confirmAgentProposal — TT-026 edit_pet re-resolves household + dog from names", () => {
+  it("edits the org's REAL client_id + pet_id resolved from the names", async () => {
+    loadDatasetMock.mockResolvedValue(
+      confirmDataset({
+        clients: [client({ id: "real-7", first_name: "Mary", last_name: "Jones" })],
+        pets: [pet({ id: "real-pet-9", client_id: "real-7", name: "Kiwi" })],
+      }) as never,
+    );
+    editPetMock.mockResolvedValue({ status: "saved", summary: { petName: "Kiwi", ownerName: "Mary Jones" } } as never);
+    await confirmAgentProposal(EDIT_PET);
+    const form = editPetMock.mock.calls[0][1] as FormData;
+    expect(form.get("client_id")).toBe("real-7"); // resolved from "Mary Jones"
+    expect(form.get("pet_id")).toBe("real-pet-9"); // resolved from "Kiwi"
+  });
+
+  it("writes nothing when the household name matches no org household", async () => {
+    loadDatasetMock.mockResolvedValue(strangerDataset() as never);
+    const result = await confirmAgentProposal(EDIT_PET);
+    expect(result.status).toBe("error");
+    expect(editPetMock).not.toHaveBeenCalled();
+  });
+
+  it("writes nothing when the dog name resolves to no pet on the household", async () => {
+    loadDatasetMock.mockResolvedValue(
+      confirmDataset({
+        clients: [client({ id: "client-1", first_name: "Mary", last_name: "Jones" })],
+        pets: [pet({ id: "pet-1", client_id: "client-1", name: "Rex" })], // not "Kiwi"
+      }) as never,
+    );
+    const result = await confirmAgentProposal(EDIT_PET);
+    expect(result.status).toBe("error");
+    expect(editPetMock).not.toHaveBeenCalled();
+  });
+
+  it("forces disambiguation for two same-name households (never auto-picks)", async () => {
+    loadDatasetMock.mockResolvedValue(twoSameNameDataset() as never);
+    const result = await confirmAgentProposal(EDIT_PET);
+    expect(result.status).toBe("error");
+    expect(editPetMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("confirmAgentProposal — TT-026 delete_household refuses on anything but a single match", () => {
+  it("deletes the org's REAL client id resolved from the household name", async () => {
+    loadDatasetMock.mockResolvedValue(
+      confirmDataset({
+        clients: [client({ id: "real-7", first_name: "Mary", last_name: "Jones" })],
+        pets: [],
+      }) as never,
+    );
+    deleteClientMock.mockResolvedValue({ status: "deleted", ownerName: "Mary Jones", message: "Deleted." } as never);
+    await confirmAgentProposal(DELETE_HOUSEHOLD);
+    expect((deleteClientMock.mock.calls[0][1] as FormData).get("client_id")).toBe("real-7");
+  });
+
+  it("deletes NOTHING when the name matches no org household", async () => {
+    loadDatasetMock.mockResolvedValue(strangerDataset() as never);
+    const result = await confirmAgentProposal(DELETE_HOUSEHOLD);
+    expect(result.status).toBe("error");
+    expect(deleteClientMock).not.toHaveBeenCalled();
+  });
+
+  it("deletes NOTHING (no auto-pick) when two households share the name — destructive ambiguity refuses", async () => {
+    loadDatasetMock.mockResolvedValue(twoSameNameDataset() as never);
+    const result = await confirmAgentProposal(DELETE_HOUSEHOLD);
+    expect(result.status).toBe("error");
+    expect(deleteClientMock).not.toHaveBeenCalled();
+  });
+
+  it("an id-shaped household attribute deletes nothing (treated as a name, matches nothing)", async () => {
+    loadDatasetMock.mockResolvedValue(confirmDataset() as never);
+    const result = await confirmAgentProposal({ ...DELETE_HOUSEHOLD, householdName: "client-1" });
+    expect(result.status).toBe("error");
+    expect(deleteClientMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("confirmAgentProposal — TT-026 reminder re-resolves household + dog + appointment + phone", () => {
+  it("sends to the re-resolved appointment with the recipient phone from the RECORD (not the model)", async () => {
+    loadDatasetMock.mockResolvedValue(
+      confirmDataset({
+        clients: [client({ id: "client-1", first_name: "Mary", last_name: "Jones", phone: "7055559999" })],
+        pets: [pet({ id: "pet-1", client_id: "client-1", name: "Kiwi" })],
+      }) as never,
+    );
+    getClientRecordMock.mockResolvedValue(EDIT_APPT_RECORD);
+    prepareReminderMock.mockResolvedValue({ status: "sent", summary: {} } as never);
+    // A tampered display toNumber must NOT reach the send — the record phone wins.
+    await confirmAgentProposal({ ...SEND_REMINDER, toNumber: "5551112222" });
+    const form = prepareReminderMock.mock.calls[0][1] as FormData;
+    expect(form.get("client_id")).toBe("client-1"); // resolved from "Mary Jones"
+    expect(form.get("appointment_id")).toBe("appt-1"); // resolved server-side from pet + date
+    expect(form.get("to_number")).toBe("7055559999"); // from the record, NOT the tampered proposal toNumber
+  });
+
+  it("sends nothing when the household name matches no org household", async () => {
+    loadDatasetMock.mockResolvedValue(strangerDataset() as never);
+    const result = await confirmAgentProposal(SEND_REMINDER);
+    expect(result.status).toBe("error");
+    expect(prepareReminderMock).not.toHaveBeenCalled();
+  });
+
+  it("sends nothing when the dog name resolves to no pet on the household", async () => {
+    loadDatasetMock.mockResolvedValue(
+      confirmDataset({
+        clients: [client({ id: "client-1", first_name: "Mary", last_name: "Jones" })],
+        pets: [pet({ id: "pet-1", client_id: "client-1", name: "Rex" })],
+      }) as never,
+    );
+    const result = await confirmAgentProposal(SEND_REMINDER);
+    expect(result.status).toBe("error");
+    expect(prepareReminderMock).not.toHaveBeenCalled();
   });
 });
 
@@ -841,6 +1053,19 @@ describe("confirmAgentProposal — assistant-writes kill switch (TIDYTAILS_ENABL
     expect(result.status).toBe("gated");
     expect(getClientRecordMock).not.toHaveBeenCalled();
     expect(markAppointmentPaidMock).not.toHaveBeenCalled();
+  });
+
+  it("does not re-resolve (no org read) for the TT-026 name-based paths when writes are off", async () => {
+    // The five deferred paths now do a pre-dispatch re-resolution read
+    // (loadDataset / getClientRecord). The kill switch sits BEFORE it, so with
+    // writes off NOT EVEN the read runs — pins the gate ahead of re-resolution.
+    isAgentWritesEnabledMock.mockReturnValue(false);
+    for (const proposal of [ADD_PET, EDIT_HOUSEHOLD, EDIT_PET, DELETE_HOUSEHOLD, SEND_REMINDER]) {
+      const result = await confirmAgentProposal(proposal);
+      expect(result.status).toBe("gated");
+    }
+    expect(loadDatasetMock).not.toHaveBeenCalled();
+    expect(getClientRecordMock).not.toHaveBeenCalled();
   });
 
   it("with the kill switch ON, behaves exactly as today (dispatches the write)", async () => {

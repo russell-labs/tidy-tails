@@ -409,8 +409,13 @@ async function confirmAddHousehold(
 }
 
 async function confirmAddPet(proposal: AddPetProposal): Promise<AgentConfirmResult> {
+  // Re-resolve the household server-side from its NAME (the model never supplies an
+  // id); a name that no longer resolves in this org fails safe — nothing is added.
+  const household = await reResolveHousehold(proposal.householdName, proposal.householdPhone);
+  if (!household) return { status: "error", message: HOUSEHOLD_GONE };
+
   const form = new FormData();
-  form.set("client_id", proposal.clientId);
+  form.set("client_id", household.clientId);
   form.set("name", proposal.name);
   setOptional(form, "breed", proposal.breed);
   setOptional(form, "size", proposal.size);
@@ -427,8 +432,13 @@ async function confirmAddPet(proposal: AddPetProposal): Promise<AgentConfirmResu
 async function confirmEditHousehold(
   proposal: EditHouseholdProposal,
 ): Promise<AgentConfirmResult> {
+  // Re-resolve the target household server-side from its CURRENT name (the model
+  // never supplies an id); a name that no longer resolves fails safe — no edit.
+  const household = await reResolveHousehold(proposal.householdName, proposal.householdPhone);
+  if (!household) return { status: "error", message: HOUSEHOLD_GONE };
+
   const form = new FormData();
-  form.set("client_id", proposal.clientId);
+  form.set("client_id", household.clientId);
   form.set("first_name", proposal.firstName);
   form.set("last_name", proposal.lastName);
   form.set("phone", proposal.phone);
@@ -445,9 +455,16 @@ async function confirmEditHousehold(
 }
 
 async function confirmEditPet(proposal: EditPetProposal): Promise<AgentConfirmResult> {
+  // Re-resolve household + dog server-side from their NAMES (the model never supplies
+  // ids), group-aware for split-duplicate rows; a non-match fails safe — no edit.
+  const household = await reResolveHousehold(proposal.householdName, proposal.householdPhone);
+  if (!household) return { status: "error", message: HOUSEHOLD_GONE };
+  const pet = reResolvePet(household.dataset, household.clientId, proposal.petQuery);
+  if (!pet) return { status: "error", message: PET_GONE };
+
   const form = new FormData();
-  form.set("client_id", proposal.clientId);
-  form.set("pet_id", proposal.petId);
+  form.set("client_id", household.clientId);
+  form.set("pet_id", pet.petId);
   form.set("name", proposal.name);
   setOptional(form, "breed", proposal.breed);
   setOptional(form, "size", proposal.size);
@@ -588,8 +605,14 @@ function isNextRedirect(error: unknown): boolean {
 async function confirmDeleteHousehold(
   proposal: DeleteHouseholdProposal,
 ): Promise<AgentConfirmResult> {
+  // Re-resolve the household server-side from its NAME. Delete is destructive, so an
+  // ambiguous/no-match result REFUSES (nothing deleted) — never a guess. reResolveHousehold
+  // returns null on anything but a single in-org match, which is exactly that fail-safe.
+  const household = await reResolveHousehold(proposal.householdName, proposal.householdPhone);
+  if (!household) return { status: "error", message: HOUSEHOLD_GONE };
+
   const form = new FormData();
-  form.set("client_id", proposal.clientId);
+  form.set("client_id", household.clientId);
   form.set(AGENT_SOURCE_FIELD, AGENT_SOURCE_VALUE);
 
   const state = await deleteClient({ status: "idle" }, form);
@@ -625,12 +648,17 @@ async function confirmSendText(
     return mapInboxState(state, `Replied to ${proposal.recipientLabel}.`);
   }
 
-  // Re-resolve the appointment id server-side from the proposal's pet + current
-  // date (+ time) — the model never supplies an id, and a non-match fails safe
-  // (no send). Same re-resolution the edit_appointment path uses.
+  // Re-resolve household + dog + the appointment id server-side from the proposal's
+  // NAMES and the visit's current date/time — the model never supplies an id, and a
+  // non-match fails safe (no send). Same re-resolution the edit_appointment path uses.
+  const household = await reResolveHousehold(proposal.householdName, proposal.householdPhone);
+  if (!household) return { status: "error", message: HOUSEHOLD_GONE };
+  const pet = reResolvePet(household.dataset, household.clientId, proposal.petQuery);
+  if (!pet) return { status: "error", message: PET_GONE };
+
   const appointmentId = await resolveAppointmentIdByTuple(
-    proposal.clientId,
-    proposal.petId,
+    household.clientId,
+    pet.groupPetIds, // split-duplicate safe: a visit filed under either row resolves
     proposal.targetDate,
     proposal.targetTimeSlot,
   );
@@ -641,10 +669,16 @@ async function confirmSendText(
     };
   }
 
+  // The recipient phone comes from the re-resolved org-scoped record, never the
+  // model. prepareReminder re-validates it against the client's on-file numbers and
+  // falls back to the primary cell, so this can only ever text this household.
+  const toNumber =
+    household.dataset.clients.find((c) => c.id === household.clientId)?.phone ?? "";
+
   const form = new FormData();
-  form.set("client_id", proposal.clientId);
+  form.set("client_id", household.clientId);
   form.set("appointment_id", appointmentId);
-  form.set("to_number", proposal.toNumber);
+  form.set("to_number", toNumber);
   form.set("message", proposal.message);
   form.set(AGENT_SOURCE_FIELD, AGENT_SOURCE_VALUE);
   const state = await prepareReminder({ status: "idle" }, form);

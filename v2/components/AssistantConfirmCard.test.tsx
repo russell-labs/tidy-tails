@@ -86,7 +86,8 @@ describe("AssistantConfirmCard", () => {
 
 const DELETE: DeleteHouseholdProposal = {
   kind: "delete_household",
-  clientId: "c1",
+  householdName: "Rosanne Adams",
+  householdPhone: null,
   ownerName: "Rosanne Adams",
   petNames: "Kiwi",
   petCount: 1,

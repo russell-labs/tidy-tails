@@ -116,10 +116,19 @@ export type AddHouseholdProposal = {
   pet: ProposedPet;
 };
 
-/** Propose adding a pet to an EXISTING household. Backed by addPet. */
+/**
+ * Propose adding a pet to an EXISTING household. Backed by addPet.
+ *
+ * NO ID FROM THE MODEL: the household is carried as natural attributes
+ * (`householdName` + optional `householdPhone`), NOT a client id. The confirm
+ * action re-resolves the authoritative client_id server-side from these against
+ * org-scoped (RLS) data, so a fabricated/tampered id can't exist or redirect the
+ * write. `ownerName` is a display label only.
+ */
 export type AddPetProposal = {
   kind: "add_pet";
-  clientId: string;
+  householdName: string; // re-resolved to client_id in confirm — NOT an id
+  householdPhone: string | null;
   ownerName: string;
   name: string;
   breed: string | null;
@@ -135,10 +144,18 @@ export type AddPetProposal = {
  * REPLACES the whole contact record — so the proposal carries the full resolved
  * new state (current values merged with the requested changes, the unchanged
  * secondary contact preserved). `changes` is the human diff shown on the card.
+ *
+ * NO ID FROM THE MODEL: the target household is carried as `householdName` (the
+ * CURRENT owner name used to FIND it — distinct from the new `firstName`/
+ * `lastName` being written) so the confirm action re-resolves the authoritative
+ * client_id server-side before the edit. Resolution is by name only — `phone` here
+ * is an editable field (the new number), so it can't double as a disambiguator;
+ * two same-name households resolve ambiguous and the tool asks rather than guesses.
  */
 export type EditHouseholdProposal = {
   kind: "edit_household";
-  clientId: string;
+  householdName: string; // CURRENT owner name — re-resolved to client_id in confirm
+  householdPhone: string | null; // always null (no disambiguator for this kind)
   ownerName: string;
   firstName: string;
   lastName: string;
@@ -152,11 +169,20 @@ export type EditHouseholdProposal = {
   changes: string[];
 };
 
-/** Propose editing a pet's profile. Backed by editPet (full-replace; merged). */
+/**
+ * Propose editing a pet's profile. Backed by editPet (full-replace; merged).
+ *
+ * NO IDS FROM THE MODEL: the household + dog are carried as natural attributes
+ * (`householdName` + optional `householdPhone`, `petQuery` = the dog's CURRENT
+ * name used to FIND it, distinct from the new `name` being written). The confirm
+ * action re-resolves the authoritative client_id + pet_id server-side (group-aware
+ * for split-duplicate rows) before the edit. `petName` is a display label only.
+ */
 export type EditPetProposal = {
   kind: "edit_pet";
-  clientId: string;
-  petId: string;
+  householdName: string; // re-resolved to client_id in confirm — NOT an id
+  householdPhone: string | null;
+  petQuery: string; // the dog's CURRENT name — re-resolved to pet_id in confirm
   petName: string;
   name: string;
   breed: string | null;
@@ -241,10 +267,16 @@ export type EditAppointmentProposal =
  * Propose deleting (permanently) a household. Backed by deleteClient, whose
  * history guard still blocks a household that has any appointment record — the
  * card discloses the count so Sam sees what's at stake before the destructive tap.
+ *
+ * NO ID FROM THE MODEL: the target is carried as `householdName` (+ optional
+ * `householdPhone`), NOT a client id. Because the write is destructive the confirm
+ * action re-resolves the authoritative client_id server-side and REFUSES (deletes
+ * nothing) on an ambiguous/no-match result — it never guesses which household.
  */
 export type DeleteHouseholdProposal = {
   kind: "delete_household";
-  clientId: string;
+  householdName: string; // re-resolved to client_id in confirm — NOT an id
+  householdPhone: string | null;
   ownerName: string;
   petNames: string;
   petCount: number;
@@ -277,24 +309,26 @@ export type LogDailyIncomeProposal = {
  * the FULL drafted message is shown verbatim on the card. The reply path is the
  * agent's only customer-text injection surface — see the messaging reply seam.
  *
- * REMINDER — TARGET, NOT ID: the read tools never expose an appointment id, so the
- * model can't supply one. The reminder's visit is identified by the re-resolution
- * tuple (`petId` + `targetDate` + `targetTimeSlot`) — the visit's CURRENT date (and
- * its time, to break a same-day tie) — exactly like edit_appointment. The confirm
- * action re-resolves the authoritative appointment id server-side from this tuple
- * against org-scoped (RLS) data, so a client-tampered proposal can't redirect or
- * fabricate the target; a non-match fails safe (no send).
+ * REMINDER — NO IDS FROM THE MODEL: the household + dog are carried as natural
+ * attributes (`householdName` + optional `householdPhone`, `petQuery`), and the
+ * visit by the re-resolution tuple (the pet group + `targetDate` + `targetTimeSlot`:
+ * its CURRENT date, and time to break a same-day tie). The confirm action
+ * re-resolves the authoritative client_id, pet group, and appointment id
+ * server-side against org-scoped (RLS) data, and derives the recipient phone from
+ * that re-resolved record — never the model. A non-match fails safe (no send).
+ * `toNumber` is a display label only.
  */
 export type SendTextProposal =
   | {
       kind: "send_text";
       mode: "reminder";
-      clientId: string;
-      petId: string;
+      householdName: string; // re-resolved to client_id in confirm — NOT an id
+      householdPhone: string | null;
+      petQuery: string; // the dog's name — re-resolved to its pet group in confirm
       targetDate: string; // the visit's CURRENT date — used to re-resolve the id
       targetTimeSlot: string | null; // the visit's CURRENT time — disambiguates a same-day duplicate
       recipientLabel: string;
-      toNumber: string;
+      toNumber: string; // display only — confirm re-derives the send number from the record
       context: string;
       message: string;
     }

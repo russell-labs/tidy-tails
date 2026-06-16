@@ -155,7 +155,8 @@ const ADD_HOUSEHOLD: AddHouseholdProposal = {
 
 const ADD_PET: AddPetProposal = {
   kind: "add_pet",
-  clientId: "c1",
+  householdName: "Mary Jones",
+  householdPhone: null,
   ownerName: "Mary Jones",
   name: "Maple",
   breed: "Poodle",
@@ -168,7 +169,8 @@ const ADD_PET: AddPetProposal = {
 
 const EDIT_HOUSEHOLD: EditHouseholdProposal = {
   kind: "edit_household",
-  clientId: "c1",
+  householdName: "Mary Jones",
+  householdPhone: null,
   ownerName: "Mary Jones",
   firstName: "Mary",
   lastName: "Jones",
@@ -184,8 +186,9 @@ const EDIT_HOUSEHOLD: EditHouseholdProposal = {
 
 const EDIT_PET: EditPetProposal = {
   kind: "edit_pet",
-  clientId: "c1",
-  petId: "p1",
+  householdName: "Mary Jones",
+  householdPhone: null,
+  petQuery: "Kiwi",
   petName: "Kiwi",
   name: "Kiwi",
   breed: "Terrier mix",
@@ -254,7 +257,8 @@ const EDIT_APPT_NO_SHOW: EditAppointmentProposal = {
 
 const DELETE_HOUSEHOLD: DeleteHouseholdProposal = {
   kind: "delete_household",
-  clientId: "c1",
+  householdName: "Mary Jones",
+  householdPhone: null,
   ownerName: "Mary Jones",
   petNames: "Kiwi and Coco",
   petCount: 2,
@@ -276,8 +280,9 @@ const LOG_DAILY_INCOME: LogDailyIncomeProposal = {
 const SEND_REMINDER: SendTextProposal = {
   kind: "send_text",
   mode: "reminder",
-  clientId: "c1",
-  petId: "pet-1",
+  householdName: "Mary Jones",
+  householdPhone: null,
+  petQuery: "Kiwi",
   targetDate: "2026-07-12",
   targetTimeSlot: "9:00am",
   recipientLabel: "Mary Jones",
