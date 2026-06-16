@@ -36,6 +36,9 @@ import { DEFAULT_ORG_SETTINGS } from "@/lib/orgSettings";
 import { runAgent, AgentNotConfiguredError } from "./runAgent";
 import { AGENT_READ_TOOL_NAMES } from "./tools";
 import { AGENT_WRITE_TOOL_NAMES } from "./writeTools";
+import { buildAgentHistory } from "./conversationHistory";
+import type { AgentProposal } from "./proposals";
+import type { AgentTurn } from "./runAgent";
 
 const endTurn = (text: string): ProviderResponse => ({
   text,
@@ -198,5 +201,112 @@ describe("runAgent — provider-agnostic read-only tool loop", () => {
     });
 
     expect(events).toEqual(["thinking", "tool:get_schedule", "thinking"]);
+  });
+});
+
+// TT-027 — multi-turn context bleed. In a session with prior proposals (e.g. a
+// confirmed booking then a cancelled add-pet), a NEW request used to misroute and
+// re-emit a PREVIOUS proposal. Root cause: the transcript sent to the model OMITTED
+// the prepared actions, so prior user requests looked UNANSWERED and the model
+// re-addressed one of them. The fix (buildAgentHistory) records every prepared
+// action as a resolved assistant turn, so no request is left unanswered.
+describe("runAgent — multi-turn proposals do not bleed into a new request (TT-027)", () => {
+  const BOOK: AgentProposal = {
+    kind: "book_appointment",
+    householdName: "Maple Greenwood",
+    householdPhone: null,
+    ownerName: "Maple Greenwood",
+    petQueries: ["Biscuit"],
+    petNames: "Biscuit",
+    date: "2026-07-11",
+    timeSlot: "10:00am",
+    serviceType: "full_groom",
+    service: "Full groom",
+    fee: 50,
+    location: "gina",
+    locationLabel: "Tidy Tails (Gina)",
+    durationMinutes: null,
+  };
+  const ADD_PET: AgentProposal = {
+    kind: "add_pet",
+    householdName: "Maple Greenwood",
+    householdPhone: null,
+    ownerName: "Maple Greenwood",
+    name: "RehearsalPup",
+    breed: null,
+    size: null,
+    allergies: null,
+    allergiesDetail: null,
+    groomingNotes: null,
+    typicalFee: null,
+  };
+
+  // A model that models the OBSERVED failure: if any earlier user request is left
+  // unanswered (a user turn immediately followed by another user turn), it
+  // re-addresses that stale request (re-emitting an add_pet card); otherwise it
+  // handles the latest request — here a phone change → edit_household.
+  function intentProvider(): ModelProvider {
+    return {
+      id: "intent",
+      async createMessage(req) {
+        const orphaned = req.messages.some(
+          (m, i) => m.role === "user" && req.messages[i + 1]?.role === "user",
+        );
+        return orphaned
+          ? toolTurn("propose_add_pet", { household: "Mary Jones", name: "RehearsalPup" })
+          : toolTurn("propose_edit_household", { household: "Mary Jones", phone: "705-555-0199" });
+      },
+    };
+  }
+
+  it("REPRODUCTION: a transcript that omits the prepared actions makes the model re-emit a stale proposal", async () => {
+    // The OLD (buggy) history shape: proposals dropped → two consecutive user turns.
+    const orphanedHistory: AgentTurn[] = [
+      { role: "user", text: "Book Maple Greenwood's Biscuit at Gina's" },
+      { role: "user", text: "Add a dog named RehearsalPup to Maple Greenwood" },
+    ];
+    const result = await runAgent(
+      "Change Maple Greenwood's phone to 705-555-0199",
+      orphanedHistory,
+      { provider: intentProvider() },
+    );
+    expect(result.proposal?.kind).toBe("add_pet"); // the bleed
+  });
+
+  it("FIX: buildAgentHistory records each prepared action, so the new request yields edit_household", async () => {
+    const history = buildAgentHistory([
+      { kind: "user", text: "Book Maple Greenwood's Biscuit at Gina's" },
+      { kind: "proposal", proposal: BOOK, status: "saved" },
+      { kind: "user", text: "Add a dog named RehearsalPup to Maple Greenwood" },
+      { kind: "proposal", proposal: ADD_PET, status: "cancelled" },
+    ]);
+    const { provider, calls } = (() => {
+      const p = intentProvider();
+      const captured: Parameters<ModelProvider["createMessage"]>[0][] = [];
+      return {
+        provider: {
+          id: p.id,
+          async createMessage(req) {
+            captured.push(req);
+            return p.createMessage(req);
+          },
+        } as ModelProvider,
+        calls: captured,
+      };
+    })();
+
+    const result = await runAgent(
+      "Change Maple Greenwood's phone to 705-555-0199",
+      history,
+      { provider },
+    );
+
+    // The new request is handled freshly — NOT a repeat of the book or add-pet.
+    expect(result.proposal?.kind).toBe("edit_household");
+    // The model received the prior prepared actions as resolved assistant turns.
+    const roles = calls[0].messages.map((m) => m.role);
+    for (let i = 1; i < roles.length; i += 1) {
+      expect(roles[i], "the transcript must strictly alternate roles").not.toBe(roles[i - 1]);
+    }
   });
 });
