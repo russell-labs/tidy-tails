@@ -7,6 +7,7 @@
 import type { DurationDefaults } from "./scheduling/oneToOne";
 import { DEFAULT_WORKING_DAY, type WorkingDay } from "./scheduling/time";
 import { selectStrategy, type SchedulingStyle } from "./scheduling/strategy";
+import type { LocationPayoutType } from "./operatorSettings";
 
 // WS4a needs only name + address from each location (payout is WS4b/WS4c).
 export type OrgLocation = { name: string; address: string };
@@ -28,6 +29,18 @@ export type OwnedLocation = {
   expenses: OwnedLocationExpenses;
 };
 
+// WS4c B1 — the captured economics for a RENTED-chair location (the salon's
+// split). Read additively from the same org_settings.settings.locations jsonb
+// onboarding writes; mirrors OwnedLocation. payoutType "percent" uses
+// salonKeepsPercent; "daily_rate" uses dailyRate (a flat per-day rent).
+export type RentedLocation = {
+  name: string;
+  address: string;
+  payoutType: LocationPayoutType;
+  salonKeepsPercent: number;
+  dailyRate: number | null;
+};
+
 export type OrgSettings = {
   schedulingStyle: SchedulingStyle;
   locations: OrgLocation[];
@@ -40,6 +53,9 @@ export type OrgSettings = {
   // businessStructure / empty ownedLocations for a Sam-like org (no settings).
   businessStructure: BusinessStructure | null;
   ownedLocations: OwnedLocation[];
+  // WS4c B1 — rented-chair locations (the salon's split), same jsonb. Empty for
+  // a Sam-like org (no settings) and for an own-facility-only org.
+  rentedLocations: RentedLocation[];
   // TT-012 — the name that signs this org's customer texts and labels its
   // operator surfaces. "" → use a neutral label / drop the signature (a Sam-like
   // org with no row reads as "" and is seeded "Samantha" at cutover).
@@ -60,6 +76,7 @@ export const DEFAULT_ORG_SETTINGS: OrgSettings = {
   softTarget: DEFAULT_SOFT_TARGET,
   businessStructure: null,
   ownedLocations: [],
+  rentedLocations: [],
   operatorName: "",
 };
 
@@ -136,6 +153,37 @@ function normalizeOwnedLocations(raw: unknown): OwnedLocation[] {
   return out;
 }
 
+function normalizePayoutType(raw: unknown): LocationPayoutType {
+  return raw === "daily_rate" ? "daily_rate" : "percent";
+}
+
+function clampPercent(raw: unknown): number {
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return 0;
+  return Math.min(100, Math.max(0, Math.round(n * 100) / 100));
+}
+
+function normalizeRentedLocations(raw: unknown): RentedLocation[] {
+  if (!Array.isArray(raw)) return [];
+  const out: RentedLocation[] = [];
+  for (const entry of raw) {
+    const rec = asRecord(entry);
+    if (rec.type !== "rented") continue;
+    const name = asString(rec.name);
+    if (!name) continue;
+    const payoutType = normalizePayoutType(rec.payoutType);
+    out.push({
+      name,
+      address: asString(rec.address),
+      payoutType,
+      salonKeepsPercent:
+        payoutType === "percent" ? clampPercent(rec.salonKeepsPercent) : 0,
+      dailyRate: payoutType === "daily_rate" ? asMoneyOrNull(rec.dailyRate) : null,
+    });
+  }
+  return out;
+}
+
 function normalizeDurationDefaults(raw: unknown): DurationDefaults | null {
   const rec = asRecord(raw);
   if (Object.keys(rec).length === 0) return null;
@@ -180,6 +228,7 @@ export function normalizeOrgSettings(row: {
     softTarget: clampInt(settings.softTarget, DEFAULT_SOFT_TARGET, 1, 50),
     businessStructure: normalizeBusinessStructure(settings.businessStructure),
     ownedLocations: normalizeOwnedLocations(settings.locations),
+    rentedLocations: normalizeRentedLocations(settings.locations),
     operatorName: asString(settings.operatorName).slice(0, OPERATOR_NAME_MAX),
   };
 }
