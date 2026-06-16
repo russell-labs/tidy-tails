@@ -684,13 +684,16 @@ const proposeAddPet: AgentWriteTool = {
   name: "propose_add_pet",
   description:
     "Propose adding a pet to an EXISTING household (does NOT save it — the operator confirms " +
-    "a card first). Pass `client_id` (from find_household) and `name`; optional `breed`, " +
-    "`size` (small/medium/large), `allergy_state` (yes/no/unknown), `allergies_detail`, " +
-    "`grooming_notes`, `typical_fee`. Resolve the household first; never guess the id.",
+    "a card first). Identify the household by `household` (the owner's NAME as the operator " +
+    "said it — a NAME, never an id; optionally `phone` to disambiguate same-name households), " +
+    "and pass `name`; optional `breed`, `size` (small/medium/large), `allergy_state` " +
+    "(yes/no/unknown), `allergies_detail`, `grooming_notes`, `typical_fee`. If the household " +
+    "is ambiguous, you'll be told to ask which — never propose on a guess.",
   input_schema: {
     type: "object",
     properties: {
-      client_id: { type: "string" },
+      household: { type: "string", description: "The owner's name (NOT an id), e.g. 'Maple Greenwood'." },
+      phone: { type: "string", description: "Optional phone to disambiguate two same-name households." },
       name: { type: "string" },
       breed: { type: "string" },
       size: { type: "string", enum: ["small", "medium", "large"] },
@@ -699,18 +702,14 @@ const proposeAddPet: AgentWriteTool = {
       grooming_notes: { type: "string" },
       typical_fee: { type: "number" },
     },
-    required: ["client_id", "name"],
+    required: ["household", "name"],
     additionalProperties: false,
   },
   propose: async (input): Promise<AddPetProposal> => {
-    const clientId = requireString(input.client_id, "client_id");
+    const household = householdInputFrom(input);
     const dataset = await loadDataset();
-    const client = dataset.clients.find((c) => c.id === clientId);
-    if (!client) {
-      throw new AgentToolError(
-        `No client with id ${JSON.stringify(clientId)}. Use find_household to look one up.`,
-      );
-    }
+    // Resolve the household BY NAME (no id); the confirm action re-resolves the same way.
+    const { clientId, client } = resolveHouseholdOrAsk(dataset, household);
     const validation = validateAddPet({
       client_id: clientId,
       name: optionalString(input.name),
@@ -729,7 +728,8 @@ const proposeAddPet: AgentWriteTool = {
     const v = validation.value;
     return {
       kind: "add_pet",
-      clientId,
+      householdName: household.name,
+      householdPhone: household.phone,
       ownerName: fullName(client.first_name, client.last_name),
       name: v.name,
       breed: v.breed,
@@ -765,13 +765,15 @@ const proposeEditHousehold: AgentWriteTool = {
   name: "propose_edit_household",
   description:
     "Propose editing a household's contact details (does NOT save it — the operator confirms " +
-    "a card first). Pass `client_id` (from find_household) and ONLY the fields to change: " +
-    "`first_name`, `last_name`, `phone`, `email`, `address`, `notes`, `secondary_contact_name`, " +
-    "`secondary_cell`, `landline`. Untouched fields are kept as-is. Resolve the household first.",
+    "a card first). Identify the household by `household` (the owner's CURRENT name — a NAME, " +
+    "never an id) and pass ONLY the fields to change: `first_name`, `last_name`, `phone`, " +
+    "`email`, `address`, `notes`, `secondary_contact_name`, `secondary_cell`, `landline`. " +
+    "(`phone` here is the NEW number to set, not a way to identify the household.) Untouched " +
+    "fields are kept as-is. If two households share the name, you'll be told to ask which.",
   input_schema: {
     type: "object",
     properties: {
-      client_id: { type: "string" },
+      household: { type: "string", description: "The owner's CURRENT name (NOT an id), to find the household." },
       first_name: { type: "string" },
       last_name: { type: "string" },
       phone: { type: "string" },
@@ -782,23 +784,21 @@ const proposeEditHousehold: AgentWriteTool = {
       secondary_cell: { type: "string" },
       landline: { type: "string" },
     },
-    required: ["client_id"],
+    required: ["household"],
     additionalProperties: false,
   },
   propose: async (input): Promise<EditHouseholdProposal> => {
-    const clientId = requireString(input.client_id, "client_id");
+    const householdName = requireString(input.household, "household");
     if (!namesAField(input, EDIT_HOUSEHOLD_FIELDS)) {
       throw new AgentToolError(
         "Tell me which detail to change (phone, email, address, name, notes, or secondary contact).",
       );
     }
     const dataset = await loadDataset();
-    const client = dataset.clients.find((c) => c.id === clientId);
-    if (!client) {
-      throw new AgentToolError(
-        `No client with id ${JSON.stringify(clientId)}. Use find_household to look one up.`,
-      );
-    }
+    // Resolve the household BY its CURRENT name (no id, and `phone` is an editable
+    // field here so it can't double as a disambiguator). The confirm action
+    // re-resolves the same way before the edit.
+    const { clientId, client } = resolveHouseholdOrAsk(dataset, { name: householdName, phone: null });
     const altParsed = parseAltContact(client.alt_contact);
     const current = {
       first_name: client.first_name,
@@ -835,7 +835,8 @@ const proposeEditHousehold: AgentWriteTool = {
 
     return {
       kind: "edit_household",
-      clientId,
+      householdName,
+      householdPhone: null,
       ownerName: fullName(client.first_name, client.last_name),
       firstName: merged.first_name,
       lastName: merged.last_name,
@@ -871,15 +872,18 @@ const proposeEditPet: AgentWriteTool = {
   name: "propose_edit_pet",
   description:
     "Propose editing a pet's profile (does NOT save it — the operator confirms a card first). " +
-    "Pass `client_id` and `pet_id` (from find_household) and ONLY the fields to change: " +
-    "`name`, `breed`, `size` (small/medium/large), `color`, `date_of_birth` (YYYY-MM-DD), " +
-    "`allergy_state` (yes/no/unknown), `allergies_detail`, `grooming_notes`, `typical_fee`. " +
-    "Untouched fields are kept. Resolve the pet first.",
+    "Identify the dog by `household` (the owner's NAME, never an id; optionally `phone` to " +
+    "disambiguate same-name households) and `pet` (the dog's CURRENT name). Pass ONLY the " +
+    "fields to change: `name` (a NEW name), `breed`, `size` (small/medium/large), `color`, " +
+    "`date_of_birth` (YYYY-MM-DD), `allergy_state` (yes/no/unknown), `allergies_detail`, " +
+    "`grooming_notes`, `typical_fee`. Untouched fields are kept. If the household or dog is " +
+    "ambiguous, you'll be told to ask which — never propose on a guess.",
   input_schema: {
     type: "object",
     properties: {
-      client_id: { type: "string" },
-      pet_id: { type: "string" },
+      household: { type: "string", description: "The owner's name (NOT an id)." },
+      phone: { type: "string", description: "Optional phone to disambiguate two same-name households." },
+      pet: { type: "string", description: "The dog's CURRENT name, used to find it." },
       name: { type: "string" },
       breed: { type: "string" },
       size: { type: "string", enum: ["small", "medium", "large"] },
@@ -890,18 +894,23 @@ const proposeEditPet: AgentWriteTool = {
       grooming_notes: { type: "string" },
       typical_fee: { type: "number" },
     },
-    required: ["client_id", "pet_id"],
+    required: ["household", "pet"],
     additionalProperties: false,
   },
   propose: async (input): Promise<EditPetProposal> => {
-    const clientId = requireString(input.client_id, "client_id");
-    const petId = requireString(input.pet_id, "pet_id");
+    const household = householdInputFrom(input);
+    const petInput = requireString(input.pet, "pet");
     if (!namesAField(input, EDIT_PET_FIELDS)) {
       throw new AgentToolError(
         "Tell me what to change on the pet (breed, size, allergies, notes, fee, etc.).",
       );
     }
     const dataset = await loadDataset();
+    // Resolve the household + dog BY NAME (no ids), group-aware for split-duplicate
+    // rows; the confirm action re-resolves the same way. We edit the canonical row.
+    const { clientId, client } = resolveHouseholdOrAsk(dataset, household);
+    const ownerName = fullName(client.first_name, client.last_name);
+    const { petId } = resolvePetOrAsk(dataset, clientId, ownerName, petInput);
     const pet = findOwnedPet(dataset.pets, petId, clientId);
     if (!pet) {
       throw new AgentToolError(
@@ -948,8 +957,9 @@ const proposeEditPet: AgentWriteTool = {
     const v = validation.value;
     return {
       kind: "edit_pet",
-      clientId,
-      petId,
+      householdName: household.name,
+      householdPhone: household.phone,
+      petQuery: pet.name, // the dog's CURRENT name — confirm re-resolves the pet from it
       petName: pet.name,
       name: v.name,
       breed: v.breed,
@@ -1242,24 +1252,26 @@ const proposeDeleteHousehold: AgentWriteTool = {
   name: "propose_delete_household",
   description:
     "Propose permanently DELETING a household (does NOT delete it — the operator confirms a " +
-    "destructive card first). Pass `client_id` (from find_household). A household that has " +
-    "ANY appointment history can't be deleted (business records) — say so instead of proposing. " +
-    "This is destructive and cannot be undone; only do it when the operator clearly asked to delete.",
+    "destructive card first). Identify the household by `household` (the owner's NAME, never an " +
+    "id; optionally `phone` to disambiguate same-name households). A household that has ANY " +
+    "appointment history can't be deleted (business records) — say so instead of proposing. " +
+    "This is destructive and cannot be undone; only do it when the operator clearly asked to " +
+    "delete. If the household is ambiguous, you'll be told to ask which — never delete on a guess.",
   input_schema: {
     type: "object",
-    properties: { client_id: { type: "string" } },
-    required: ["client_id"],
+    properties: {
+      household: { type: "string", description: "The owner's name (NOT an id)." },
+      phone: { type: "string", description: "Optional phone to disambiguate two same-name households." },
+    },
+    required: ["household"],
     additionalProperties: false,
   },
   propose: async (input): Promise<DeleteHouseholdProposal> => {
-    const clientId = requireString(input.client_id, "client_id");
+    const household = householdInputFrom(input);
     const dataset = await loadDataset();
-    const client = dataset.clients.find((c) => c.id === clientId);
-    if (!client) {
-      throw new AgentToolError(
-        `No client with id ${JSON.stringify(clientId)}. Use find_household to look one up.`,
-      );
-    }
+    // Resolve the household BY NAME (no id); the confirm action re-resolves the same
+    // way and REFUSES on an ambiguous/no-match result (no destructive guess).
+    const { clientId, client } = resolveHouseholdOrAsk(dataset, household);
     const pets = dataset.pets.filter((p) => p.client_id === clientId);
     const appointments = dataset.appointments.filter((a) => a.client_id === clientId);
     if (!canDeleteHousehold({ appointments })) {
@@ -1271,7 +1283,8 @@ const proposeDeleteHousehold: AgentWriteTool = {
     }
     return {
       kind: "delete_household",
-      clientId,
+      householdName: household.name,
+      householdPhone: household.phone,
       ownerName: fullName(client.first_name, client.last_name),
       petNames: pets.length > 0 ? formatPetNames(pets.map((p) => p.name)) : "no pets",
       petCount: pets.length,
@@ -1360,21 +1373,23 @@ const proposeSendText: AgentWriteTool = {
   description:
     "Propose sending a customer text (does NOT send it — the operator confirms the exact " +
     "wording first, and nothing is ever auto-sent). For `mode` 'reminder', identify the visit " +
-    "by `client_id` and `pet_id` (from find_household) plus `date` (YYYY-MM-DD) — the visit's " +
-    "CURRENT date from get_schedule, used to FIND it (you do NOT handle appointment ids). If the " +
-    "pet has more than one visit that day, also pass `time_slot` (the visit's current time) to " +
-    "say which; if you don't know it, ask the operator — never guess. Also pass the `message` you " +
-    "drafted from the operator's instruction (do not invent appointment facts). For `mode` 'reply' " +
-    "(replying to a customer's inbound text), pass the `sms_id` being replied to, the drafted " +
-    "`message`, and `recipient_label` (the customer's name). Always show the operator the full " +
-    "wording to confirm before anything is sent.",
+    "by `household` (the owner's NAME — never an id; optionally `phone` to disambiguate same-name " +
+    "households) and `pet` (the dog's name), plus `date` (YYYY-MM-DD) — the visit's CURRENT date " +
+    "from get_schedule, used to FIND it (you do NOT handle appointment ids). If the pet has more " +
+    "than one visit that day, also pass `time_slot` (the visit's current time) to say which; if " +
+    "you don't know it, ask the operator — never guess. Also pass the `message` you drafted from " +
+    "the operator's instruction (do not invent appointment facts). For `mode` 'reply' (replying " +
+    "to a customer's inbound text), pass the `sms_id` being replied to, the drafted `message`, " +
+    "and `recipient_label` (the customer's name). Always show the operator the full wording to " +
+    "confirm before anything is sent.",
   input_schema: {
     type: "object",
     properties: {
       mode: { type: "string", enum: ["reminder", "reply"] },
       message: { type: "string" },
-      client_id: { type: "string", description: "Client id from find_household (reminder mode)." },
-      pet_id: { type: "string", description: "Pet id from find_household (reminder mode)." },
+      household: { type: "string", description: "The owner's name (NOT an id) (reminder mode)." },
+      phone: { type: "string", description: "Optional phone to disambiguate same-name households (reminder mode)." },
+      pet: { type: "string", description: "The dog's name (reminder mode)." },
       date: {
         type: "string",
         description: "The visit's CURRENT date (ISO YYYY-MM-DD), used to find it (reminder mode).",
@@ -1408,42 +1423,35 @@ const proposeSendText: AgentWriteTool = {
       throw new AgentToolError("`mode` must be 'reminder' or 'reply'.");
     }
 
-    const clientId = requireString(input.client_id, "client_id");
-    const petId = requireString(input.pet_id, "pet_id");
+    const household = householdInputFrom(input);
+    const petInput = requireString(input.pet, "pet");
     const targetDate = requireIsoDate(input.date, "date");
     const targetTimeInput = optionalString(input.time_slot) || null;
 
     const dataset = await loadDataset();
-    const client = dataset.clients.find((c) => c.id === clientId);
-    if (!client) {
-      throw new AgentToolError(
-        `No client with id ${JSON.stringify(clientId)}. Use find_household to look one up.`,
-      );
-    }
-    const pet = dataset.pets.find((p) => p.id === petId && p.client_id === clientId);
-    if (!pet) {
-      throw new AgentToolError(
-        "That pet isn't on this client's file. Re-check with find_household.",
-      );
-    }
+    // Resolve the household + dog BY NAME (no ids); the confirm action re-resolves
+    // the same way. groupPetIds is split-duplicate safe for the visit lookup below.
+    const { clientId, client } = resolveHouseholdOrAsk(dataset, household);
+    const ownerName = fullName(client.first_name, client.last_name);
+    const { petName, groupPetIds } = resolvePetOrAsk(dataset, clientId, ownerName, petInput);
 
     // Identify the exact visit by pet + date (+ time) — the SAME resolver the
     // confirm action re-runs server-side to re-resolve the authoritative id. A
     // same-day duplicate disambiguates by time or is refused; never a guess.
     const match = findAppointmentByPetDate(dataset.appointments, {
       clientId,
-      petId,
+      petId: groupPetIds,
       date: targetDate,
       timeSlot: targetTimeInput,
     });
     if (match.kind === "none") {
       throw new AgentToolError(
-        `No appointment for ${pet.name} on ${targetDate}. Check get_schedule or get_pet_history for the date.`,
+        `No appointment for ${petName} on ${targetDate}. Check get_schedule or get_pet_history for the date.`,
       );
     }
     if (match.kind === "ambiguous") {
       throw new AgentToolError(
-        `${pet.name} has more than one visit on ${targetDate} (${match.times.join(", ")}). ` +
+        `${petName} has more than one visit on ${targetDate} (${match.times.join(", ")}). ` +
           "Check get_schedule for the times or ask the operator which one, then pass it as `time_slot`.",
       );
     }
@@ -1454,7 +1462,7 @@ const proposeSendText: AgentWriteTool = {
     // draft a reminder for one (mirrors the no-show guard's booked-only rule).
     if ((existing.status ?? "booked") !== "booked") {
       throw new AgentToolError(
-        `${pet.name}'s visit on ${targetDate} is ${existing.status} — there's no booked appointment to remind about.`,
+        `${petName}'s visit on ${targetDate} is ${existing.status} — there's no booked appointment to remind about.`,
       );
     }
 
@@ -1484,13 +1492,14 @@ const proposeSendText: AgentWriteTool = {
     return {
       kind: "send_text",
       mode: "reminder",
-      clientId,
-      petId,
+      householdName: household.name,
+      householdPhone: household.phone,
+      petQuery: petName,
       // Preserve the resolved visit's OWN date/time as the re-resolution tuple so
       // the confirm action finds the same visit server-side before sending.
       targetDate: existing.date,
       targetTimeSlot: existing.time_slot ?? null,
-      recipientLabel: fullName(client.first_name, client.last_name),
+      recipientLabel: ownerName,
       toNumber: client.phone,
       context: contextBits.join(" · "),
       message: validation.value.message,

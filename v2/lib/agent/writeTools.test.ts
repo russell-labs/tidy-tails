@@ -394,10 +394,10 @@ describe("propose_add_household", () => {
 });
 
 describe("propose_add_pet", () => {
-  it("resolves a pet for an existing household", async () => {
+  it("resolves a pet for an existing household BY NAME (no id)", async () => {
     loadDatasetMock.mockResolvedValue(dataset());
     const proposal = (await runAgentWriteTool("propose_add_pet", {
-      client_id: "client-1",
+      household: "Mary Jones",
       name: "Maple",
       breed: "Poodle",
       size: "medium",
@@ -406,28 +406,47 @@ describe("propose_add_pet", () => {
     })) as AddPetProposal;
 
     expect(proposal.kind).toBe("add_pet");
-    expect(proposal.clientId).toBe("client-1");
+    // Carries the household NAME, NOT an id — confirm re-resolves it.
+    expect(proposal).not.toHaveProperty("clientId");
+    expect(proposal.householdName).toBe("Mary Jones");
     expect(proposal.ownerName).toBe("Mary Jones");
     expect(proposal.name).toBe("Maple");
   });
 
-  it("refuses an unknown household", async () => {
+  it("asks (does not guess) when the household name matches none", async () => {
     loadDatasetMock.mockResolvedValue(dataset());
     await expect(
-      runAgentWriteTool("propose_add_pet", { client_id: "nope", name: "Maple", size: "medium", allergy_state: "no" }),
+      runAgentWriteTool("propose_add_pet", { household: "Nobody Here", name: "Maple", size: "medium", allergy_state: "no" }),
+    ).rejects.toBeInstanceOf(AgentToolError);
+  });
+
+  it("asks which when two households share the name (never auto-picks)", async () => {
+    loadDatasetMock.mockResolvedValue(
+      dataset({
+        clients: [
+          client({ id: "c-a", first_name: "Mary", last_name: "Jones" }),
+          client({ id: "c-b", first_name: "Mary", last_name: "Jones" }),
+        ],
+      }),
+    );
+    await expect(
+      runAgentWriteTool("propose_add_pet", { household: "Mary Jones", name: "Maple", size: "medium", allergy_state: "no" }),
     ).rejects.toBeInstanceOf(AgentToolError);
   });
 });
 
 describe("propose_edit_household", () => {
-  it("merges a phone change while preserving the rest, and lists the change", async () => {
+  it("resolves the household BY NAME and merges a phone change, preserving the rest", async () => {
     loadDatasetMock.mockResolvedValue(dataset());
     const proposal = (await runAgentWriteTool("propose_edit_household", {
-      client_id: "client-1",
-      phone: "705-555-7777",
+      household: "Mary Jones", // the CURRENT name, to find the household
+      phone: "705-555-7777", // the NEW phone to set (an editable field, not a disambiguator)
     })) as EditHouseholdProposal;
 
     expect(proposal.kind).toBe("edit_household");
+    // Carries the household NAME, NOT an id — confirm re-resolves it.
+    expect(proposal).not.toHaveProperty("clientId");
+    expect(proposal.householdName).toBe("Mary Jones");
     expect(proposal.phone).toBe("705-555-7777");
     expect(proposal.firstName).toBe("Mary"); // unchanged, preserved
     expect(proposal.changes.join(" ")).toContain("705-555-7777");
@@ -436,24 +455,43 @@ describe("propose_edit_household", () => {
   it("refuses when nothing was asked to change", async () => {
     loadDatasetMock.mockResolvedValue(dataset());
     await expect(
-      runAgentWriteTool("propose_edit_household", { client_id: "client-1" }),
+      runAgentWriteTool("propose_edit_household", { household: "Mary Jones" }),
+    ).rejects.toBeInstanceOf(AgentToolError);
+  });
+
+  it("asks (does not guess) when the household name matches none", async () => {
+    loadDatasetMock.mockResolvedValue(dataset());
+    await expect(
+      runAgentWriteTool("propose_edit_household", { household: "Nobody Here", phone: "705-555-7777" }),
     ).rejects.toBeInstanceOf(AgentToolError);
   });
 });
 
 describe("propose_edit_pet", () => {
-  it("merges a grooming-note change while preserving the rest", async () => {
+  it("resolves household + dog BY NAME and merges a grooming-note change", async () => {
     loadDatasetMock.mockResolvedValue(dataset());
     const proposal = (await runAgentWriteTool("propose_edit_pet", {
-      client_id: "client-1",
-      pet_id: "pet-1",
+      household: "Mary Jones",
+      pet: "Kiwi",
       grooming_notes: "Use #5 blade",
     })) as EditPetProposal;
 
     expect(proposal.kind).toBe("edit_pet");
+    // Carries names, NOT ids — confirm re-resolves them.
+    expect(proposal).not.toHaveProperty("clientId");
+    expect(proposal).not.toHaveProperty("petId");
+    expect(proposal.householdName).toBe("Mary Jones");
+    expect(proposal.petQuery).toBe("Kiwi");
     expect(proposal.name).toBe("Kiwi"); // unchanged
     expect(proposal.groomingNotes).toBe("Use #5 blade");
     expect(proposal.changes.length).toBeGreaterThan(0);
+  });
+
+  it("asks (does not guess) when the dog name matches no pet on the household", async () => {
+    loadDatasetMock.mockResolvedValue(dataset());
+    await expect(
+      runAgentWriteTool("propose_edit_pet", { household: "Mary Jones", pet: "Nibbles", grooming_notes: "x" }),
+    ).rejects.toBeInstanceOf(AgentToolError);
   });
 });
 
@@ -746,12 +784,15 @@ describe("propose_edit_appointment", () => {
 });
 
 describe("propose_delete_household", () => {
-  it("proposes deleting a household with no appointment history", async () => {
+  it("proposes deleting a household resolved BY NAME with no appointment history", async () => {
     loadDatasetMock.mockResolvedValue(dataset({ appointments: [] }));
     const proposal = (await runAgentWriteTool("propose_delete_household", {
-      client_id: "client-1",
+      household: "Mary Jones",
     })) as DeleteHouseholdProposal;
     expect(proposal.kind).toBe("delete_household");
+    // Carries the household NAME, NOT an id — confirm re-resolves it.
+    expect(proposal).not.toHaveProperty("clientId");
+    expect(proposal.householdName).toBe("Mary Jones");
     expect(proposal.ownerName).toBe("Mary Jones");
     expect(proposal.hasHistory).toBe(false);
   });
@@ -761,7 +802,22 @@ describe("propose_delete_household", () => {
       dataset({ appointments: [appointment({ client_id: "client-1" })] }),
     );
     await expect(
-      runAgentWriteTool("propose_delete_household", { client_id: "client-1" }),
+      runAgentWriteTool("propose_delete_household", { household: "Mary Jones" }),
+    ).rejects.toBeInstanceOf(AgentToolError);
+  });
+
+  it("asks which when two households share the name — never proposes a destructive delete on a guess", async () => {
+    loadDatasetMock.mockResolvedValue(
+      dataset({
+        clients: [
+          client({ id: "c-a", first_name: "Mary", last_name: "Jones" }),
+          client({ id: "c-b", first_name: "Mary", last_name: "Jones" }),
+        ],
+        appointments: [],
+      }),
+    );
+    await expect(
+      runAgentWriteTool("propose_delete_household", { household: "Mary Jones" }),
     ).rejects.toBeInstanceOf(AgentToolError);
   });
 });
@@ -796,20 +852,23 @@ describe("propose_send_text", () => {
     loadDatasetMock.mockResolvedValue(dataset({ appointments: [booked] }));
     const proposal = (await runAgentWriteTool("propose_send_text", {
       mode: "reminder",
-      client_id: "client-1",
-      pet_id: "pet-1",
+      household: "Mary Jones",
+      pet: "Kiwi",
       date: "2026-07-20",
       message: "Hi Mary, reminder Kiwi is booked for Monday at 10:30am.",
     })) as SendTextProposal;
 
     expect(proposal.kind).toBe("send_text");
     if (proposal.mode !== "reminder") throw new Error("expected reminder");
-    // Carries the re-resolution tuple (pet + the visit's CURRENT date/time), NOT an
-    // appointment id — the read tools never expose ids, so the model can't supply one.
-    expect(proposal.petId).toBe("pet-1");
+    // Carries NAMES + the re-resolution tuple (the visit's CURRENT date/time), NOT
+    // ids — the read tools never expose ids, so the model can't supply one.
+    expect(proposal).not.toHaveProperty("petId");
+    expect(proposal).not.toHaveProperty("clientId");
+    expect(proposal).not.toHaveProperty("appointmentId");
+    expect(proposal.householdName).toBe("Mary Jones");
+    expect(proposal.petQuery).toBe("Kiwi");
     expect(proposal.targetDate).toBe("2026-07-20");
     expect(proposal.targetTimeSlot).toBe("10:30am");
-    expect(proposal).not.toHaveProperty("appointmentId");
     expect(proposal.toNumber).toContain("705");
     expect(proposal.message).toContain("Kiwi");
   });
@@ -819,8 +878,8 @@ describe("propose_send_text", () => {
     await expect(
       runAgentWriteTool("propose_send_text", {
         mode: "reminder",
-        client_id: "client-1",
-        pet_id: "pet-1",
+        household: "Mary Jones",
+        pet: "Kiwi",
         date: "2026-07-20",
         message: "Reminder for Kiwi.",
       }),
@@ -840,8 +899,8 @@ describe("propose_send_text", () => {
     await expect(
       runAgentWriteTool("propose_send_text", {
         mode: "reminder",
-        client_id: "client-1",
-        pet_id: "pet-1",
+        household: "Mary Jones",
+        pet: "Kiwi",
         date: "2026-07-20",
         message: "Reminder for Kiwi.",
       }),
@@ -855,8 +914,8 @@ describe("propose_send_text", () => {
     await expect(
       runAgentWriteTool("propose_send_text", {
         mode: "reminder",
-        client_id: "client-1",
-        pet_id: "pet-1",
+        household: "Mary Jones",
+        pet: "Kiwi",
         date: "2026-07-20",
         message: "Reminder for Kiwi.",
       }),
@@ -869,8 +928,8 @@ describe("propose_send_text", () => {
     loadDatasetMock.mockResolvedValue(dataset({ appointments: [am, pm] }));
     const proposal = (await runAgentWriteTool("propose_send_text", {
       mode: "reminder",
-      client_id: "client-1",
-      pet_id: "pet-1",
+      household: "Mary Jones",
+      pet: "Kiwi",
       date: "2026-07-20",
       time_slot: "2:00pm",
       message: "Reminder for Kiwi.",
