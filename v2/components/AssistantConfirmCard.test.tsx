@@ -119,8 +119,9 @@ const REPLY: SendTextProposal = {
 const RESCHEDULE: EditAppointmentProposal = {
   kind: "edit_appointment",
   mode: "reschedule_change",
-  clientId: "c1",
-  petId: "p1",
+  householdName: "Rosanne Adams",
+  householdPhone: null,
+  petQuery: "Kiwi",
   targetDate: "2026-07-10",
   targetTimeSlot: "10:30am",
   ownerName: "Rosanne Adams",
@@ -143,8 +144,9 @@ const RESCHEDULE: EditAppointmentProposal = {
 const NO_SHOW: EditAppointmentProposal = {
   kind: "edit_appointment",
   mode: "no_show",
-  clientId: "c1",
-  petId: "p1",
+  householdName: "Rosanne Adams",
+  householdPhone: null,
+  petQuery: "Kiwi",
   targetDate: "2026-07-10",
   targetTimeSlot: "10:30am",
   ownerName: "Rosanne Adams",
