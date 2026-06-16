@@ -15,12 +15,21 @@ import { formatDate, formatMoney } from "@/lib/format";
 import type { ServiceType } from "@/lib/booking";
 import type { PaymentMethod, PaymentStatus } from "@/lib/payments";
 
-/** Propose a new booking (works for both the batched and 1:1 surfaces). */
+/**
+ * Propose a new booking (works for both the batched and 1:1 surfaces).
+ *
+ * NO IDS FROM THE MODEL: the household and pets are carried as natural attributes
+ * (`householdName` + optional `householdPhone`, `petQueries`), NOT client/pet ids.
+ * The confirm action re-resolves the authoritative client_id + pet_ids server-side
+ * from these against org-scoped (RLS) data, so a fabricated or tampered id can't
+ * exist or redirect the write. `ownerName`/`petNames` are display labels only.
+ */
 export type BookAppointmentProposal = {
   kind: "book_appointment";
-  clientId: string;
+  householdName: string;
+  householdPhone: string | null;
   ownerName: string;
-  petIds: string[];
+  petQueries: string[]; // the pet names to re-resolve to ids in confirm
   petNames: string; // display label, already formatted ("Kiwi" / "Kiwi and Coco")
   date: string; // ISO YYYY-MM-DD
   timeSlot: string; // free-text drop-off / start time, e.g. "10:00am"
@@ -39,8 +48,9 @@ export type BookAppointmentProposal = {
  */
 export type AddTipProposal = {
   kind: "add_tip";
-  clientId: string;
-  petId: string;
+  householdName: string; // re-resolved to client_id in confirm — NOT an id
+  householdPhone: string | null;
+  petQuery: string; // the dog's name — re-resolved to pet_id in confirm
   petName: string;
   ownerName: string;
   appointmentDate: string; // ISO date of the resolved groom
@@ -56,8 +66,9 @@ export type AddTipProposal = {
 /** Propose logging a completed groom. Backed by the existing logGroom action. */
 export type LogGroomProposal = {
   kind: "log_groom";
-  clientId: string;
-  petId: string;
+  householdName: string; // re-resolved to client_id in confirm — NOT an id
+  householdPhone: string | null;
+  petQuery: string; // the dog's name — re-resolved to pet_id in confirm
   petName: string;
   ownerName: string;
   date: string; // ISO YYYY-MM-DD
@@ -178,8 +189,9 @@ export type EditAppointmentProposal =
   | {
       kind: "edit_appointment";
       mode: "reschedule_change";
-      clientId: string;
-      petId: string;
+      householdName: string; // re-resolved to client_id in confirm — NOT an id
+      householdPhone: string | null;
+      petQuery: string; // the dog's name — re-resolved to pet_id in confirm
       targetDate: string; // the visit's CURRENT date — used to re-resolve the id
       targetTimeSlot: string | null; // the visit's CURRENT time — disambiguates a same-day duplicate
       ownerName: string;
@@ -201,8 +213,9 @@ export type EditAppointmentProposal =
   | {
       kind: "edit_appointment";
       mode: "cancel";
-      clientId: string;
-      petId: string;
+      householdName: string;
+      householdPhone: string | null;
+      petQuery: string;
       targetDate: string;
       targetTimeSlot: string | null;
       ownerName: string;
@@ -213,8 +226,9 @@ export type EditAppointmentProposal =
   | {
       kind: "edit_appointment";
       mode: "no_show";
-      clientId: string;
-      petId: string;
+      householdName: string;
+      householdPhone: string | null;
+      petQuery: string;
       targetDate: string;
       targetTimeSlot: string | null;
       ownerName: string;

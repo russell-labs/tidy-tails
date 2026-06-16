@@ -18,9 +18,10 @@ import {
 
 const PROPOSAL: BookAppointmentProposal = {
   kind: "book_appointment",
-  clientId: "c1",
+  householdName: "Rosanne Adams",
+  householdPhone: null,
   ownerName: "Rosanne Adams",
-  petIds: ["p1"],
+  petQueries: ["Kiwi"],
   petNames: "Kiwi",
   date: "2026-07-11",
   timeSlot: "10:00am",
@@ -95,8 +96,9 @@ const DELETE: DeleteHouseholdProposal = {
 const CANCEL: EditAppointmentProposal = {
   kind: "edit_appointment",
   mode: "cancel",
-  clientId: "c1",
-  petId: "p1",
+  householdName: "Rosanne Adams",
+  householdPhone: null,
+  petQuery: "Kiwi",
   targetDate: "2026-07-11",
   targetTimeSlot: "10:30am",
   ownerName: "Rosanne Adams",

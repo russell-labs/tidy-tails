@@ -22,9 +22,10 @@ import {
 
 const BOOK: BookAppointmentProposal = {
   kind: "book_appointment",
-  clientId: "c1",
+  householdName: "Rosanne Adams",
+  householdPhone: null,
   ownerName: "Rosanne Adams",
-  petIds: ["p1"],
+  petQueries: ["Kiwi"],
   petNames: "Kiwi",
   date: "2026-07-11",
   timeSlot: "10:00am",
@@ -38,8 +39,9 @@ const BOOK: BookAppointmentProposal = {
 
 const TIP: AddTipProposal = {
   kind: "add_tip",
-  clientId: "c1",
-  petId: "p1",
+  householdName: "Rosanne Adams",
+  householdPhone: null,
+  petQuery: "Coco",
   petName: "Coco",
   ownerName: "Rosanne Adams",
   appointmentDate: "2026-07-10",
@@ -54,8 +56,9 @@ const TIP: AddTipProposal = {
 
 const LOG: LogGroomProposal = {
   kind: "log_groom",
-  clientId: "c1",
-  petId: "p1",
+  householdName: "Rosanne Adams",
+  householdPhone: null,
+  petQuery: "Bella",
   petName: "Bella",
   ownerName: "Rosanne Adams",
   date: "2026-07-09",
@@ -199,8 +202,9 @@ const EDIT_PET: EditPetProposal = {
 const EDIT_APPT_CHANGE: EditAppointmentProposal = {
   kind: "edit_appointment",
   mode: "reschedule_change",
-  clientId: "c1",
-  petId: "p1",
+  householdName: "Rosanne Adams",
+  householdPhone: null,
+  petQuery: "Coco",
   targetDate: "2026-07-10",
   targetTimeSlot: "10:30am",
   ownerName: "Mary Jones",
@@ -223,8 +227,9 @@ const EDIT_APPT_CHANGE: EditAppointmentProposal = {
 const EDIT_APPT_CANCEL: EditAppointmentProposal = {
   kind: "edit_appointment",
   mode: "cancel",
-  clientId: "c1",
-  petId: "p1",
+  householdName: "Rosanne Adams",
+  householdPhone: null,
+  petQuery: "Coco",
   targetDate: "2026-07-12",
   targetTimeSlot: "9:00am",
   ownerName: "Mary Jones",
@@ -236,8 +241,9 @@ const EDIT_APPT_CANCEL: EditAppointmentProposal = {
 const EDIT_APPT_NO_SHOW: EditAppointmentProposal = {
   kind: "edit_appointment",
   mode: "no_show",
-  clientId: "c1",
-  petId: "p1",
+  householdName: "Rosanne Adams",
+  householdPhone: null,
+  petQuery: "Coco",
   targetDate: "2026-07-12",
   targetTimeSlot: "9:00am",
   ownerName: "Mary Jones",

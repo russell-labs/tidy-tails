@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { searchHouseholds, type SearchHousehold, type SearchResult } from "./search";
+import {
+  MATCH_QUALITY,
+  searchHouseholds,
+  type SearchHousehold,
+  type SearchResult,
+} from "./search";
 
 // Controlled fixtures — deliberately include two households with a pet named
 // "Bella" and one with the near-name "Bela" so disambiguation and fuzzy
@@ -60,6 +65,19 @@ const zane: SearchHousehold = {
 
 const ALL = [albright, brandt, reyes, coleman, campbell, darlow, zane];
 const ids = (rs: SearchResult[]) => rs.map((r) => r.household.id);
+
+describe("searchHouseholds — match quality tier", () => {
+  // The write-side resolver decides matched/ambiguous off the binding match
+  // QUALITY of each result (so a score bonus like an active pet can't silently
+  // pick one same-name household over another). Each result reports the weakest
+  // token's best quality — the strength that actually bound the match.
+  it("reports EXACT for an exact owner-name match and FUZZY for a one-char typo", () => {
+    const exact = searchHouseholds("Reyes", ALL).find((r) => r.household.id === "h-reyes");
+    const fuzzy = searchHouseholds("Reyez", ALL).find((r) => r.household.id === "h-reyes");
+    expect(exact?.quality).toBe(MATCH_QUALITY.EXACT);
+    expect(fuzzy?.quality).toBe(MATCH_QUALITY.FUZZY);
+  });
+});
 
 describe("searchHouseholds — empty and short queries", () => {
   it("returns every household, alphabetical by last name, for an empty query", () => {

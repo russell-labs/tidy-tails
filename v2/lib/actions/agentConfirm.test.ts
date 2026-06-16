@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { appointment, clientRecord } from "@/lib/actions/actionTestSupport";
+import { appointment, client, clientRecord, pet } from "@/lib/actions/actionTestSupport";
 import { DEFAULT_ORG_SETTINGS } from "@/lib/orgSettings";
 import type {
   AddTipProposal,
@@ -27,7 +27,7 @@ vi.mock("@/lib/data/repo", async () => {
   const actual = await vi.importActual<typeof import("@/lib/data/repo")>(
     "@/lib/data/repo",
   );
-  return { ...actual, getClientRecord: vi.fn() };
+  return { ...actual, getClientRecord: vi.fn(), loadDataset: vi.fn() };
 });
 vi.mock("./appointments", () => ({ createBooking: vi.fn() }));
 vi.mock("./oneToOneBooking", () => ({ createOneToOneBooking: vi.fn() }));
@@ -50,7 +50,7 @@ vi.mock("./inbox", () => ({ sendInboxSmsReply: vi.fn() }));
 const { isAgentEnabled, isAgentWritesEnabled } = await import("@/lib/writeGate");
 const { getCurrentUser } = await import("@/lib/supabase/server");
 const { loadOrgSettings } = await import("@/lib/orgSettings.server");
-const { getClientRecord } = await import("@/lib/data/repo");
+const { getClientRecord, loadDataset } = await import("@/lib/data/repo");
 const { createBooking } = await import("./appointments");
 const { createOneToOneBooking } = await import("./oneToOneBooking");
 const { markAppointmentPaid } = await import("./appointmentPayment");
@@ -73,6 +73,21 @@ const isAgentWritesEnabledMock = vi.mocked(isAgentWritesEnabled);
 const getCurrentUserMock = vi.mocked(getCurrentUser);
 const loadOrgSettingsMock = vi.mocked(loadOrgSettings);
 const getClientRecordMock = vi.mocked(getClientRecord);
+const loadDatasetMock = vi.mocked(loadDataset);
+
+/** The org dataset the confirm action re-resolves household + pet ids from. */
+function confirmDataset(overrides: {
+  clients?: ReturnType<typeof client>[];
+  pets?: ReturnType<typeof pet>[];
+  appointments?: ReturnType<typeof appointment>[];
+} = {}) {
+  return {
+    clients: overrides.clients ?? [client({ id: "client-1", first_name: "Mary", last_name: "Jones" })],
+    pets: overrides.pets ?? [pet({ id: "pet-1", client_id: "client-1", name: "Kiwi" })],
+    appointments: overrides.appointments ?? [],
+    vaccinations: [],
+  };
+}
 const createBookingMock = vi.mocked(createBooking);
 const createOneToOneBookingMock = vi.mocked(createOneToOneBooking);
 const markAppointmentPaidMock = vi.mocked(markAppointmentPaid);
@@ -91,9 +106,10 @@ const sendInboxSmsReplyMock = vi.mocked(sendInboxSmsReply);
 
 const BOOK: BookAppointmentProposal = {
   kind: "book_appointment",
-  clientId: "client-1",
+  householdName: "Mary Jones",
+  householdPhone: null,
   ownerName: "Mary Jones",
-  petIds: ["pet-1"],
+  petQueries: ["Kiwi"],
   petNames: "Kiwi",
   date: "2026-07-11",
   timeSlot: "10:00am",
@@ -107,8 +123,9 @@ const BOOK: BookAppointmentProposal = {
 
 const TIP: AddTipProposal = {
   kind: "add_tip",
-  clientId: "client-1",
-  petId: "pet-1",
+  householdName: "Mary Jones",
+  householdPhone: null,
+  petQuery: "Kiwi",
   petName: "Kiwi",
   ownerName: "Mary Jones",
   appointmentDate: "2026-06-10",
@@ -123,8 +140,9 @@ const TIP: AddTipProposal = {
 
 const LOG: LogGroomProposal = {
   kind: "log_groom",
-  clientId: "client-1",
-  petId: "pet-1",
+  householdName: "Mary Jones",
+  householdPhone: null,
+  petQuery: "Kiwi",
   petName: "Kiwi",
   ownerName: "Mary Jones",
   date: "2026-06-12",
@@ -143,6 +161,7 @@ beforeEach(() => {
   isAgentWritesEnabledMock.mockReturnValue(true);
   getCurrentUserMock.mockResolvedValue({ id: "user-1" } as never);
   loadOrgSettingsMock.mockResolvedValue(DEFAULT_ORG_SETTINGS);
+  loadDatasetMock.mockResolvedValue(confirmDataset() as never);
 });
 
 describe("confirmAgentProposal — gate & auth", () => {
@@ -230,20 +249,74 @@ describe("confirmAgentProposal — booking", () => {
   });
 });
 
+// TT-023: the model carries NAMES, not ids. The confirm action re-resolves the
+// authoritative client_id + pet_id server-side from the org-scoped loader, so a
+// fabricated/tampered/stale attribute can only ever resolve within THIS org (RLS)
+// or fail safe — no write. (Tenancy itself is the RLS boundary, exercised by
+// supabase/tests/cross_tenant_isolation.sql; these pin the confirm-path logic.)
+describe("confirmAgentProposal — re-resolves ids from names server-side (no model id)", () => {
+  it("books with the org's REAL ids resolved from the household + dog names", async () => {
+    loadDatasetMock.mockResolvedValue(
+      confirmDataset({
+        clients: [client({ id: "real-7", first_name: "Mary", last_name: "Jones" })],
+        pets: [pet({ id: "real-pet-9", client_id: "real-7", name: "Kiwi" })],
+      }) as never,
+    );
+    createBookingMock.mockResolvedValue({ status: "saved", summary: { petName: "Kiwi" } } as never);
+    await confirmAgentProposal(BOOK); // BOOK carries "Mary Jones"/"Kiwi" — no ids
+    const form = createBookingMock.mock.calls[0][1] as FormData;
+    expect(form.get("client_id")).toBe("real-7"); // resolved server-side, never from the model
+    expect(form.get("pet_ids")).toBe("real-pet-9");
+  });
+
+  it("fails safe (no write) when the household name resolves to nothing in this org", async () => {
+    loadDatasetMock.mockResolvedValue(
+      confirmDataset({
+        clients: [client({ id: "c-other", first_name: "Someone", last_name: "Else" })],
+        pets: [],
+      }) as never,
+    );
+    const result = await confirmAgentProposal(BOOK);
+    expect(result.status).toBe("error");
+    expect(createBookingMock).not.toHaveBeenCalled();
+  });
+
+  it("an id-shaped attribute can't redirect the write — it's treated as a name and resolves nothing", async () => {
+    // A tampered proposal carrying an id-looking household string still only ever
+    // resolves against THIS org's data by name → matches nothing → no write.
+    const tampered = { ...BOOK, householdName: "client-1" };
+    loadDatasetMock.mockResolvedValue(confirmDataset() as never); // Mary Jones / Kiwi
+    const result = await confirmAgentProposal(tampered);
+    expect(result.status).toBe("error");
+    expect(createBookingMock).not.toHaveBeenCalled();
+  });
+
+  it("re-resolves the edit target household + dog + appointment from names", async () => {
+    getClientRecordMock.mockResolvedValue(EDIT_APPT_RECORD);
+    editAppointmentMock.mockResolvedValue({ status: "saved", summary: { petName: "Kiwi", ownerName: "Mary Jones" } } as never);
+    const result = await confirmAgentProposal(EDIT_APPT_CHANGE); // names only
+    expect(result.status).toBe("saved");
+    const form = editAppointmentMock.mock.calls[0][1] as FormData;
+    expect(form.get("client_id")).toBe("client-1"); // re-resolved from "Mary Jones"
+    expect(form.get("appointment_id")).toBe("appt-1"); // re-resolved from pet + current date
+  });
+});
+
 describe("confirmAgentProposal — add tip", () => {
-  it("re-resolves the completed groom server-side and marks it paid with the new total", async () => {
-    getClientRecordMock.mockResolvedValue(
-      clientRecord({
+  it("re-resolves household + dog + completed groom from names and marks it paid", async () => {
+    loadDatasetMock.mockResolvedValue(
+      confirmDataset({
         appointments: [
           appointment({
             id: "appt-done",
+            client_id: "client-1",
             pet_id: "pet-1",
             date: "2026-06-10",
             status: "completed",
             price: 50,
           }),
         ],
-      }),
+      }) as never,
     );
     markAppointmentPaidMock.mockResolvedValue({
       status: "saved",
@@ -251,19 +324,22 @@ describe("confirmAgentProposal — add tip", () => {
       message: "Marked Kiwi paid.",
     } as never);
 
-    const result = await confirmAgentProposal(TIP);
+    const result = await confirmAgentProposal(TIP); // carries names "Mary Jones"/"Kiwi"
 
     expect(result.status).toBe("saved");
     const form = markAppointmentPaidMock.mock.calls[0][1] as FormData;
-    expect(form.get("appointment_id")).toBe("appt-done"); // resolved server-side, not trusted from the client
+    expect(form.get("client_id")).toBe("client-1"); // re-resolved from the name
+    expect(form.get("appointment_id")).toBe("appt-done"); // resolved server-side, not from the client
     expect(form.get("paid_amount")).toBe("55");
     expect(form.get("payment_method")).toBe("interac");
     expect(form.get("audit_source")).toBe("agent");
   });
 
-  it("errors without calling the action when the groom can't be re-resolved", async () => {
-    getClientRecordMock.mockResolvedValue(
-      clientRecord({ appointments: [appointment({ status: "booked" })] }),
+  it("errors without calling the action when no completed groom can be re-resolved", async () => {
+    loadDatasetMock.mockResolvedValue(
+      confirmDataset({
+        appointments: [appointment({ client_id: "client-1", pet_id: "pet-1", status: "booked" })],
+      }) as never,
     );
     const result = await confirmAgentProposal(TIP);
     expect(result.status).toBe("error");
@@ -388,8 +464,9 @@ const EDIT_PET: EditPetProposal = {
 const EDIT_APPT_CHANGE: EditAppointmentProposal = {
   kind: "edit_appointment",
   mode: "reschedule_change",
-  clientId: "client-1",
-  petId: "pet-1",
+  householdName: "Mary Jones",
+  householdPhone: null,
+  petQuery: "Kiwi",
   targetDate: "2026-07-20", // the visit's CURRENT date — re-resolves the id
   targetTimeSlot: "10:30am",
   ownerName: "Mary Jones",
@@ -412,8 +489,9 @@ const EDIT_APPT_CHANGE: EditAppointmentProposal = {
 const EDIT_APPT_CANCEL: EditAppointmentProposal = {
   kind: "edit_appointment",
   mode: "cancel",
-  clientId: "client-1",
-  petId: "pet-1",
+  householdName: "Mary Jones",
+  householdPhone: null,
+  petQuery: "Kiwi",
   targetDate: "2026-07-20",
   targetTimeSlot: "10:30am",
   ownerName: "Mary Jones",
@@ -425,8 +503,9 @@ const EDIT_APPT_CANCEL: EditAppointmentProposal = {
 const EDIT_APPT_NO_SHOW: EditAppointmentProposal = {
   kind: "edit_appointment",
   mode: "no_show",
-  clientId: "client-1",
-  petId: "pet-1",
+  householdName: "Mary Jones",
+  householdPhone: null,
+  petQuery: "Kiwi",
   targetDate: "2026-07-20",
   targetTimeSlot: "10:30am",
   ownerName: "Mary Jones",

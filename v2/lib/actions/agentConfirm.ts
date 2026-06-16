@@ -31,9 +31,13 @@
 
 import { isAgentEnabled, isAgentWritesEnabled } from "@/lib/writeGate";
 import { getCurrentUser } from "@/lib/supabase/server";
-import { getClientRecord } from "@/lib/data/repo";
+import { getClientRecord, loadDataset, type Dataset } from "@/lib/data/repo";
 import { loadOrgSettings } from "@/lib/orgSettings.server";
 import { findAppointmentByPetDate } from "@/lib/editAppointment";
+import {
+  resolveHouseholdLoosely,
+  resolvePetWithinHousehold,
+} from "@/lib/householdMatch";
 import {
   PROPOSAL_KINDS,
   type AddHouseholdProposal,
@@ -90,6 +94,40 @@ const AGENT_SOURCE_VALUE = "agent";
 function setMoney(form: FormData, field: string, value: number | null): void {
   form.set(field, value == null ? "" : String(value));
 }
+
+/**
+ * Re-resolve the authoritative client id from the proposal's household NAME
+ * (+ optional phone) against org-scoped (RLS) data, using the SAME matcher the
+ * propose tool used. The model never supplies a client id, and a tampered/stale
+ * name can only ever resolve within this org or fail safe (null → caller errors,
+ * no write). Returns the org dataset too so pets resolve from the same load.
+ */
+async function reResolveHousehold(
+  name: string,
+  phone: string | null,
+): Promise<{ clientId: string; dataset: Dataset } | null> {
+  const dataset = await loadDataset();
+  const result = resolveHouseholdLoosely({ name, phone }, dataset.clients, dataset.pets);
+  if (result.kind !== "matched") return null;
+  return { clientId: result.clientId, dataset };
+}
+
+/** Re-resolve a pet within the resolved household by NAME (collapsing split rows). */
+function reResolvePet(
+  dataset: Dataset,
+  clientId: string,
+  petQuery: string,
+): { petId: string; groupPetIds: string[] } | null {
+  const pets = dataset.pets.filter((p) => p.client_id === clientId);
+  const appts = dataset.appointments.filter((a) => a.client_id === clientId);
+  const result = resolvePetWithinHousehold(petQuery, pets, appts);
+  return result.kind === "matched"
+    ? { petId: result.petId, groupPetIds: result.groupPetIds }
+    : null;
+}
+
+const HOUSEHOLD_GONE = "That household couldn't be found anymore. Nothing was saved.";
+const PET_GONE = "That dog couldn't be found anymore. Nothing was saved.";
 
 /** Perform the write Sam just confirmed. The model never calls this — only her tap does. */
 export async function confirmAgentProposal(
@@ -167,9 +205,21 @@ function setOptional(form: FormData, field: string, value: string | null): void 
 async function confirmBooking(
   proposal: BookAppointmentProposal,
 ): Promise<AgentConfirmResult> {
+  // Re-resolve the household + each dog server-side from the proposal's NAMES
+  // (the model never supplies an id). Org-scoped, so resolution stays in this org;
+  // a name that no longer resolves fails safe — nothing is booked.
+  const household = await reResolveHousehold(proposal.householdName, proposal.householdPhone);
+  if (!household) return { status: "error", message: HOUSEHOLD_GONE };
+  const petIds: string[] = [];
+  for (const query of proposal.petQueries) {
+    const pet = reResolvePet(household.dataset, household.clientId, query);
+    if (!pet) return { status: "error", message: PET_GONE };
+    petIds.push(pet.petId);
+  }
+
   const org = await loadOrgSettings();
   const form = new FormData();
-  form.set("client_id", proposal.clientId);
+  form.set("client_id", household.clientId);
   form.set("date", proposal.date);
   form.set("time_slot", proposal.timeSlot);
   form.set("service_type", proposal.serviceType);
@@ -178,14 +228,14 @@ async function confirmBooking(
   form.set(AGENT_SOURCE_FIELD, AGENT_SOURCE_VALUE);
 
   if (org.schedulingStyle === "one_to_one") {
-    form.set("pet_id", proposal.petIds[0] ?? "");
+    form.set("pet_id", petIds[0] ?? "");
     form.set("duration_minutes", String(proposal.durationMinutes ?? ""));
     const state = await createOneToOneBooking({ status: "idle" }, form);
     return mapOneToOneState(state);
   }
 
   // Batched surface: one row per pet (comma-separated ids), no customer text.
-  form.set("pet_ids", proposal.petIds.join(","));
+  form.set("pet_ids", petIds.join(","));
   const state = await createBooking({ status: "idle" }, form);
   return mapBookingState(state);
 }
@@ -193,16 +243,24 @@ async function confirmBooking(
 async function confirmAddTip(
   proposal: AddTipProposal,
 ): Promise<AgentConfirmResult> {
-  // Re-resolve the appointment id server-side from the proposal's pet + date so
-  // we never trust a client-supplied id. Must still be a completed groom.
-  const record = await getClientRecord(proposal.clientId);
-  const target = record?.appointments.find(
+  // Re-resolve household + dog + the completed groom server-side from the
+  // proposal's NAMES + date — the model never supplies an id. A non-match (gone,
+  // or no longer a completed groom) fails safe. The pet group's ids are matched so
+  // a groom filed under a split-duplicate row is still found.
+  const household = await reResolveHousehold(proposal.householdName, proposal.householdPhone);
+  if (!household) return { status: "error", message: HOUSEHOLD_GONE };
+  const pet = reResolvePet(household.dataset, household.clientId, proposal.petQuery);
+  if (!pet) return { status: "error", message: PET_GONE };
+  const clientId = household.clientId;
+
+  const target = household.dataset.appointments.find(
     (appointment) =>
-      appointment.pet_id === proposal.petId &&
+      appointment.client_id === clientId &&
+      pet.groupPetIds.includes(appointment.pet_id) &&
       appointment.date === proposal.appointmentDate &&
       appointment.status === "completed",
   );
-  if (!record || !target) {
+  if (!target) {
     return {
       status: "error",
       message: "That groom couldn't be found anymore. Nothing was saved.",
@@ -210,7 +268,7 @@ async function confirmAddTip(
   }
 
   const form = new FormData();
-  form.set("client_id", proposal.clientId);
+  form.set("client_id", clientId);
   form.set("appointment_id", target.id);
   form.set("payment_method", proposal.paymentMethod);
   form.set("paid_amount", String(proposal.paidAmount));
@@ -223,9 +281,15 @@ async function confirmAddTip(
 async function confirmLogGroom(
   proposal: LogGroomProposal,
 ): Promise<AgentConfirmResult> {
+  // Re-resolve household + dog from names server-side; the model never supplies ids.
+  const household = await reResolveHousehold(proposal.householdName, proposal.householdPhone);
+  if (!household) return { status: "error", message: HOUSEHOLD_GONE };
+  const pet = reResolvePet(household.dataset, household.clientId, proposal.petQuery);
+  if (!pet) return { status: "error", message: PET_GONE };
+
   const form = new FormData();
-  form.set("client_id", proposal.clientId);
-  form.set("pet_id", proposal.petId);
+  form.set("client_id", household.clientId);
+  form.set("pet_id", pet.petId);
   form.set("date", proposal.date);
   form.set("service_type", proposal.serviceType);
   setMoney(form, "fee", proposal.fee);
@@ -410,7 +474,7 @@ async function confirmEditPet(proposal: EditPetProposal): Promise<AgentConfirmRe
  */
 async function resolveAppointmentIdByTuple(
   clientId: string,
-  petId: string,
+  petId: string | readonly string[],
   date: string,
   timeSlot: string | null,
 ): Promise<string | null> {
@@ -425,25 +489,25 @@ async function resolveAppointmentIdByTuple(
   return match.kind === "found" ? match.appointment.id : null;
 }
 
-async function resolveAppointmentId(
-  proposal: EditAppointmentProposal,
-): Promise<string | null> {
-  return resolveAppointmentIdByTuple(
-    proposal.clientId,
-    proposal.petId,
-    proposal.targetDate,
-    proposal.targetTimeSlot,
-  );
-}
-
 async function confirmEditAppointment(
   proposal: EditAppointmentProposal,
 ): Promise<AgentConfirmResult> {
-  // Re-resolve the appointment id server-side from the proposal's pet + current
-  // date (+ time) using the SAME resolver the propose tool used, so a
-  // client-tampered proposal can't redirect the write to another visit. The read
-  // is org-scoped (RLS + org_id), so resolution stays bound to this org.
-  const appointmentId = await resolveAppointmentId(proposal);
+  // Re-resolve household + dog + the appointment id server-side from the
+  // proposal's NAMES and the visit's current date/time — the model never supplies
+  // an id, and a stale/tampered name resolves only within this org (RLS) or fails
+  // safe. Same matcher + appointment resolver the propose tool used.
+  const household = await reResolveHousehold(proposal.householdName, proposal.householdPhone);
+  if (!household) return { status: "error", message: HOUSEHOLD_GONE };
+  const pet = reResolvePet(household.dataset, household.clientId, proposal.petQuery);
+  if (!pet) return { status: "error", message: PET_GONE };
+  const clientId = household.clientId;
+
+  const appointmentId = await resolveAppointmentIdByTuple(
+    clientId,
+    pet.groupPetIds, // split-duplicate safe: match a visit filed under either row
+    proposal.targetDate,
+    proposal.targetTimeSlot,
+  );
   if (!appointmentId) {
     return {
       status: "error",
@@ -453,7 +517,7 @@ async function confirmEditAppointment(
 
   if (proposal.mode === "cancel") {
     const form = new FormData();
-    form.set("client_id", proposal.clientId);
+    form.set("client_id", clientId);
     form.set("appointment_id", appointmentId);
     // No send_cancellation_text and no group scope: an agent cancel never
     // auto-texts the customer and only ever touches the one resolved visit.
@@ -463,7 +527,7 @@ async function confirmEditAppointment(
 
   if (proposal.mode === "no_show") {
     const form = new FormData();
-    form.set("client_id", proposal.clientId);
+    form.set("client_id", clientId);
     form.set("appointment_id", appointmentId);
     form.set(AGENT_SOURCE_FIELD, AGENT_SOURCE_VALUE);
     const state = await markAppointmentNoShow({ status: "idle" }, form);
@@ -471,7 +535,7 @@ async function confirmEditAppointment(
   }
 
   const form = new FormData();
-  form.set("client_id", proposal.clientId);
+  form.set("client_id", clientId);
   form.set("appointment_id", appointmentId);
   form.set("date", proposal.date);
   form.set("time_slot", proposal.timeSlot);
