@@ -2,6 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import {
   describeProposal,
+  type AgentProposal,
   type BookAppointmentProposal,
   type DeleteHouseholdProposal,
   type EditAppointmentProposal,
@@ -114,6 +115,80 @@ const REPLY: SendTextProposal = {
   recipientLabel: "Rosanne Adams",
   message: "Yes, 2pm works!",
 };
+
+const RESCHEDULE: EditAppointmentProposal = {
+  kind: "edit_appointment",
+  mode: "reschedule_change",
+  clientId: "c1",
+  petId: "p1",
+  targetDate: "2026-07-10",
+  targetTimeSlot: "10:30am",
+  ownerName: "Rosanne Adams",
+  petName: "Kiwi",
+  date: "2026-07-12",
+  timeSlot: "10:30am",
+  serviceType: "full_groom",
+  service: "Full groom",
+  location: "gina",
+  locationLabel: "Tidy Tails (Gina)",
+  fee: 50,
+  tip: null,
+  paymentMethod: "cash",
+  paymentStatus: "paid",
+  notes: null,
+  salonPayoutOverride: null,
+  changes: ["date → 2026-07-12"],
+};
+
+const NO_SHOW: EditAppointmentProposal = {
+  kind: "edit_appointment",
+  mode: "no_show",
+  clientId: "c1",
+  petId: "p1",
+  targetDate: "2026-07-10",
+  targetTimeSlot: "10:30am",
+  ownerName: "Rosanne Adams",
+  petName: "Kiwi",
+  date: "2026-07-10",
+  service: "Full groom",
+};
+
+// TT-025: EVERY confirmed write shows the SAME persistent inline success state —
+// "✓ <message>" — on the card, so booking is no longer inconsistent with edit /
+// no-show. This pins that parity across proposal kinds at the render layer.
+describe("AssistantConfirmCard — consistent inline write-success (TT-025)", () => {
+  const KINDS: ReadonlyArray<readonly [string, AgentProposal, string]> = [
+    ["book", PROPOSAL, "Booked Kiwi."],
+    ["reschedule", RESCHEDULE, "Updated Kiwi's visit."],
+    ["no_show", NO_SHOW, "Marked Kiwi as a no-show."],
+    ["cancel", CANCEL, "Cancelled Kiwi's visit."],
+    ["delete", DELETE, "Deleted Rosanne Adams."],
+    ["reply", REPLY, "Replied to Rosanne Adams."],
+  ];
+
+  it.each(KINDS)(
+    "a saved %s card shows the inline ✓ success message (no buttons, no reset)",
+    (_label, proposal, message) => {
+      const html = renderToStaticMarkup(
+        <AssistantConfirmCard
+          proposal={proposal}
+          status="saved"
+          message={message}
+          onConfirm={noop}
+          onCancel={noop}
+        />,
+      );
+      // Decode the apostrophe entity static markup emits ("Kiwi&#x27;s" → "Kiwi's").
+      const text = html.replace(/&#x27;/g, "'");
+      expect(text).toContain("✓");
+      expect(text).toContain(message);
+      // The card stays in the thread as its terminal saved state — no buttons, so
+      // it can't re-fire and the success record persists.
+      expect(html).not.toContain(">Confirm<");
+      expect(html).not.toContain("Cancel</button>");
+    },
+  );
+});
 
 describe("AssistantConfirmCard — Phase 4 kinds", () => {
   it("renders the exact resolved action text for a reply (the full message verbatim)", () => {
