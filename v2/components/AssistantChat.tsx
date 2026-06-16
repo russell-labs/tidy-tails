@@ -20,6 +20,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { AgentTurn } from "@/lib/agent/runAgent";
 import type { AgentProposal } from "@/lib/agent/proposals";
+import { buildAgentHistory } from "@/lib/agent/conversationHistory";
 import { assistantIntroCopy } from "@/lib/assistantIntroCopy";
 import { confirmAgentProposal } from "@/lib/actions/agentConfirm";
 import { recordAgentFeedback } from "@/lib/actions/agentFeedback";
@@ -259,13 +260,15 @@ export function AssistantChat({ writesEnabled }: { writesEnabled: boolean }) {
     }
   }
 
-  /** The transcript so far as plain user/assistant turns — light context for the next turn. */
+  /**
+   * The transcript so far as light context for the next turn. Every prepared
+   * action (a confirm card) is included as a resolved assistant turn so a prior
+   * request never looks unanswered — otherwise the model re-emits the stale
+   * proposal on a later turn (TT-027). buildAgentHistory also keeps the roles
+   * strictly alternating for the Anthropic adapter.
+   */
   function historyFromEntries(): AgentTurn[] {
-    return entries
-      .filter((entry): entry is Entry & { kind: "user" | "assistant" } =>
-        entry.kind === "user" || entry.kind === "assistant",
-      )
-      .map((entry) => ({ role: entry.kind, text: entry.text }));
+    return buildAgentHistory(entries);
   }
 
   function updateProposal(
