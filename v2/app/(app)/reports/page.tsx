@@ -21,7 +21,9 @@ import {
 import { readOperatorSettings } from "@/lib/operatorSettings.server";
 import { loadOrgSettings } from "@/lib/orgSettings.server";
 import { buildOwnerTakeHomeView } from "@/lib/ownerEconomics";
+import { buildRentedSplitView } from "@/lib/rentedEconomics";
 import { OwnerTakeHomeSection } from "@/components/OwnerTakeHomeSection";
+import { RentedSplitSection } from "@/components/RentedSplitSection";
 import { parsePaymentInfo } from "@/lib/payments";
 import {
   calculateDayLocationMoney,
@@ -173,6 +175,15 @@ export default async function ReportsPage({
   const ownedLocations = orgSettings.ownedLocations;
   const ownerTakeHomeView = buildOwnerTakeHomeView({
     ownedLocations,
+    appointments,
+    from,
+    to,
+  });
+  // WS4c B1 — the rented chair's salon cut, shown ALONGSIDE owner take-home for a
+  // hybrid org. Empty (section hidden) for Sam and any org with no rented
+  // org-settings location, so the batched gina/annette path is untouched.
+  const rentedSplitView = buildRentedSplitView({
+    rentedLocations: orgSettings.rentedLocations,
     appointments,
     from,
     to,
@@ -344,6 +355,9 @@ export default async function ReportsPage({
         )}
       </section>
       )}
+
+      {/* Rented-chair split (WS4c B1) — shows alongside owner take-home ----- */}
+      <RentedSplitSection view={rentedSplitView} />
 
       {/* Payment follow-up -------------------------------------------------- */}
       <section className="mt-7">

@@ -161,3 +161,94 @@ describe("orgSettings — economics (WS4b)", () => {
     expect(s.ownedLocations).toEqual([]);
   });
 });
+
+describe("orgSettings — rented economics (WS4c B1)", () => {
+  const hybrid = {
+    scheduling_style: "one_to_one",
+    settings: {
+      businessStructure: "hybrid",
+      locations: [
+        { type: "owned", name: "Home Studio", address: "5 Maple St", expenses: {} },
+        {
+          type: "rented",
+          name: "Bayfield Pet Spa",
+          address: "9 King St",
+          payoutType: "percent",
+          salonKeepsPercent: 30,
+          dailyRate: null,
+        },
+      ],
+    },
+  };
+
+  it("exposes rented locations with their payout config", () => {
+    expect(normalizeOrgSettings(hybrid).rentedLocations).toEqual([
+      {
+        name: "Bayfield Pet Spa",
+        address: "9 King St",
+        payoutType: "percent",
+        salonKeepsPercent: 30,
+        dailyRate: null,
+      },
+    ]);
+  });
+
+  it("ignores owned locations in the rented list", () => {
+    const rented = normalizeOrgSettings(hybrid).rentedLocations;
+    expect(rented).toHaveLength(1);
+    expect(rented[0].name).toBe("Bayfield Pet Spa");
+  });
+
+  it("reads a daily-rate rented location", () => {
+    const rented = normalizeOrgSettings({
+      scheduling_style: "one_to_one",
+      settings: {
+        locations: [
+          {
+            type: "rented",
+            name: "Chair Co",
+            address: "1 Bay St",
+            payoutType: "daily_rate",
+            salonKeepsPercent: 0,
+            dailyRate: 40,
+          },
+        ],
+      },
+    }).rentedLocations;
+    expect(rented).toEqual([
+      {
+        name: "Chair Co",
+        address: "1 Bay St",
+        payoutType: "daily_rate",
+        salonKeepsPercent: 0,
+        dailyRate: 40,
+      },
+    ]);
+  });
+
+  it("clamps salonKeepsPercent into 0..100 and drops nameless entries", () => {
+    const rented = normalizeOrgSettings({
+      settings: {
+        locations: [
+          { type: "rented", name: "", address: "x", payoutType: "percent", salonKeepsPercent: 50 },
+          { type: "rented", name: "Over", address: "y", payoutType: "percent", salonKeepsPercent: 150 },
+        ],
+      },
+    }).rentedLocations;
+    expect(rented).toEqual([
+      {
+        name: "Over",
+        address: "y",
+        payoutType: "percent",
+        salonKeepsPercent: 100,
+        dailyRate: null,
+      },
+    ]);
+  });
+
+  it("defaults rentedLocations to [] for a Sam-like (no settings) org", () => {
+    expect(
+      normalizeOrgSettings({ scheduling_style: "batched", settings: {} }).rentedLocations,
+    ).toEqual([]);
+  });
+});
