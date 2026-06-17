@@ -9,12 +9,14 @@
 
 import type { ServiceType } from "./booking";
 
-// The services the live appointments.service_type CHECK actually accepts
-// (full_groom / bath_only / nail_trim / other) — note SERVICE_TYPES also lists
-// 'puppy_groom', which the DB rejects. The 1:1 picker and this validator offer
-// only the persistable set so a booking never fails the CHECK on insert.
+// The services the 1:1 picker and this validator offer. Must stay a superset of
+// the app/agent's SERVICE_TYPES (lib/booking.ts) so the agent never offers a
+// service this path would reject (enforced by a test). 'puppy_groom' is now
+// accepted by the live appointments.service_type CHECK (TT-019, migration
+// 20260617000001) — it was excluded here only while the DB rejected it.
 export const ONE_TO_ONE_SERVICE_TYPES = [
   "full_groom",
+  "puppy_groom",
   "bath_only",
   "nail_trim",
   "other",

@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { SERVICE_TYPES } from "./booking";
 import {
+  ONE_TO_ONE_SERVICE_TYPES,
   buildOneToOneAppointmentInsert,
   validateOneToOneBooking,
 } from "./oneToOneBooking";
@@ -67,10 +69,18 @@ describe("validateOneToOneBooking", () => {
     ).toBe(false);
   });
 
-  it("rejects puppy_groom — it is not in the appointments.service_type CHECK", () => {
-    expect(validateOneToOneBooking(validRaw({ service_type: "puppy_groom" }), today).ok).toBe(
-      false,
-    );
+  it("accepts puppy_groom (now in the appointments.service_type CHECK, TT-019)", () => {
+    const result = validateOneToOneBooking(validRaw({ service_type: "puppy_groom" }), today);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.service_type).toBe("puppy_groom");
+  });
+
+  it("accepts every service the app/agent can offer — the agent must never offer a service the 1:1 path rejects", () => {
+    for (const service_type of SERVICE_TYPES) {
+      expect(ONE_TO_ONE_SERVICE_TYPES).toContain(service_type);
+      expect(validateOneToOneBooking(validRaw({ service_type }), today).ok).toBe(true);
+    }
   });
 
   it("does not validate the location against an enum (per-org names allowed)", () => {
