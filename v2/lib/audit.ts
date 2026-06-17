@@ -32,7 +32,8 @@ export type AuditEventType =
   | "google_calendar.disconnected"
   | "google_calendar.duration_repaired"
   | "google_calendar.sync_failed"
-  | "agent.feedback";
+  | "agent.feedback"
+  | "agent.turn";
 
 export type AuditEvent = {
   id: string;
@@ -88,6 +89,10 @@ const SAFE_METADATA_KEYS = new Set([
   "rating",
   "question",
   "toolsUsed",
+  // Agentic-layer turn capture (TT-038): the outcome of one assistant turn
+  // (answered / proposed / error / confirmed / gated). "question" + "toolsUsed"
+  // are shared with feedback above.
+  "outcome",
 ]);
 
 const LABELS: Record<AuditEventType, string> = {
@@ -123,6 +128,7 @@ const LABELS: Record<AuditEventType, string> = {
   "google_calendar.duration_repaired": "Repaired calendar",
   "google_calendar.sync_failed": "Calendar sync failed",
   "agent.feedback": "Rated assistant answer",
+  "agent.turn": "Assistant query",
 };
 
 export function buildAuditEventInsert(input: AuditEventInput) {

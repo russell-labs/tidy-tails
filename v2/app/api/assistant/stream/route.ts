@@ -17,6 +17,7 @@ import { isAgentEnabled } from "@/lib/writeGate";
 import { getCurrentUser } from "@/lib/supabase/server";
 import { sanitizeAgentRequest } from "@/lib/agent/agentRequest";
 import { runAgent, AgentNotConfiguredError } from "@/lib/agent/runAgent";
+import { recordAgentTurn } from "@/lib/agentTurnLog.server";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -75,13 +76,21 @@ export async function POST(request: Request): Promise<Response> {
                 : { type: "thinking" },
             ),
         });
+        const toolsUsed = Array.from(new Set(result.toolCalls.map((call) => call.name)));
         write({
           type: "done",
           answer: result.text,
-          toolsUsed: Array.from(new Set(result.toolCalls.map((call) => call.name))),
+          toolsUsed,
           // A prepared write awaiting Sam's confirm tap, when this turn proposed
           // one. The agent never executes it — the UI renders a confirm card.
           proposal: result.proposal,
+        });
+        // TT-038: capture the turn AFTER the answer is on the wire so logging
+        // never delays content. recordAgentTurn is fire-and-forget (never throws).
+        await recordAgentTurn({
+          question: sanitized.message,
+          toolsUsed,
+          outcome: result.proposal ? "proposed" : "answered",
         });
       } catch (error) {
         const message =
@@ -89,6 +98,11 @@ export async function POST(request: Request): Promise<Response> {
             ? "The assistant isn't set up yet. Ask Russell to finish configuring it."
             : "Something went wrong answering that. Please try again.";
         write({ type: "error", message });
+        await recordAgentTurn({
+          question: sanitized.message,
+          toolsUsed: [],
+          outcome: "error",
+        });
       } finally {
         controller.close();
       }

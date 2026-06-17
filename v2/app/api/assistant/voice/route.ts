@@ -30,6 +30,7 @@ import { isAgentEnabled } from "@/lib/writeGate";
 import { getCurrentUser } from "@/lib/supabase/server";
 import { sanitizeAgentRequest } from "@/lib/agent/agentRequest";
 import { runAgent, AgentNotConfiguredError } from "@/lib/agent/runAgent";
+import { recordAgentTurn } from "@/lib/agentTurnLog.server";
 import { transcribeAudio } from "@/lib/agent/transcribe";
 import { ProviderNotConfiguredError } from "@/lib/agent/provider/types";
 import { isAudioWithinLimit, isLikelyAudioMime } from "@/lib/agent/voiceInput";
@@ -114,6 +115,10 @@ export async function POST(request: Request): Promise<Response> {
     async start(controller) {
       const write = (event: Record<string, unknown>) =>
         controller.enqueue(encoder.encode(line(event)));
+      // The operator's transcript, once we have it — used to attribute a captured
+      // turn (TT-038). Empty until transcription succeeds, so a transcription/
+      // validation failure (no real question yet) is not logged as a turn.
+      let question = "";
       try {
         // 1) Transcribe the audio to text (server-side, Gemini).
         const transcript = await transcribeAudio({ audioBase64, mimeType });
@@ -135,6 +140,7 @@ export async function POST(request: Request): Promise<Response> {
           write({ type: "error", message: sanitized.message });
           return;
         }
+        question = sanitized.message;
 
         const result = await runAgent(sanitized.message, sanitized.history, {
           onEvent: (event) =>
@@ -144,17 +150,30 @@ export async function POST(request: Request): Promise<Response> {
                 : { type: "thinking" },
             ),
         });
+        const toolsUsed = Array.from(new Set(result.toolCalls.map((call) => call.name)));
         write({
           type: "done",
           answer: result.text,
-          toolsUsed: Array.from(new Set(result.toolCalls.map((call) => call.name))),
+          toolsUsed,
           // A voice-initiated turn may PREPARE a write (book/tip/log). The route
           // never executes it — the proposal rides back so the UI surfaces the
           // same confirm card a typed turn would. Voice does not bypass confirm.
           proposal: result.proposal,
         });
+        // TT-038: capture the turn after the answer is on the wire. The audio is
+        // never logged — only the operator's transcript, tools, and outcome.
+        await recordAgentTurn({
+          question,
+          toolsUsed,
+          outcome: result.proposal ? "proposed" : "answered",
+        });
       } catch (error) {
         write({ type: "error", message: friendlyMessage(error) });
+        // Only an error AFTER we had the operator's question is a model turn that
+        // "couldn't do it"; a transcription/setup failure has no question to log.
+        if (question) {
+          await recordAgentTurn({ question, toolsUsed: [], outcome: "error" });
+        }
       } finally {
         controller.close();
       }

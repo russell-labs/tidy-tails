@@ -7,12 +7,14 @@ vi.mock("@/lib/agent/runAgent", () => ({
   runAgent: vi.fn(),
   AgentNotConfiguredError: class AgentNotConfiguredError extends Error {},
 }));
+vi.mock("@/lib/agentTurnLog.server", () => ({ recordAgentTurn: vi.fn() }));
 
 import { POST } from "./route";
 import { isAgentEnabled } from "@/lib/writeGate";
 import { getCurrentUser } from "@/lib/supabase/server";
 import { transcribeAudio } from "@/lib/agent/transcribe";
 import { runAgent, AgentNotConfiguredError } from "@/lib/agent/runAgent";
+import { recordAgentTurn } from "@/lib/agentTurnLog.server";
 import { ProviderNotConfiguredError } from "@/lib/agent/provider/types";
 import { MAX_AUDIO_BYTES } from "@/lib/agent/voiceInput";
 
@@ -20,6 +22,7 @@ const isAgentEnabledMock = vi.mocked(isAgentEnabled);
 const getCurrentUserMock = vi.mocked(getCurrentUser);
 const transcribeAudioMock = vi.mocked(transcribeAudio);
 const runAgentMock = vi.mocked(runAgent);
+const recordAgentTurnMock = vi.mocked(recordAgentTurn);
 
 /** Build a multipart voice request. Let undici set the boundary content-type. */
 function voiceRequest(
@@ -157,5 +160,61 @@ describe("POST /api/assistant/voice — transcribe then run the read-only agent"
     expect(events[0]).toEqual({ type: "transcript", text: "how much did I make today" });
     expect(events.at(-1)?.type).toBe("error");
     expect(String(events.at(-1)?.message)).toMatch(/set up/i);
+  });
+});
+
+// TT-038: a voice turn is captured the same as a typed one — the OPERATOR's
+// transcript is the question (operator-authored, safe to log); the audio is not.
+describe("POST /api/assistant/voice — turn capture (TT-038)", () => {
+  it("logs an answered turn with the transcript as the question", async () => {
+    runAgentMock.mockResolvedValue({
+      text: "You made $240 today.",
+      toolCalls: [{ name: "get_day_income", input: {} }],
+    });
+    await readEvents(await POST(voiceRequest({ history: [] })));
+
+    expect(recordAgentTurnMock).toHaveBeenCalledWith({
+      question: "how much did I make today",
+      toolsUsed: ["get_day_income"],
+      outcome: "answered",
+    });
+  });
+
+  it("logs a proposed turn when a voice turn prepares a write", async () => {
+    runAgentMock.mockResolvedValue({
+      text: "Ready to book.",
+      toolCalls: [{ name: "propose_book_appointment", input: {} }],
+      proposal: { kind: "book_appointment" } as never,
+    });
+    await readEvents(await POST(voiceRequest({ history: [] })));
+
+    expect(recordAgentTurnMock).toHaveBeenCalledWith({
+      question: "how much did I make today",
+      toolsUsed: ["propose_book_appointment"],
+      outcome: "proposed",
+    });
+  });
+
+  it("logs an error turn when the run throws after transcription", async () => {
+    runAgentMock.mockRejectedValue(new Error("boom"));
+    await readEvents(await POST(voiceRequest()));
+
+    expect(recordAgentTurnMock).toHaveBeenCalledWith({
+      question: "how much did I make today",
+      toolsUsed: [],
+      outcome: "error",
+    });
+  });
+
+  it("logs nothing on a silent clip (no question was asked)", async () => {
+    transcribeAudioMock.mockResolvedValue("");
+    await readEvents(await POST(voiceRequest()));
+    expect(recordAgentTurnMock).not.toHaveBeenCalled();
+  });
+
+  it("logs nothing when transcription itself fails (no operator question to attribute)", async () => {
+    transcribeAudioMock.mockRejectedValue(new Error("boom"));
+    await readEvents(await POST(voiceRequest()));
+    expect(recordAgentTurnMock).not.toHaveBeenCalled();
   });
 });

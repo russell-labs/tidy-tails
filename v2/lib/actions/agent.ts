@@ -18,6 +18,7 @@ import {
   type AgentTurn,
 } from "@/lib/agent/runAgent";
 import type { AgentProposal } from "@/lib/agent/proposals";
+import { recordAgentTurn } from "@/lib/agentTurnLog.server";
 
 export type AgentChatState = {
   status: "answered" | "error";
@@ -65,13 +66,25 @@ export async function askAgent(
 
   try {
     const result = await runAgent(sanitized.message, sanitized.history);
+    const toolsUsed = Array.from(new Set(result.toolCalls.map((call) => call.name)));
+    // TT-038: capture the turn on the audit rails (fire-and-forget, never throws).
+    await recordAgentTurn({
+      question: sanitized.message,
+      toolsUsed,
+      outcome: result.proposal ? "proposed" : "answered",
+    });
     return {
       status: "answered",
       answer: result.text,
-      toolsUsed: Array.from(new Set(result.toolCalls.map((call) => call.name))),
+      toolsUsed,
       proposal: result.proposal,
     };
   } catch (error) {
+    await recordAgentTurn({
+      question: sanitized.message,
+      toolsUsed: [],
+      outcome: "error",
+    });
     if (error instanceof AgentNotConfiguredError) {
       return {
         status: "error",

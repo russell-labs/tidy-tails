@@ -55,6 +55,11 @@ export async function loadRecentAuditEvents(limit = 20): Promise<AuditEvent[]> {
       .from("audit_events")
       .select("*")
       .eq("groomer_id", groomerId)
+      // TT-038: agent.turn is high-volume per-turn capture; its read path is the
+      // dashboard (cross-org), not Sam's in-app activity feed. Excluding it here
+      // keeps real bookings/edits from being crowded out (and frees slots for the
+      // inbox/notifications readers that load this at a high limit).
+      .neq("event_type", "agent.turn")
       .order("created_at", { ascending: false })
       .limit(limit);
     if (error) return [];

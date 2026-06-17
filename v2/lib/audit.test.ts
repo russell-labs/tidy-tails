@@ -155,3 +155,38 @@ describe("agent.feedback audit plumbing", () => {
     expect(auditEventLabel("agent.feedback")).toBe("Rated assistant answer");
   });
 });
+
+// TT-038: the agentic layer records one "agent.turn" event per assistant turn —
+// the operator's own question, which read/propose tools fired, and the outcome —
+// through this SAME audit pipeline (no new table). The new "outcome" key must
+// survive the safe-metadata filter, and the event type needs a human label. The
+// filter is also the privacy backstop: a non-allowlisted key (e.g. a customer's
+// words) must be dropped even if a caller mistakenly passes it.
+describe("agent.turn audit plumbing", () => {
+  it("keeps the turn metadata keys (question/toolsUsed/outcome/source) through the filter", () => {
+    const insert = buildAuditEventInsert({
+      actorId: "user-1",
+      eventType: "agent.turn",
+      summary: "Assistant answered a question.",
+      metadata: {
+        question: "what's my day look like",
+        toolsUsed: ["get_schedule"],
+        outcome: "answered",
+        source: "agent",
+        customerMessage: "should-not-be-here",
+      },
+    });
+
+    expect(insert.event_type).toBe("agent.turn");
+    expect(insert.metadata).toEqual({
+      question: "what's my day look like",
+      toolsUsed: ["get_schedule"],
+      outcome: "answered",
+      source: "agent",
+    });
+  });
+
+  it("gives the turn event a human-readable label", () => {
+    expect(auditEventLabel("agent.turn")).toBe("Assistant query");
+  });
+});
