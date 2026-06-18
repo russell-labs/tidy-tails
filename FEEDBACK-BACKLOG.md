@@ -4,6 +4,44 @@ Operator-driven improvements to the in-app experience — what Sam's thumbs up/d
 tells us and how that signal reaches a human, plus the design-quality work that
 makes the cockpit calmer to use. One entry per item, newest first.
 
+## TT-041 — home-screen assistant launcher
+
+**Status:** built, PR open (dark — gated behind `TIDYTAILS_ENABLE_AGENT`; awaiting Cowork gate review).
+
+Puts the assistant one tap from the home/search screen instead of only behind the
+`/assistant` route. Under the Contacts section, when the agent feature is on, a
+slim composer-style bar ("Ask about your business…" with the mic + read-aloud
+glyphs, nothing else) sits quietly. Tapping it expands it IN PLACE into the full
+assistant thread, boxed in its own card, without leaving home; Minimize returns
+it to the bar. With the gate off the home screen is byte-identical to today.
+
+- **Additive `embedded` prop on `AssistantChat`.** Default `false` = today's
+  full-screen behaviour, byte-for-byte. When `true` the panel does NOT set the
+  `data-tidy-assistant` body flag and does NOT use the `min-h-0 flex-1`
+  viewport-fill root — it is a self-contained `max-h-[70svh]` card that scrolls
+  its own transcript, so it never hijacks the host page's scroll. Every other
+  prop, export, server action, and the confirm-before-write contract are
+  untouched; `/assistant` renders `<AssistantChat>` with no `embedded` and is
+  unchanged.
+- **New `HomeAssistantLauncher`.** Owns the collapsed/expanded state and renders
+  `<AssistantChat embedded writesEnabled={…} />` when open. Dumb chrome — every
+  safety pattern (confirm cards, voice-only read-back, read-aloud/mute) lives in
+  AssistantChat and is reused unchanged.
+- **Server-side gate.** `page.tsx` resolves `isAgentEnabled()` /
+  `isAgentWritesEnabled()` (same source as the `/assistant` route) and passes
+  them to `HomeSearch`, which renders the launcher only when the agent is enabled.
+  Writes capability flows through `writesEnabled` exactly as `/assistant` does it.
+
+**Hard rules honored:** additive + visual-first; default AssistantChat / `/assistant`
+behaviour unchanged; ≥44px tap targets, real aria labels, ≥16px composer font
+(coarse-pointer rule preserved); tests + typecheck + lint + build all green (1763
+tests, +9); no SQL/schema/RLS/flag changes (reuses the existing
+`TIDYTAILS_ENABLE_AGENT` / `TIDYTAILS_ENABLE_AGENT_WRITES` gates). Isolation
+verified live: with the launcher expanded the body flag stays unset, the app
+shell is not pinned, and the home page scrolls normally
+(`_reports/tt-041-home-assistant-launcher/`). Re-check CI against current `main`
+at merge time (`strict:false`).
+
 ## TT-040 — full-app redesign: shared design system (foundation)
 
 **Status:** built, PR open (visual-only; awaiting Cowork gate review).
