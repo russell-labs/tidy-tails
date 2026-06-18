@@ -89,7 +89,7 @@ export function HouseholdCard({
   return (
     <Link
       href={`/clients/${household.id}`}
-      className="block rounded-2xl border border-line bg-surface p-4 shadow-sm"
+      className="block rounded-2xl border border-line bg-surface p-4 shadow-soft"
     >
       <div className="flex items-baseline justify-between gap-3">
         <span className="truncate text-base font-bold text-ink">

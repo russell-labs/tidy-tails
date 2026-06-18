@@ -98,7 +98,7 @@ export function AddHousehold({ mode }: { mode: "fixtures" | "live" }) {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="flex w-full items-center justify-center gap-2 rounded-xl border border-brand bg-brand-soft px-3 py-3 text-base font-semibold text-brand-ink active:bg-brand-soft/70"
+        className="tt-btn tt-btn-primary w-full"
       >
         <svg
           width="18"
@@ -106,15 +106,12 @@ export function AddHousehold({ mode }: { mode: "fixtures" | "live" }) {
           viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"
-          strokeWidth="2"
+          strokeWidth="2.2"
           strokeLinecap="round"
           strokeLinejoin="round"
           aria-hidden="true"
         >
-          <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-          <circle cx="9" cy="7" r="4" />
-          <line x1="19" y1="8" x2="19" y2="14" />
-          <line x1="22" y1="11" x2="16" y2="11" />
+          <path d="M12 5v14M5 12h14" />
         </svg>
         Add household
       </button>
