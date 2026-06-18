@@ -46,7 +46,7 @@ function cutLabel(location: RentedSplit): string {
 
 function LocationCard({ location }: { location: RentedSplit }) {
   return (
-    <li className="rounded-xl border border-line bg-surface px-4 py-3 shadow-sm">
+    <li className="rounded-xl border border-line bg-surface px-4 py-3 shadow-soft">
       <p className="font-semibold text-ink">{location.locationName}</p>
       <div className="mt-2">
         <Row label="Fees" value={formatMoney(location.fees)} />
@@ -67,7 +67,7 @@ export function RentedSplitSection({ view }: { view: RentedSplitView }) {
   if (view.locations.length === 0) return null;
   return (
     <section className="mt-7">
-      <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-faint">
+      <h2 className="tt-eyebrow">
         Rented-chair split
       </h2>
       <ul className="mt-2 flex flex-col gap-2">

@@ -82,7 +82,7 @@ export function OneToOneOpenedDay({
 
   return (
     <div className="mt-3 flex flex-col gap-3">
-      <div className="rounded-xl border border-line bg-surface px-3.5 py-3">
+      <div className="rounded-xl border border-line bg-surface px-3.5 py-3 shadow-soft">
         <p className="text-sm font-semibold text-ink">
           {summary.totalDogs} {summary.totalDogs === 1 ? "dog" : "dogs"} ·{" "}
           {oneToOneLoadSummaryText(summary)}
@@ -111,7 +111,7 @@ export function OneToOneOpenedDay({
             <li key={block.id}>
               <Link
                 href={`/schedule/appointments/${block.id}`}
-                className="flex items-stretch gap-3 rounded-xl border border-line bg-surface px-3.5 py-3 active:bg-canvas"
+                className="flex items-stretch gap-3 rounded-xl border border-line bg-surface px-3.5 py-3 shadow-soft active:bg-canvas"
               >
                 <div className="w-20 shrink-0 border-r border-line pr-3">
                   <p className="text-sm font-semibold text-ink">{block.startLabel}</p>

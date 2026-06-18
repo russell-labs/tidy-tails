@@ -48,7 +48,7 @@ export function AppointmentWorkflowControls({
   >(updateAppointmentWorkflow, { status: "idle" });
 
   return (
-    <form action={formAction} className="rounded-xl border border-line bg-surface px-3.5 py-3">
+    <form action={formAction} className="rounded-xl border border-line bg-surface px-3.5 py-3 shadow-soft">
       <input type="hidden" name="client_id" value={clientId} />
       <input type="hidden" name="appointment_id" value={appointmentId} />
       <p className="text-sm font-semibold text-ink">Schedule status</p>

@@ -234,7 +234,7 @@ export default async function SchedulePage({
     return (
       <main className="px-4 py-4">
         <header>
-          <h1 className="text-2xl font-bold text-ink">Schedule</h1>
+          <h1 className="tt-page-title">Schedule</h1>
           <p className="mt-1 text-sm text-ink-soft">
             Your schedule fills in once you have clients booked.
           </p>
@@ -292,7 +292,7 @@ export default async function SchedulePage({
     <main className="px-4 py-4">
       <header className="flex items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-ink">Schedule</h1>
+          <h1 className="tt-page-title">Schedule</h1>
           <p className="mt-1 text-sm text-ink-soft">
             {view === "day"
               ? `Slate and day fit for ${dayLabel(selectedDay)}.`
@@ -313,7 +313,7 @@ export default async function SchedulePage({
             href={weekHref(range.start)}
             className={`rounded-lg px-3 py-2 text-center text-sm font-semibold ${
               view === "week"
-                ? "bg-surface text-brand shadow-sm"
+                ? "bg-surface text-brand shadow-soft"
                 : "text-ink-soft active:bg-surface"
             }`}
           >
@@ -323,7 +323,7 @@ export default async function SchedulePage({
             href={dayHref(selectedDay)}
             className={`rounded-lg px-3 py-2 text-center text-sm font-semibold ${
               view === "day"
-                ? "bg-surface text-brand shadow-sm"
+                ? "bg-surface text-brand shadow-soft"
                 : "text-ink-soft active:bg-surface"
             }`}
           >
@@ -378,7 +378,7 @@ export default async function SchedulePage({
 
       <section className="mt-6">
         <div className="mb-2">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-faint">
+          <h2 className="tt-eyebrow">
             {view === "day" ? "Day fit and slate" : "Day fit"}
           </h2>
           <p className="mt-1 text-sm text-ink-soft">
@@ -454,7 +454,7 @@ export default async function SchedulePage({
 
       {view === "week" ? (
         <section className="mt-6">
-          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-ink-faint">
+          <h2 className="mb-2 tt-eyebrow">
             Appointments this week
           </h2>
           <AppointmentList
@@ -482,7 +482,7 @@ function DaySummaryCard({
   return (
     <Link
       href={dayHref(summary.date)}
-      className={`block rounded-xl border px-3.5 py-3 shadow-sm active:scale-[0.99] active:bg-brand-soft ${statusTone(summary)}`}
+      className={`block rounded-xl border px-3.5 py-3 shadow-soft active:scale-[0.99] active:bg-brand-soft ${statusTone(summary)}`}
     >
       <div className="flex items-start justify-between gap-3">
         <div>
@@ -520,7 +520,7 @@ function OneToOneDaySummaryCard({ summary }: { summary: OneToOneDaySummary }) {
   return (
     <Link
       href={dayHref(summary.date)}
-      className={`block rounded-xl border px-3.5 py-3 shadow-sm active:scale-[0.99] active:bg-brand-soft ${
+      className={`block rounded-xl border px-3.5 py-3 shadow-soft active:scale-[0.99] active:bg-brand-soft ${
         summary.gettingHeavy
           ? "border-warn/40 bg-warn-soft text-warn"
           : "border-line bg-surface text-ink"
@@ -573,7 +573,7 @@ function OpenedDay({
   const label = statusLabel(summary);
 
   return (
-    <div className="rounded-xl border border-line bg-surface shadow-sm">
+    <div className="rounded-xl border border-line bg-surface shadow-soft">
       <div className={`rounded-t-xl border-b px-3.5 py-3 ${statusTone(summary)}`}>
         <div className="flex items-start justify-between gap-3">
           <div>
@@ -691,7 +691,7 @@ function AppointmentList({
         const card = (
           <Link
             href={appointmentHref(appointment.id)}
-            className={`block rounded-xl border px-3.5 py-3 shadow-sm ${
+            className={`block rounded-xl border px-3.5 py-3 shadow-soft ${
               compact ? "shadow-none" : ""
             } ${appointmentCardTone(workflowStage)}`}
           >
