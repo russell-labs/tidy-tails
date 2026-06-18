@@ -78,8 +78,8 @@ export function BottomNav() {
               <Link
                 href={tab.href}
                 aria-current={active ? "page" : undefined}
-                className={`flex flex-col items-center gap-1 py-2.5 text-xs font-medium ${
-                  active ? "text-brand" : "text-ink-faint"
+                className={`flex flex-col items-center gap-1 py-2.5 text-xs ${
+                  active ? "font-semibold text-brand" : "font-medium text-ink-faint"
                 }`}
               >
                 {tab.icon}

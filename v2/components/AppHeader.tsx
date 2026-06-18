@@ -77,14 +77,11 @@ export async function AppHeader() {
         <Link
           href="/settings"
           aria-label="Settings"
-          className="relative flex h-9 w-9 items-center justify-center rounded-full border border-line bg-canvas text-brand shadow-sm active:bg-brand-soft"
+          className="flex h-9 w-9 items-center justify-center rounded-full border border-line bg-canvas text-brand shadow-sm active:bg-brand-soft"
         >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/icon.svg" alt="" className="h-5 w-5" />
           <svg
-            className="absolute -bottom-0.5 -right-0.5 rounded-full bg-surface p-0.5 text-ink-soft"
-            width="14"
-            height="14"
+            width="18"
+            height="18"
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
