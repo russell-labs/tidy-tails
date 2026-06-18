@@ -6,6 +6,7 @@ import { LocationSettingsForm } from "@/components/LocationSettingsForm";
 import { MessageDraftSettingsForm } from "@/components/MessageDraftSettingsForm";
 import { ScheduleCalibrationForm } from "@/components/ScheduleCalibrationForm";
 import { SmsMessages } from "@/components/SmsMessages";
+import { AssistantVoiceSettings } from "@/components/AssistantVoiceSettings";
 import {
   auditEventLabel,
   auditEventTone,
@@ -418,6 +419,13 @@ export default async function SettingsPage({
             </a>
           )}
         </div>
+      </Card>
+
+      <Card
+        title="Voice"
+        eyebrow="The voice the assistant uses when it reads an answer back aloud."
+      >
+        <AssistantVoiceSettings />
       </Card>
 
       <Card title="Business tools">
