@@ -84,7 +84,7 @@ export default async function ReportsPage({
   if (clients.length === 0) {
     return (
       <main className="px-4 py-5">
-        <h1 className="text-xl font-bold text-ink">Reports</h1>
+        <h1 className="tt-page-title">Reports</h1>
         <div className="mt-6">
           <FirstRunEmptyState
             title="No reports yet"
@@ -217,11 +217,11 @@ export default async function ReportsPage({
 
   return (
     <main className="px-4 py-5">
-      <h1 className="text-xl font-bold text-ink">Reports</h1>
+      <h1 className="tt-page-title">Reports</h1>
 
       {/* Revenue ------------------------------------------------------------ */}
       <section className="mt-4">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-faint">
+        <h2 className="tt-eyebrow">
           Revenue
         </h2>
 
@@ -301,7 +301,7 @@ export default async function ReportsPage({
       ) : (
       /* Salon payouts ----------------------------------------------------- */
       <section className="mt-7">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-faint">
+        <h2 className="tt-eyebrow">
           Salon payouts
         </h2>
         <div className="mt-2 grid grid-cols-2 gap-2">
@@ -322,7 +322,7 @@ export default async function ReportsPage({
             {closeoutRows.slice(0, 12).map((row) => (
               <li
                 key={`${row.date}-${row.location}`}
-                className="rounded-xl border border-line bg-surface px-4 py-3 shadow-sm"
+                className="rounded-xl border border-line bg-surface px-4 py-3 shadow-soft"
               >
                 <div className="flex items-start justify-between gap-3">
                   <div>
@@ -361,7 +361,7 @@ export default async function ReportsPage({
 
       {/* Payment follow-up -------------------------------------------------- */}
       <section className="mt-7">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-faint">
+        <h2 className="tt-eyebrow">
           Payment follow-up
         </h2>
         <p className="mb-2 text-xs text-ink-faint">
@@ -379,7 +379,7 @@ export default async function ReportsPage({
                 <li key={appointment.id}>
                   <Link
                     href={`/clients/${appointment.client_id}`}
-                    className="block rounded-xl border border-line bg-surface px-4 py-3 shadow-sm"
+                    className="block rounded-xl border border-line bg-surface px-4 py-3 shadow-soft"
                   >
                     <div className="flex items-center justify-between gap-2">
                       <span className="truncate font-semibold text-ink">
@@ -405,7 +405,7 @@ export default async function ReportsPage({
 
       {/* Lapsed clients ----------------------------------------------------- */}
       <section className="mt-7">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-faint">
+        <h2 className="tt-eyebrow">
           Follow-up list
         </h2>
         <p className="mb-2 text-xs text-ink-faint">
@@ -442,7 +442,7 @@ export default async function ReportsPage({
               <li key={row.client.id}>
                 <Link
                   href={`/clients/${row.client.id}`}
-                  className="block rounded-xl border border-line bg-surface px-4 py-3 shadow-sm"
+                  className="block rounded-xl border border-line bg-surface px-4 py-3 shadow-soft"
                 >
                   <div className="flex items-center justify-between gap-2">
                     <span className="truncate font-semibold text-ink">
@@ -471,7 +471,7 @@ export default async function ReportsPage({
 
       {/* Vaccination alerts ------------------------------------------------- */}
       <section className="mt-7">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-faint">
+        <h2 className="tt-eyebrow">
           Vaccination alerts
         </h2>
         <p className="mb-2 text-xs text-ink-faint">
@@ -488,7 +488,7 @@ export default async function ReportsPage({
               <li key={v.id}>
                 <Link
                   href={`/clients/${client!.id}/pets/${pet!.id}`}
-                  className="flex items-center justify-between gap-3 rounded-xl border border-line bg-surface px-4 py-3 shadow-sm"
+                  className="flex items-center justify-between gap-3 rounded-xl border border-line bg-surface px-4 py-3 shadow-soft"
                 >
                   <div className="min-w-0">
                     <p className="truncate font-semibold text-ink">

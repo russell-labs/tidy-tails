@@ -42,7 +42,7 @@ function LocationCard({
   isWholeMonth: boolean;
 }) {
   return (
-    <li className="rounded-xl border border-line bg-surface px-4 py-3 shadow-sm">
+    <li className="rounded-xl border border-line bg-surface px-4 py-3 shadow-soft">
       <p className="font-semibold text-ink">{location.locationName}</p>
       <div className="mt-2">
         <Row label="Fees" value={formatMoney(location.fees)} />
@@ -90,7 +90,7 @@ function LocationCard({
 export function OwnerTakeHomeSection({ view }: { view: OwnerTakeHomeView }) {
   return (
     <section className="mt-7">
-      <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-faint">
+      <h2 className="tt-eyebrow">
         Your take-home
       </h2>
       {view.locations.length === 0 ? (

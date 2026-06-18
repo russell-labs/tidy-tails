@@ -24,7 +24,7 @@ export function DayCloseoutControls({
   return (
     <div className="mt-3 rounded-xl border border-line bg-surface px-3.5 py-3">
       <div className="mb-2">
-        <h3 className="text-sm font-semibold uppercase tracking-wide text-ink-faint">
+        <h3 className="tt-eyebrow">
           Day closeout
         </h3>
         <p className="mt-1 text-xs text-ink-soft">

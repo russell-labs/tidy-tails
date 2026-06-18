@@ -50,7 +50,7 @@ export function AppointmentPaymentControls({
   const defaultPaidAmount = effectiveSummary.paid ?? effectiveSummary.fee;
 
   return (
-    <form action={formAction} className="rounded-xl border border-line bg-surface px-3.5 py-3">
+    <form action={formAction} className="rounded-xl border border-line bg-surface px-3.5 py-3 shadow-soft">
       <input type="hidden" name="client_id" value={clientId} />
       <input type="hidden" name="appointment_id" value={appointmentId} />
       <input
@@ -95,7 +95,7 @@ export function AppointmentPaymentControls({
         </div>
       </div>
       <label className="mt-3 flex flex-col gap-1.5">
-        <span className="text-xs font-semibold uppercase tracking-wide text-ink-faint">
+        <span className="tt-eyebrow">
           Amount paid
         </span>
         <input

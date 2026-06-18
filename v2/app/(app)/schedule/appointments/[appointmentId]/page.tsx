@@ -120,10 +120,10 @@ export default async function AppointmentActionPage({
       <BackLink href={scheduleBack} label="Schedule" />
 
       <header className="mt-2">
-        <p className="text-xs font-semibold uppercase tracking-wide text-ink-faint">
+        <p className="tt-eyebrow">
           Appointment
         </p>
-        <h1 className="mt-1 text-2xl font-bold text-ink">
+        <h1 className="mt-1 tt-page-title">
           <SchedulePetProfileLink
             clientId={client.id}
             petId={pet.id}
@@ -136,7 +136,7 @@ export default async function AppointmentActionPage({
         </p>
       </header>
 
-      <section className="mt-4 rounded-xl border border-line bg-surface px-3.5 py-3 shadow-sm">
+      <section className="mt-4 rounded-xl border border-line bg-surface px-3.5 py-3 shadow-soft">
         {appointmentGroup.length > 1 ? (
           <p className="mb-3 rounded-lg bg-brand-soft px-3 py-2 text-sm font-semibold text-brand-ink">
             Booked together: {appointmentGroupPetNames.join(" + ")}
@@ -173,7 +173,7 @@ export default async function AppointmentActionPage({
       </section>
 
       <section className="mt-5">
-        <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-ink-faint">
+        <h2 className="mb-2 tt-eyebrow">
           Actions
         </h2>
         <div className="flex flex-col gap-2.5">
