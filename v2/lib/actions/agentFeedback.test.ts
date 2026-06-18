@@ -10,20 +10,24 @@ vi.mock("@/lib/supabase/server", () => ({
   getCurrentUser: vi.fn(async () => ({ id: "user-1" })),
 }));
 vi.mock("@/lib/audit.server", () => ({ recordAuditEvent: vi.fn(async () => {}) }));
+vi.mock("@/lib/feedbackAlert", () => ({ sendFeedbackAlert: vi.fn(async () => {}) }));
 
 const { isAgentEnabled } = await import("@/lib/writeGate");
 const { getCurrentUser } = await import("@/lib/supabase/server");
 const { recordAuditEvent } = await import("@/lib/audit.server");
+const { sendFeedbackAlert } = await import("@/lib/feedbackAlert");
 const { recordAgentFeedback } = await import("./agentFeedback");
 
 const isAgentEnabledMock = vi.mocked(isAgentEnabled);
 const getCurrentUserMock = vi.mocked(getCurrentUser);
 const recordAuditEventMock = vi.mocked(recordAuditEvent);
+const sendFeedbackAlertMock = vi.mocked(sendFeedbackAlert);
 
 beforeEach(() => {
   vi.clearAllMocks();
   isAgentEnabledMock.mockReturnValue(true);
   getCurrentUserMock.mockResolvedValue({ id: "user-1" } as never);
+  sendFeedbackAlertMock.mockResolvedValue(undefined);
 });
 
 describe("recordAgentFeedback", () => {
@@ -56,26 +60,87 @@ describe("recordAgentFeedback", () => {
     expect((input.metadata?.question as string).length).toBeLessThanOrEqual(200);
   });
 
-  it("writes nothing when the agent feature is off", async () => {
-    isAgentEnabledMock.mockReturnValue(false);
+  it("records a thumbs-down note on ONE agent.feedback event, bounded to 200 chars", async () => {
     const result = await recordAgentFeedback({
-      rating: "up",
-      question: "anything",
-      toolsUsed: [],
+      rating: "down",
+      question: "how much did I make Friday",
+      toolsUsed: ["get_day_income"],
+      note: "n".repeat(500),
     });
-    expect(result.ok).toBe(false);
-    expect(recordAuditEventMock).not.toHaveBeenCalled();
+
+    expect(result.ok).toBe(true);
+    expect(recordAuditEventMock).toHaveBeenCalledTimes(1);
+    const input = recordAuditEventMock.mock.calls[0][0];
+    expect(input.eventType).toBe("agent.feedback");
+    expect((input.metadata?.note as string).length).toBeLessThanOrEqual(200);
+    expect(input.metadata).toMatchObject({ rating: "down", note: "n".repeat(200) });
   });
 
-  it("writes nothing without a signed-in operator", async () => {
-    getCurrentUserMock.mockResolvedValue(null as never);
+  it("omits the note key when no note is given (no empty note in metadata)", async () => {
+    await recordAgentFeedback({
+      rating: "down",
+      question: "anything",
+      toolsUsed: [],
+    });
+    const input = recordAuditEventMock.mock.calls[0][0];
+    expect(input.metadata).not.toHaveProperty("note");
+  });
+
+  it("alerts Russell on a thumbs-down, passing the question and note", async () => {
+    await recordAgentFeedback({
+      rating: "down",
+      question: "how much did I make",
+      toolsUsed: [],
+      note: "it used the wrong day",
+    });
+    expect(sendFeedbackAlertMock).toHaveBeenCalledTimes(1);
+    expect(sendFeedbackAlertMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        question: "how much did I make",
+        note: "it used the wrong day",
+        at: expect.any(String),
+      }),
+    );
+  });
+
+  it("does NOT alert on a thumbs-up", async () => {
+    await recordAgentFeedback({ rating: "up", question: "anything", toolsUsed: [] });
+    expect(sendFeedbackAlertMock).not.toHaveBeenCalled();
+  });
+
+  it("still writes the feedback row even if the alert send fails (logged first)", async () => {
+    sendFeedbackAlertMock.mockRejectedValue(new Error("twilio down"));
     const result = await recordAgentFeedback({
-      rating: "up",
+      rating: "down",
+      question: "anything",
+      toolsUsed: [],
+    });
+    expect(result.ok).toBe(true);
+    expect(recordAuditEventMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("writes nothing and alerts no one when the agent feature is off", async () => {
+    isAgentEnabledMock.mockReturnValue(false);
+    const result = await recordAgentFeedback({
+      rating: "down",
       question: "anything",
       toolsUsed: [],
     });
     expect(result.ok).toBe(false);
     expect(recordAuditEventMock).not.toHaveBeenCalled();
+    expect(sendFeedbackAlertMock).not.toHaveBeenCalled();
+  });
+
+  it("writes nothing and alerts no one without a signed-in operator", async () => {
+    getCurrentUserMock.mockResolvedValue(null as never);
+    const result = await recordAgentFeedback({
+      rating: "down",
+      question: "anything",
+      toolsUsed: [],
+    });
+    expect(result.ok).toBe(false);
+    expect(recordAuditEventMock).not.toHaveBeenCalled();
+    expect(sendFeedbackAlertMock).not.toHaveBeenCalled();
   });
 
   it("rejects an invalid rating without writing", async () => {
