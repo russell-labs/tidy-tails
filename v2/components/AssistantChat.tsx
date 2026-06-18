@@ -46,7 +46,14 @@ import {
 
 type Entry =
   | { kind: "user"; text: string }
-  | { kind: "assistant"; text: string; toolsUsed: string[]; rated?: FeedbackRating }
+  | {
+      kind: "assistant";
+      text: string;
+      toolsUsed: string[];
+      rated?: FeedbackRating;
+      // TT-039: true between a thumbs-down and the optional note being sent/skipped.
+      awaitingNote?: boolean;
+    }
   | { kind: "error"; text: string }
   // A prepared write awaiting Sam's confirm tap. The model never executes it;
   // Confirm calls the gated confirm action, Cancel writes nothing.
@@ -303,30 +310,76 @@ export function AssistantChat({ writesEnabled }: { writesEnabled: boolean }) {
     updateProposal(id, { status: "cancelled" });
   }
 
-  // Thumbs up/down under an answer → record one audit event (best-effort). The
-  // question is the operator's nearest preceding turn; toolsUsed comes off the
-  // answer. Rating once is enough — the control collapses to a thank-you after.
-  async function onRateAnswer(index: number, rating: FeedbackRating) {
-    const entry = entries[index];
-    if (!entry || entry.kind !== "assistant" || entry.rated) return;
-    let question = "";
+  // The operator's question this answer responded to — their nearest preceding turn.
+  function questionFor(index: number): string {
     for (let i = index - 1; i >= 0; i -= 1) {
       const prior = entries[i];
-      if (prior.kind === "user") {
-        question = prior.text;
-        break;
-      }
+      if (prior.kind === "user") return prior.text;
     }
-    setEntries((current) =>
-      current.map((item, i) =>
-        i === index && item.kind === "assistant" ? { ...item, rated: rating } : item,
-      ),
-    );
+    return "";
+  }
+
+  // Record one agent.feedback audit event (best-effort). toolsUsed comes off the
+  // answer; a thumbs-down may carry Sam's optional note on the SAME event.
+  async function recordFeedback(index: number, rating: FeedbackRating, note?: string) {
+    const entry = entries[index];
+    if (!entry || entry.kind !== "assistant") return;
     try {
-      await recordAgentFeedback({ rating, question, toolsUsed: entry.toolsUsed });
+      await recordAgentFeedback({
+        rating,
+        question: questionFor(index),
+        toolsUsed: entry.toolsUsed,
+        note,
+      });
     } catch {
       // Feedback is best-effort telemetry — never surface an error to the operator.
     }
+  }
+
+  // Thumbs up/down under an answer. Thumbs-UP is instant: collapse to a thank-you
+  // and record immediately. Thumbs-DOWN defers the write — it reveals the optional
+  // note box first (awaitingNote) and records on Send/Skip, so the note rides the
+  // SAME audit event. Rating once is enough; the control won't re-fire after.
+  function onRateAnswer(index: number, rating: FeedbackRating) {
+    const entry = entries[index];
+    if (!entry || entry.kind !== "assistant" || entry.rated) return;
+    if (rating === "down") {
+      setEntries((current) =>
+        current.map((item, i) =>
+          i === index && item.kind === "assistant"
+            ? { ...item, rated: "down", awaitingNote: true }
+            : item,
+        ),
+      );
+      return;
+    }
+    setEntries((current) =>
+      current.map((item, i) =>
+        i === index && item.kind === "assistant" ? { ...item, rated: "up" } : item,
+      ),
+    );
+    void recordFeedback(index, "up");
+  }
+
+  // Send the note → record the thumbs-down WITH the (optional) note, then collapse.
+  // An empty/whitespace note records the same as Skip — the down is never lost.
+  function onSubmitNote(index: number, note: string) {
+    setEntries((current) =>
+      current.map((item, i) =>
+        i === index && item.kind === "assistant" ? { ...item, awaitingNote: false } : item,
+      ),
+    );
+    void recordFeedback(index, "down", note.trim() || undefined);
+  }
+
+  // Skip the note → still record the thumbs-down (no note), then collapse.
+  function onSkipNote(index: number) {
+    setEntries((current) =>
+      current.map((item, i) =>
+        i === index && item.kind === "assistant" ? { ...item, awaitingNote: false } : item,
+      ),
+    );
+    void recordFeedback(index, "down");
   }
 
   function send(text: string) {
@@ -508,7 +561,10 @@ export function AssistantChat({ writesEnabled }: { writesEnabled: boolean }) {
               {entry.text.trim() ? (
                 <AnswerFeedback
                   rated={entry.rated ?? null}
+                  awaitingNote={entry.awaitingNote ?? false}
                   onRate={(rating) => onRateAnswer(index, rating)}
+                  onSubmitNote={(note) => onSubmitNote(index, note)}
+                  onSkipNote={() => onSkipNote(index)}
                 />
               ) : null}
             </div>

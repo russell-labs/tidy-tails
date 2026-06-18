@@ -88,6 +88,19 @@ export function isGoogleCalendarSyncEnabled(): boolean {
   return isFlagEnabled(process.env.TIDYTAILS_ENABLE_GOOGLE_CALENDAR_SYNC);
 }
 
+/**
+ * Owner feedback-alert SMS — `TIDYTAILS_ENABLE_FEEDBACK_ALERT`.
+ *
+ * Gates the ONE new outbound in the feedback path: a best-effort SMS to Russell
+ * (TIDYTAILS_OWNER_ALERT_PHONE) when Sam gives the assistant a thumbs-down. It is
+ * a "send," so it follows the same default-OFF, exact-"on" contract as every
+ * write/send gate above — OFF, the thumbs-down is only logged (today's behavior),
+ * never texted. Independent of every other gate.
+ */
+export function isFeedbackAlertEnabled(): boolean {
+  return isFlagEnabled(process.env.TIDYTAILS_ENABLE_FEEDBACK_ALERT);
+}
+
 // Feature-visibility gate (NOT a write surface).
 //
 // The agentic layer (Phase 1) is a READ-ONLY natural-language assistant. It

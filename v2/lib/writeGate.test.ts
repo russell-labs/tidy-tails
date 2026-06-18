@@ -11,6 +11,7 @@ import {
   isEditAppointmentWriteEnabled,
   isDailyIncomeWriteEnabled,
   isGoogleCalendarSyncEnabled,
+  isFeedbackAlertEnabled,
   isAgentEnabled,
   isAgentWritesEnabled,
 } from "./writeGate";
@@ -56,6 +57,11 @@ const SURFACES = [
     "Google Calendar sync",
     isGoogleCalendarSyncEnabled,
     "TIDYTAILS_ENABLE_GOOGLE_CALENDAR_SYNC",
+  ],
+  [
+    "Feedback alert",
+    isFeedbackAlertEnabled,
+    "TIDYTAILS_ENABLE_FEEDBACK_ALERT",
   ],
   [
     "Agent Writes",
@@ -124,6 +130,7 @@ describe("write-gate isolation — one flag never enables another", () => {
     expect(isAddHouseholdWriteEnabled()).toBe(false);
     expect(isDailyIncomeWriteEnabled()).toBe(false);
     expect(isGoogleCalendarSyncEnabled()).toBe(false);
+    expect(isFeedbackAlertEnabled()).toBe(false);
     expect(isAgentWritesEnabled()).toBe(false);
   });
 
