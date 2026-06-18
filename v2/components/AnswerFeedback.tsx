@@ -36,7 +36,7 @@ export function AnswerFeedback({
   if (rated === "down" && awaitingNote) {
     return (
       <form
-        className="flex w-full max-w-[85%] items-center gap-1 px-1"
+        className="flex w-full max-w-[92%] items-center gap-1.5 pl-1"
         onSubmit={(event) => {
           event.preventDefault();
           const note = String(new FormData(event.currentTarget).get("note") ?? "");
@@ -50,7 +50,7 @@ export function AnswerFeedback({
           autoComplete="off"
           aria-label="What went wrong?"
           placeholder="What went wrong? (optional)"
-          className="min-h-9 flex-1 rounded-lg border border-line bg-canvas px-2.5 py-1.5 text-xs text-ink outline-none focus:border-brand"
+          className="min-h-9 flex-1 rounded-lg border border-line bg-surface px-3 text-xs text-ink outline-none transition-colors focus:border-brand focus:bg-surface"
         />
         <button
           type="submit"
@@ -61,7 +61,7 @@ export function AnswerFeedback({
         <button
           type="button"
           onClick={() => onSkipNote?.()}
-          className="min-h-9 shrink-0 rounded-lg px-2 text-xs text-ink-faint active:bg-brand-soft"
+          className="min-h-9 shrink-0 rounded-lg px-2 text-xs font-medium text-ink-faint active:bg-brand-soft"
         >
           Skip
         </button>
@@ -70,19 +70,20 @@ export function AnswerFeedback({
   }
   if (rated) {
     return (
-      <span className="px-1 text-xs text-ink-faint">
+      <span className="inline-flex items-center gap-1 pl-1 text-xs text-ink-faint">
+        <CheckIcon />
         Thanks for the feedback.
       </span>
     );
   }
   return (
-    <div className="flex items-center gap-1 px-1">
+    <div className="flex items-center gap-1 pl-1">
       <span className="text-xs text-ink-faint">Helpful?</span>
       <button
         type="button"
         aria-label="Helpful"
         onClick={() => onRate("up")}
-        className="grid h-7 w-7 place-items-center rounded-lg text-ink-faint active:bg-brand-soft"
+        className="grid h-8 w-8 place-items-center rounded-lg border border-line bg-surface text-ink-faint transition-colors active:border-brand-line active:bg-brand-soft active:text-brand"
       >
         <ThumbIcon up />
       </button>
@@ -90,7 +91,7 @@ export function AnswerFeedback({
         type="button"
         aria-label="Not helpful"
         onClick={() => onRate("down")}
-        className="grid h-7 w-7 place-items-center rounded-lg text-ink-faint active:bg-brand-soft"
+        className="grid h-8 w-8 place-items-center rounded-lg border border-line bg-surface text-ink-faint transition-colors active:border-brand-line active:bg-brand-soft active:text-brand"
       >
         <ThumbIcon up={false} />
       </button>
@@ -114,6 +115,24 @@ function ThumbIcon({ up }: { up: boolean }) {
         strokeWidth="1.6"
         strokeLinejoin="round"
       />
+    </svg>
+  );
+}
+
+function CheckIcon() {
+  return (
+    <svg
+      width="13"
+      height="13"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M20 6 9 17l-5-5" />
     </svg>
   );
 }
