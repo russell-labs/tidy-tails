@@ -28,10 +28,7 @@ export function ForgotPasswordForm() {
           If an account exists for that email, we sent a link to reset your
           password. Check your inbox.
         </p>
-        <Link
-          href="/login"
-          className="min-h-12 rounded-xl bg-brand px-4 py-3 text-center text-base font-semibold text-white shadow-sm transition hover:bg-brand-ink active:bg-brand-ink"
-        >
+        <Link href="/login" className="tt-btn tt-btn-primary w-full">
           Back to sign in
         </Link>
       </div>
@@ -53,7 +50,7 @@ export function ForgotPasswordForm() {
             autoComplete="email"
             required
             placeholder="you@example.com"
-            className="min-h-12 rounded-xl border border-line bg-white px-4 py-3 text-base text-ink placeholder:text-ink-faint transition focus:border-brand"
+            className="tt-input text-base"
           />
         </label>
 
@@ -69,7 +66,7 @@ export function ForgotPasswordForm() {
         <button
           type="submit"
           disabled={pending}
-          className="mt-2 min-h-12 rounded-xl bg-brand px-4 py-3 text-base font-semibold text-white shadow-sm transition hover:bg-brand-ink active:bg-brand-ink disabled:opacity-60"
+          className="tt-btn tt-btn-primary mt-2 w-full"
         >
           {pending ? "Sending..." : "Send reset link"}
         </button>

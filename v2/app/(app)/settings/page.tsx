@@ -36,7 +36,7 @@ function Card({
 }) {
   return (
     <section className="mt-4">
-      <h2 className="mb-1.5 text-sm font-semibold uppercase tracking-wide text-ink-faint">
+      <h2 className="tt-eyebrow mb-1.5">
         {title}
       </h2>
       {eyebrow ? (
@@ -287,7 +287,7 @@ export default async function SettingsPage({
 
   return (
     <main className="px-4 py-5">
-      <h1 className="text-xl font-bold text-ink">Settings</h1>
+      <h1 className="tt-page-title">Settings</h1>
       <p className="mt-1 text-sm leading-relaxed text-ink-soft">
         Salon locations, schedule calibration, message templates, and account controls.
       </p>
@@ -333,7 +333,7 @@ export default async function SettingsPage({
       </CollapsibleCard>
 
       <section className="mt-4" id="message-templates">
-        <h2 className="mb-1.5 text-sm font-semibold uppercase tracking-wide text-ink-faint">
+        <h2 className="tt-eyebrow mb-1.5">
           Message templates
         </h2>
         <MessageDraftSettingsForm settings={settings} />
@@ -396,14 +396,14 @@ export default async function SettingsPage({
               <Row label="Connected as" value={calendar.connection.google_email} />
               <a
                 href="/settings/google/connect"
-                className="block rounded-xl bg-brand px-4 py-3 text-center text-sm font-semibold text-white active:bg-brand-ink"
+                className="tt-btn tt-btn-primary w-full"
               >
                 Reconnect Google Calendar
               </a>
               <form action={disconnectGoogleCalendarAction}>
                 <button
                   type="submit"
-                  className="w-full rounded-xl border border-line bg-canvas px-4 py-2.5 text-sm font-semibold text-ink-soft active:bg-surface"
+                  className="tt-btn tt-btn-secondary w-full"
                 >
                   Disconnect Google Calendar
                 </button>
@@ -412,7 +412,7 @@ export default async function SettingsPage({
           ) : (
             <a
               href="/settings/google/connect"
-              className="mt-3 block rounded-xl bg-brand px-4 py-3 text-center text-sm font-semibold text-white active:bg-brand-ink"
+              className="tt-btn tt-btn-primary mt-3 w-full"
             >
               Connect Google Calendar
             </a>

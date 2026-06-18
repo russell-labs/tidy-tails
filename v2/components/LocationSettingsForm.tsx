@@ -8,10 +8,8 @@ import {
 import type { LocationSettingsMap } from "@/lib/operatorSettings";
 import { SubmitDogOverlay } from "./SubmitDog";
 
-const inputClass =
-  "w-full rounded-lg border border-line bg-canvas px-3 py-2 text-sm text-ink";
-const textareaClass =
-  "w-full resize-none rounded-lg border border-line bg-canvas px-3 py-2 text-sm leading-relaxed text-ink";
+const inputClass = "tt-input";
+const textareaClass = "tt-textarea resize-none";
 
 function LocationBlock({
   code,
@@ -102,7 +100,7 @@ export function LocationSettingsForm({
       <button
         type="submit"
         disabled={pending}
-        className="mt-3 w-full rounded-xl bg-brand px-4 py-3 text-base font-semibold text-white active:bg-brand-ink disabled:opacity-60"
+        className="tt-btn tt-btn-primary mt-3 w-full"
       >
         Save salon settings
       </button>

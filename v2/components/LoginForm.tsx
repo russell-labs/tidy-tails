@@ -62,7 +62,7 @@ export function LoginForm({ initialError }: { initialError?: string | null }) {
             autoComplete="email"
             required
             placeholder="you@example.com"
-            className="min-h-12 rounded-xl border border-line bg-white px-4 py-3 text-base text-ink placeholder:text-ink-faint transition focus:border-brand"
+            className="tt-input text-base"
           />
         </label>
 
@@ -74,7 +74,7 @@ export function LoginForm({ initialError }: { initialError?: string | null }) {
             autoComplete="current-password"
             required
             placeholder="••••••••"
-            className="min-h-12 rounded-xl border border-line bg-white px-4 py-3 text-base text-ink placeholder:text-ink-faint transition focus:border-brand"
+            className="tt-input text-base"
           />
         </label>
 
@@ -90,7 +90,7 @@ export function LoginForm({ initialError }: { initialError?: string | null }) {
         <button
           type="submit"
           disabled={pending}
-          className="mt-2 min-h-12 rounded-xl bg-brand px-4 py-3 text-base font-semibold text-white shadow-sm transition hover:bg-brand-ink active:bg-brand-ink disabled:opacity-60"
+          className="tt-btn tt-btn-primary mt-2 w-full"
         >
           {pending ? "Signing in..." : "Sign in"}
         </button>
