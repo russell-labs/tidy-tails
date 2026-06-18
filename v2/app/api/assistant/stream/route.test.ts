@@ -6,15 +6,18 @@ vi.mock("@/lib/agent/runAgent", () => ({
   runAgent: vi.fn(),
   AgentNotConfiguredError: class AgentNotConfiguredError extends Error {},
 }));
+vi.mock("@/lib/agentTurnLog.server", () => ({ recordAgentTurn: vi.fn() }));
 
 import { POST } from "./route";
 import { isAgentEnabled } from "@/lib/writeGate";
 import { getCurrentUser } from "@/lib/supabase/server";
 import { runAgent, AgentNotConfiguredError } from "@/lib/agent/runAgent";
+import { recordAgentTurn } from "@/lib/agentTurnLog.server";
 
 const isAgentEnabledMock = vi.mocked(isAgentEnabled);
 const getCurrentUserMock = vi.mocked(getCurrentUser);
 const runAgentMock = vi.mocked(runAgent);
+const recordAgentTurnMock = vi.mocked(recordAgentTurn);
 
 function postRequest(body: unknown): Request {
   return new Request("http://localhost/api/assistant/stream", {
@@ -105,5 +108,65 @@ describe("POST /api/assistant/stream — live event stream", () => {
     const events = await readEvents(response);
     expect(events.at(-1)?.type).toBe("error");
     expect(String(events.at(-1)?.message)).toMatch(/went wrong/i);
+  });
+});
+
+// TT-038: every turn through this (primary) chat path is captured on the audit
+// rails — the operator's own question, the tools that fired, and the outcome.
+describe("POST /api/assistant/stream — turn capture (TT-038)", () => {
+  it("logs an answered turn with the operator's question and tools used", async () => {
+    runAgentMock.mockResolvedValue({
+      text: "You have 3 today.",
+      toolCalls: [
+        { name: "get_schedule", input: {} },
+        { name: "get_schedule", input: {} },
+      ],
+    });
+
+    const response = await POST(postRequest({ message: "what's my day look like", history: [] }));
+    await readEvents(response); // drain so the post-stream log runs
+
+    expect(recordAgentTurnMock).toHaveBeenCalledTimes(1);
+    expect(recordAgentTurnMock).toHaveBeenCalledWith({
+      question: "what's my day look like",
+      toolsUsed: ["get_schedule"],
+      outcome: "answered",
+    });
+  });
+
+  it("logs a proposed turn when the run prepares a write", async () => {
+    runAgentMock.mockResolvedValue({
+      text: "Ready to book.",
+      toolCalls: [{ name: "propose_book_appointment", input: {} }],
+      proposal: { kind: "book_appointment" } as never,
+    });
+
+    const response = await POST(postRequest({ message: "book Rex friday", history: [] }));
+    await readEvents(response);
+
+    expect(recordAgentTurnMock).toHaveBeenCalledWith({
+      question: "book Rex friday",
+      toolsUsed: ["propose_book_appointment"],
+      outcome: "proposed",
+    });
+  });
+
+  it("logs an error turn when the run throws", async () => {
+    runAgentMock.mockRejectedValue(new Error("boom"));
+
+    const response = await POST(postRequest({ message: "what's my day look like", history: [] }));
+    await readEvents(response);
+
+    expect(recordAgentTurnMock).toHaveBeenCalledWith({
+      question: "what's my day look like",
+      toolsUsed: [],
+      outcome: "error",
+    });
+  });
+
+  it("logs nothing when the feature is dark (route never runs)", async () => {
+    isAgentEnabledMock.mockReturnValue(false);
+    await POST(postRequest({ message: "hi" }));
+    expect(recordAgentTurnMock).not.toHaveBeenCalled();
   });
 });

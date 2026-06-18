@@ -46,6 +46,7 @@ vi.mock("./deleteClient", () => ({ deleteClient: vi.fn() }));
 vi.mock("./dayCloseout", () => ({ saveDayCloseoutOverride: vi.fn() }));
 vi.mock("./reminders", () => ({ prepareReminder: vi.fn() }));
 vi.mock("./inbox", () => ({ sendInboxSmsReply: vi.fn() }));
+vi.mock("@/lib/agentTurnLog.server", () => ({ recordAgentTurn: vi.fn() }));
 
 const { isAgentEnabled, isAgentWritesEnabled } = await import("@/lib/writeGate");
 const { getCurrentUser } = await import("@/lib/supabase/server");
@@ -66,7 +67,10 @@ const { deleteClient } = await import("./deleteClient");
 const { saveDayCloseoutOverride } = await import("./dayCloseout");
 const { prepareReminder } = await import("./reminders");
 const { sendInboxSmsReply } = await import("./inbox");
+const { recordAgentTurn } = await import("@/lib/agentTurnLog.server");
 const { confirmAgentProposal } = await import("./agentConfirm");
+
+const recordAgentTurnMock = vi.mocked(recordAgentTurn);
 
 const isAgentEnabledMock = vi.mocked(isAgentEnabled);
 const isAgentWritesEnabledMock = vi.mocked(isAgentWritesEnabled);
@@ -1077,5 +1081,93 @@ describe("confirmAgentProposal — assistant-writes kill switch (TIDYTAILS_ENABL
     const result = await confirmAgentProposal(BOOK);
     expect(result.status).toBe("saved");
     expect(createBookingMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+// TT-038: a confirm is its own assistant turn. We capture the OUTCOME (confirmed
+// when the gated write executed, gated when the writes kill-switch blocked it,
+// error otherwise) and the proposal KIND — never the proposal's message body or
+// recipient (customer data). The confirm carries no fresh operator question.
+describe("confirmAgentProposal — turn capture (TT-038)", () => {
+  it("logs a confirmed turn with the proposal kind when the write executes", async () => {
+    createBookingMock.mockResolvedValue({
+      status: "saved",
+      summary: { petName: "Kiwi", ownerName: "Mary Jones" },
+    } as never);
+
+    await confirmAgentProposal(BOOK);
+
+    expect(recordAgentTurnMock).toHaveBeenCalledWith({
+      question: "",
+      toolsUsed: ["book_appointment"],
+      outcome: "confirmed",
+    });
+  });
+
+  it("logs a gated turn when the writes kill-switch is off", async () => {
+    isAgentWritesEnabledMock.mockReturnValue(false);
+
+    await confirmAgentProposal(BOOK);
+
+    expect(recordAgentTurnMock).toHaveBeenCalledWith({
+      question: "",
+      toolsUsed: ["book_appointment"],
+      outcome: "gated",
+    });
+  });
+
+  it("logs an error turn when the gated action errors", async () => {
+    createBookingMock.mockResolvedValue({
+      status: "error",
+      summary: {},
+      formError: "Something broke.",
+    } as never);
+
+    await confirmAgentProposal(BOOK);
+
+    expect(recordAgentTurnMock).toHaveBeenCalledWith({
+      question: "",
+      toolsUsed: ["book_appointment"],
+      outcome: "error",
+    });
+  });
+
+  it("PRIVACY: a send_text reply confirm logs only kind + outcome — never the message or recipient", async () => {
+    sendInboxSmsReplyMock.mockResolvedValue({ status: "sent", message: "Reply sent." } as never);
+
+    await confirmAgentProposal(SEND_REPLY);
+
+    expect(recordAgentTurnMock).toHaveBeenCalledWith({
+      question: "",
+      toolsUsed: ["send_text"],
+      outcome: "confirmed",
+    });
+    // Belt-and-suspenders: the drafted reply body and the customer's name must
+    // not appear anywhere in what we logged.
+    const logged = JSON.stringify(recordAgentTurnMock.mock.calls[0][0]);
+    expect(logged).not.toContain(SEND_REPLY.message);
+    expect(logged).not.toContain(SEND_REPLY.recipientLabel);
+  });
+
+  it("does not log the proposal kind when it's not a known kind (trust boundary)", async () => {
+    await confirmAgentProposal({ kind: "evil; DROP TABLE" } as never);
+
+    expect(recordAgentTurnMock).toHaveBeenCalledWith({
+      question: "",
+      toolsUsed: [],
+      outcome: "error",
+    });
+  });
+
+  it("logs nothing when the agent feature is off (inert while dark)", async () => {
+    isAgentEnabledMock.mockReturnValue(false);
+    await confirmAgentProposal(BOOK);
+    expect(recordAgentTurnMock).not.toHaveBeenCalled();
+  });
+
+  it("logs nothing without a signed-in operator", async () => {
+    getCurrentUserMock.mockResolvedValue(null as never);
+    await confirmAgentProposal(BOOK);
+    expect(recordAgentTurnMock).not.toHaveBeenCalled();
   });
 });

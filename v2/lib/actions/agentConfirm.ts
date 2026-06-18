@@ -79,6 +79,7 @@ import { deleteClient, type DeleteClientState } from "./deleteClient";
 import { saveDayCloseoutOverride, type DayCloseoutState } from "./dayCloseout";
 import { prepareReminder, type ReminderState } from "./reminders";
 import { sendInboxSmsReply, type InboxActionState } from "./inbox";
+import { recordAgentTurn } from "@/lib/agentTurnLog.server";
 
 export type AgentConfirmResult = {
   status: "saved" | "gated" | "error";
@@ -134,6 +135,7 @@ export async function confirmAgentProposal(
   proposal: AgentProposal,
 ): Promise<AgentConfirmResult> {
   // Master gate + request scope — same guard as every other agent entry point.
+  // When the feature is dark we return before logging so capture stays inert.
   if (!isAgentEnabled()) {
     return { status: "error", message: "The assistant isn't available." };
   }
@@ -145,6 +147,34 @@ export async function confirmAgentProposal(
     };
   }
 
+  const result = await dispatchConfirmedProposal(proposal);
+
+  // TT-038: a confirm is its own assistant turn. Capture the outcome + the
+  // proposal KIND only (validated against the known set) — never the proposal's
+  // message body or recipient (customer data). Fire-and-forget; never throws.
+  await recordAgentTurn({
+    question: "",
+    toolsUsed: confirmTurnTools(proposal),
+    outcome: result.status === "saved" ? "confirmed" : result.status,
+  });
+
+  return result;
+}
+
+/** The proposal kind for turn capture — only a KNOWN kind (a tampered/unknown
+ *  kind logs nothing, so the client can't inject arbitrary text into the log). */
+function confirmTurnTools(proposal: AgentProposal): string[] {
+  return proposal && (PROPOSAL_KINDS as readonly string[]).includes(proposal.kind)
+    ? [proposal.kind]
+    : [];
+}
+
+/** The actual write dispatch — gate + trust-boundary checks, then the gated
+ *  action for the kind. Split out so confirmAgentProposal can capture the turn
+ *  around it without the gate-off / no-operator early returns logging anything. */
+async function dispatchConfirmedProposal(
+  proposal: AgentProposal,
+): Promise<AgentConfirmResult> {
   // Assistant-WRITES master kill-switch. With the write code deployed but this
   // flag off, the assistant is read-only: we block EVERY agent-initiated write
   // here — server-side, BEFORE dispatching to any gated action and before any

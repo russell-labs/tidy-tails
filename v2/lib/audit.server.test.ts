@@ -44,6 +44,10 @@ function fakeReadClient(rowsByTable: Record<string, unknown[]> = {}) {
         capture.filters.push({ method: "eq", column, value });
         return builder;
       },
+      neq: (column: string, value: unknown) => {
+        capture.filters.push({ method: "neq", column, value });
+        return builder;
+      },
       order: () => builder,
       limit: () => builder,
       then: (onFulfilled: Parameters<Promise<unknown>["then"]>[0]) =>
@@ -164,6 +168,23 @@ describe("loadRecentAuditEvents — operator scoping", () => {
     });
     expect(rows).toHaveLength(1);
     expect(rows[0].id).toBe("ae1");
+  });
+
+  it("excludes per-turn agent.turn events from the operator's recent-activity reader (TT-038)", async () => {
+    // agent.turn is high-volume; its read path is the dashboard (cross-org), not
+    // Sam's in-app activity feed. Keep it out of the operator reader so real
+    // bookings/edits aren't pushed out by "Assistant query" rows.
+    const { client, captures } = fakeReadClient({ audit_events: [] });
+    createServerSupabaseMock.mockResolvedValue(client);
+
+    await loadRecentAuditEvents();
+
+    expect(captures[0].table).toBe("audit_events");
+    expect(captures[0].filters).toContainEqual({
+      method: "neq",
+      column: "event_type",
+      value: "agent.turn",
+    });
   });
 
   it("fails closed (no query, empty result) when there is no session", async () => {
