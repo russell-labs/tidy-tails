@@ -399,3 +399,61 @@ describe("voice route inherits the agent safety rails", () => {
     expect(route).not.toMatch(/\bsend-sms\b/);
   });
 });
+
+// The SPEAK route is the FOURTH entry point into the assistant (Phase: voice
+// output). It adds ONE capability — server-side text-to-speech — and is OUTPUT
+// only: it synthesizes the SAME answer text the UI already shows, reads no data,
+// runs no agent, and can never trigger or auto-confirm a write. It re-applies the
+// SAME gate + signed-in-operator check as every other entry point, caps/sanitizes
+// the text before calling Google, and never reaches the service-role client, a
+// customer-text loader, or a write/send action.
+describe("speak (TTS) route inherits the agent safety rails", () => {
+  const routePath = join(AGENT_DIR, "..", "..", "app", "api", "assistant", "speak", "route.ts");
+  const route = readFileSync(routePath, "utf8");
+
+  it("re-applies the feature gate and the signed-in-operator check", () => {
+    expect(route).toContain("isAgentEnabled");
+    expect(route).toContain("getCurrentUser");
+  });
+
+  it("404s when the agent flag is off (dark like every other entry point)", () => {
+    // The gate short-circuits to a 404 before any work — the feature is invisible.
+    expect(route).toMatch(/if \(!isAgentEnabled\(\)\)/);
+    expect(route).toContain('status: 404');
+  });
+
+  it("caps the text length before touching Google (size-capped, input-validated)", () => {
+    expect(route).toContain("MAX_TTS_TEXT_LENGTH");
+  });
+
+  it("is OUTPUT only — it never runs the agent or imports a read/write tool", () => {
+    // No agent run on this path: TTS reads the answer aloud, it does not answer.
+    expect(route).not.toContain("runAgent");
+    expect(route).not.toContain("sanitizeAgentRequest");
+    expect(route).not.toContain("@/lib/agent/tools");
+    expect(route).not.toContain("@/lib/agent/writeTools");
+  });
+
+  it("never imports a write/send server action (output cannot mutate)", () => {
+    expect(route).not.toContain("@/lib/actions/");
+    expect(route).not.toMatch(/\bsend-sms\b/);
+  });
+
+  it.each([
+    "@/lib/supabase/service",
+    "createServiceSupabase",
+    "SERVICE_ROLE_KEY",
+    "sms_messages",
+    "loadRecentSmsMessages",
+    "booking_requests",
+  ])("never reaches the service-role client or customer-text surface (%s)", (forbidden) => {
+    expect(route, `speak route references ${forbidden}`).not.toContain(forbidden);
+  });
+
+  it("keeps GOOGLE_API_KEY server-only — the route never reads, logs, or echoes it", () => {
+    // The key lives ONLY in synthesizeSpeech (x-goog-api-key header); the route
+    // never touches process.env.GOOGLE_API_KEY and never console-logs.
+    expect(route).not.toContain("process.env.GOOGLE_API_KEY");
+    expect(route).not.toMatch(/console\.(log|info|warn|error)/);
+  });
+});
