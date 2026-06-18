@@ -46,7 +46,7 @@ export function ReadyPickupMessage({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="flex w-full items-center justify-center rounded-xl border border-brand bg-brand-soft px-3 py-3 text-base font-semibold text-brand-ink active:bg-brand-soft/70"
+        className="flex w-full items-center justify-center rounded-xl border border-brand-line bg-brand-soft px-3 py-3 text-base font-semibold text-brand-ink active:bg-brand-soft/70"
       >
         Ready pickup text
       </button>
@@ -170,7 +170,7 @@ function ReadyPickupForm({
           <button
             type="button"
             onClick={toReview}
-            className="rounded-xl bg-brand px-4 py-3 text-base font-semibold text-white active:bg-brand-ink"
+            className="tt-btn tt-btn-primary w-full"
           >
             Review pickup text
           </button>
@@ -188,14 +188,14 @@ function ReadyPickupForm({
               type="button"
               onClick={() => setStep("form")}
               disabled={pending}
-              className="flex-1 rounded-xl border border-line bg-surface px-4 py-3 text-base font-semibold text-ink-soft active:bg-canvas disabled:opacity-50"
+              className="tt-btn tt-btn-secondary flex-1"
             >
               Back to edit
             </button>
             <button
               type="submit"
               disabled={pending}
-              className="flex-1 rounded-xl bg-brand px-4 py-3 text-base font-semibold text-white active:bg-brand-ink disabled:opacity-50"
+              className="tt-btn tt-btn-primary flex-1"
             >
               Confirm & send
             </button>
@@ -256,7 +256,7 @@ function ResultScreen({
       <button
         type="button"
         onClick={onDone}
-        className="rounded-xl bg-brand px-4 py-3 text-base font-semibold text-white active:bg-brand-ink"
+        className="tt-btn tt-btn-primary w-full"
       >
         Done
       </button>

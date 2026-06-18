@@ -139,7 +139,7 @@ export function ClientSmsConversation({
                   type="button"
                   onClick={reviewMessage}
                   disabled={pending || !message.trim() || tooLong}
-                  className="rounded-xl bg-brand px-4 py-2.5 text-sm font-bold text-white active:bg-brand-ink disabled:cursor-not-allowed disabled:opacity-45"
+                  className="tt-btn tt-btn-primary"
                 >
                   Review text
                 </button>
@@ -160,14 +160,14 @@ export function ClientSmsConversation({
                   type="button"
                   onClick={() => setStep("write")}
                   disabled={pending}
-                  className="flex-1 rounded-xl border border-line bg-surface px-4 py-3 text-sm font-bold text-ink-soft active:bg-canvas disabled:opacity-50"
+                  className="tt-btn tt-btn-secondary flex-1"
                 >
                   Back to edit
                 </button>
                 <button
                   type="submit"
                   disabled={pending}
-                  className="flex-1 rounded-xl bg-brand px-4 py-3 text-sm font-bold text-white active:bg-brand-ink disabled:opacity-50"
+                  className="tt-btn tt-btn-primary flex-1"
                 >
                   Confirm & send
                 </button>
@@ -181,7 +181,7 @@ export function ClientSmsConversation({
             <button
               type="button"
               onClick={() => setShowAllMessages((value) => !value)}
-              className="w-full rounded-xl border border-line bg-surface px-3.5 py-2 text-sm font-semibold text-ink-soft active:bg-canvas"
+              className="tt-btn tt-btn-secondary w-full"
               aria-expanded={showAllMessages}
             >
               {conversationView.toggleLabel}

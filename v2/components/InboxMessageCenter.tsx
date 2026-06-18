@@ -177,17 +177,17 @@ export function InboxMessageCenter({
           <h2 className="text-sm font-bold uppercase tracking-wide text-ink-faint">
             Message threads
           </h2>
-          <p className="mt-1 text-sm text-ink-muted">
+          <p className="mt-1 text-sm text-ink-soft">
             Open a customer conversation to text in a focused thread.
           </p>
         </div>
 
-        <div className="overflow-hidden rounded-2xl border border-line bg-surface shadow-soft">
+        <div className="overflow-hidden tt-card">
           <div className="border-b border-line p-3">
             <button
               type="button"
               onClick={startNewText}
-              className="w-full rounded-xl bg-brand px-4 py-2.5 text-sm font-bold text-white active:bg-brand-ink"
+              className="tt-btn tt-btn-primary w-full"
             >
               New text
             </button>
@@ -242,7 +242,7 @@ export function InboxMessageCenter({
               ))}
             </ul>
           ) : (
-            <p className="px-4 py-5 text-sm text-ink-muted">
+            <p className="px-4 py-5 text-sm text-ink-soft">
               No owner text threads have been captured yet.
             </p>
           )}
@@ -294,7 +294,7 @@ export function InboxMessageCenter({
         <BackLink href="/inbox" label="Messages" />
       </div>
 
-      <div className="overflow-hidden rounded-2xl border border-line bg-surface shadow-soft">
+      <div className="overflow-hidden tt-card">
         <div className="min-w-0">
           {activeThread || activeThreadKey.startsWith("new:") ? (
             <div className="space-y-3 p-4">
@@ -345,7 +345,7 @@ export function InboxMessageCenter({
                   <button
                     type="button"
                     onClick={() => setShowAllMessages((value) => !value)}
-                    className="w-full rounded-xl border border-line bg-surface px-3.5 py-2 text-sm font-semibold text-ink-soft active:bg-canvas"
+                    className="tt-btn tt-btn-secondary w-full"
                     aria-expanded={showAllMessages}
                   >
                     {conversationView.toggleLabel}
@@ -365,7 +365,7 @@ export function InboxMessageCenter({
               </div>
             </div>
           ) : (
-            <p className="p-5 text-sm text-ink-muted">
+            <p className="p-5 text-sm text-ink-soft">
               Select a message thread to view the conversation.
             </p>
           )}
@@ -393,7 +393,7 @@ function ThreadPreview({ thread, name }: { thread: SmsThread; name: string }) {
             {formatDateTime(thread.latestAt)}
           </p>
         </div>
-        <p className="mt-2 line-clamp-2 text-sm leading-relaxed text-ink-muted">
+        <p className="mt-2 line-clamp-2 text-sm leading-relaxed text-ink-soft">
           {thread.latestDirection === "outbound" ? "You: " : ""}
           {thread.latestBody}
         </p>
@@ -543,7 +543,7 @@ function ThreadComposer({
           <button
             type="submit"
             disabled={pending || !message.trim() || tooLong || !canSend}
-            className="rounded-xl bg-brand px-5 py-2.5 text-sm font-bold text-white active:bg-brand-ink disabled:cursor-not-allowed disabled:opacity-45"
+            className="tt-btn tt-btn-primary"
           >
             Send
           </button>

@@ -108,7 +108,7 @@ export function InboxAssistantReply({
             <button
               type="button"
               onClick={() => setState(dismiss)}
-              className="rounded-xl border border-line bg-surface px-3 py-2 text-xs font-bold text-ink-muted"
+              className="tt-btn tt-btn-secondary"
             >
               Cancel
             </button>
@@ -116,7 +116,7 @@ export function InboxAssistantReply({
               type="button"
               onClick={onDraft}
               disabled={!instruction.trim()}
-              className="rounded-xl bg-brand px-4 py-2 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-45"
+              className="tt-btn tt-btn-primary"
             >
               Draft reply
             </button>
@@ -144,7 +144,7 @@ export function InboxAssistantReply({
                 setState(dismiss);
                 setInstruction("");
               }}
-              className="text-xs font-bold text-ink-muted active:text-ink"
+              className="text-xs font-bold text-ink-soft active:text-ink"
             >
               Done
             </button>
@@ -154,7 +154,7 @@ export function InboxAssistantReply({
 
       {state.phase === "failed" ? (
         <div className="space-y-2">
-          <p className="rounded-xl bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">
+          <p className="rounded-xl bg-danger-soft px-3 py-2 text-sm font-semibold text-danger-ink">
             {state.message}
           </p>
           <button

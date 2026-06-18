@@ -31,6 +31,36 @@ build against settled interfaces.
 **Hard rules honored:** visual-only; same information architecture; tests +
 typecheck + lint + build all green (1754 tests); no SQL/schema/RLS/flag changes.
 
+## TT-040 — full-app redesign: inbox / messaging surfaces
+
+**Status:** built, PR open (visual-only; awaiting Cowork gate review).
+
+One of the five parallel screen sessions that follow the foundation. Restyles the
+inbox and conversation surfaces to the approved full-app mockup
+(`design/2026-06-18-full-app-redesign.html`) by consuming the shared `.tt-*` kit —
+no new button/card/input styles forked.
+
+- **Inbox list (`inbox/page.tsx`).** Page title now uses the kit's `.tt-page-title`;
+  the summary tiles keep the kit's 16px card (`.tt-card`) with a 20px count and a
+  10px label. Fixed an undefined `text-ink-muted` token (it rendered as dark body
+  text) — secondary copy now reads as muted gray per the mockup. Needs-action
+  cards dogfood `.tt-card`; the Reply/Request pills already matched the kit.
+- **Composers + conversation.** `InboxMessageCenter`, `InboxSmsActions`,
+  `InboxAssistantReply`, `ClientSmsConversation`, and `ReadyPickupMessage` map
+  their buttons onto `.tt-btn` primary/secondary/danger (so every action is a
+  ≥44px tap target with the kit's disabled state) and route the two raw red error
+  banners onto the `danger-soft`/`danger-ink` tokens. `SmsMessages` and
+  `SmsMessageHideButton` were already on-kit and left untouched.
+- **Safety patterns preserved.** Confirm-before-send (Review → Confirm & send),
+  the Ready-pickup demo/live notes, the destructive "Confirm hide" red, and the
+  assistant confirm-card flow are unchanged. The assistant draft-a-reply trigger
+  stays dark behind `TIDYTAILS_ENABLE_AGENT`.
+
+**Hard rules honored:** visual-only; same information architecture, props,
+exports, and server actions; tests + typecheck + lint + build all green (1754
+tests); no SQL/schema/RLS/flag changes. Re-check CI against current `main` at
+merge time (`strict:false`).
+
 ## TT-039 — thumbs-down note box + notify-Russell escalation
 
 **Status:** built, PR open (dark — feedback-alert gate OFF by default).
