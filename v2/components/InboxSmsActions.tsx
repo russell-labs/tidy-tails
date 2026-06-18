@@ -95,7 +95,7 @@ export function InboxSmsActions({
           <button
             type="submit"
             disabled={busy || !message.trim()}
-            className="rounded-xl bg-brand px-4 py-2 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-45"
+            className="tt-btn tt-btn-primary"
           >
             {replyPending ? "Sending..." : "Send reply"}
           </button>
@@ -108,11 +108,11 @@ export function InboxSmsActions({
 
       <form action={markHandledAction} className="flex items-center justify-between gap-3">
         <input type="hidden" name="sms_id" value={smsId} />
-        <p className="text-xs text-ink-muted">Clear it without sending a reply.</p>
+        <p className="text-xs text-ink-soft">Clear it without sending a reply.</p>
         <button
           type="submit"
           disabled={busy}
-          className="shrink-0 rounded-xl border border-line bg-surface px-3 py-2 text-xs font-bold text-ink-muted disabled:cursor-not-allowed disabled:opacity-45"
+          className="tt-btn tt-btn-secondary shrink-0"
         >
           {handledPending ? "Clearing..." : "Mark handled"}
         </button>
@@ -120,14 +120,14 @@ export function InboxSmsActions({
 
       <form action={hideAction} className="flex items-center justify-between gap-3 border-t border-line pt-3">
         <input type="hidden" name="sms_id" value={smsId} />
-        <p className="text-xs text-ink-muted">
+        <p className="text-xs text-ink-soft">
           Hide tests, duplicates, or noise from normal views.
         </p>
         {confirmHide ? (
           <button
             type="submit"
             disabled={busy}
-            className="shrink-0 rounded-xl bg-danger px-3 py-2 text-xs font-bold text-white disabled:cursor-not-allowed disabled:opacity-45"
+            className="tt-btn tt-btn-danger shrink-0"
           >
             {hidePending ? "Hiding..." : "Confirm hide"}
           </button>
@@ -136,7 +136,7 @@ export function InboxSmsActions({
             type="button"
             disabled={busy}
             onClick={() => setConfirmHide(true)}
-            className="shrink-0 rounded-xl border border-line bg-surface px-3 py-2 text-xs font-bold text-ink-muted disabled:cursor-not-allowed disabled:opacity-45"
+            className="tt-btn tt-btn-secondary shrink-0"
           >
             Hide
           </button>
@@ -155,7 +155,7 @@ function ActionMessage({ state }: { state: InboxActionState }) {
 
   const tone =
     state.status === "error"
-      ? "bg-red-50 text-red-700"
+      ? "bg-danger-soft text-danger-ink"
       : "bg-brand-soft text-brand";
 
   return (

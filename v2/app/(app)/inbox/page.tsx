@@ -45,8 +45,8 @@ export default async function InboxPage() {
     return (
       <main className="min-h-full px-5 py-8">
         <div className="mb-8">
-          <h1 className="text-xl font-bold text-ink">Messages</h1>
-          <p className="mt-2 text-sm text-ink-muted">
+          <h1 className="tt-page-title">Messages</h1>
+          <p className="mt-2 text-sm text-ink-soft">
             Customer replies and booking requests will show up here.
           </p>
         </div>
@@ -86,8 +86,8 @@ export default async function InboxPage() {
     <main className="min-h-full px-5 py-8">
       <div className="mb-8">
         <div>
-          <h1 className="text-xl font-bold text-ink">Messages</h1>
-          <p className="mt-2 text-sm text-ink-muted">
+          <h1 className="tt-page-title">Messages</h1>
+          <p className="mt-2 text-sm text-ink-soft">
             Customer replies and booking requests that may need your attention.
           </p>
         </div>
@@ -163,11 +163,11 @@ function MetricCard({
   tone?: "action" | "neutral";
 }) {
   return (
-    <div className="rounded-2xl border border-line bg-surface p-3 text-center shadow-soft">
-      <div className={`text-lg font-bold ${tone === "action" && value ? "text-warn" : "text-ink"}`}>
+    <div className="tt-card p-3 text-center">
+      <div className={`text-xl font-bold ${tone === "action" && value ? "text-warn" : "text-ink"}`}>
         {value}
       </div>
-      <div className="mt-1 text-[11px] font-medium uppercase tracking-wide text-ink-muted">
+      <div className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-ink-faint">
         {label}
       </div>
     </div>
@@ -178,7 +178,7 @@ function SectionHeader({ title, detail }: { title: string; detail: string }) {
   return (
     <div>
       <h2 className="text-sm font-bold uppercase tracking-wide text-ink-faint">{title}</h2>
-      <p className="mt-1 text-sm text-ink-muted">{detail}</p>
+      <p className="mt-1 text-sm text-ink-soft">{detail}</p>
     </div>
   );
 }
@@ -194,17 +194,17 @@ function InboxCard({
 }) {
   const showSmsActions = item.kind === "sms" && item.priority === "action";
   const card = (
-    <article className="rounded-2xl border border-line bg-surface p-4 shadow-soft">
+    <article className="tt-card p-3.5">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-sm font-semibold text-ink">{item.title}</p>
-          <p className="mt-1 text-xs text-ink-muted">{clientName}</p>
+          <p className="mt-1 text-xs text-ink-faint">{clientName}</p>
         </div>
-        <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-bold ${badgeClass(item.priority)}`}>
+        <span className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-bold ${badgeClass(item.priority)}`}>
           {item.badge}
         </span>
       </div>
-      <p className="mt-3 text-sm leading-relaxed text-ink-muted">{item.body}</p>
+      <p className="mt-3 text-sm leading-relaxed text-ink-soft">{item.body}</p>
       <p className="mt-3 text-xs text-ink-faint">{formatDateTime(item.createdAt)}</p>
       {showSmsActions ? <InboxSmsActions smsId={item.sourceId} agentEnabled={agentEnabled} /> : null}
       {item.href && showSmsActions ? (
@@ -229,7 +229,7 @@ function InboxCard({
 
 function EmptyState({ text }: { text: string }) {
   return (
-    <div className="rounded-2xl border border-line bg-surface p-4 text-sm text-ink-muted shadow-soft">
+    <div className="tt-card p-4 text-sm text-ink-soft">
       {text}
     </div>
   );
@@ -243,7 +243,7 @@ function clientName(item: InboxItem, clientsById: Map<string, string>): string {
 function badgeClass(priority: InboxItem["priority"]): string {
   if (priority === "action") return "bg-canvas text-warn";
   if (priority === "info") return "bg-brand-soft text-brand";
-  return "bg-canvas text-ink-muted";
+  return "bg-canvas text-ink-faint";
 }
 
 function formatDateTime(iso: string): string {
