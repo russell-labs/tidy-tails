@@ -4,6 +4,54 @@ Operator-driven improvements to the in-app experience — what Sam's thumbs up/d
 tells us and how that signal reaches a human, plus the design-quality work that
 makes the cockpit calmer to use. One entry per item, newest first.
 
+## TT-041 — natural assistant read-aloud voice (server-side Google TTS) + voice choice
+
+**Status:** built, PR open (dark — read-aloud only runs behind `TIDYTAILS_ENABLE_AGENT`).
+
+The assistant's read-aloud used the browser Web Speech API, which on iPhone is
+stuck with the robotic iOS system voices and sounds different on every device.
+Read-aloud now uses a natural, SERVER-SIDE Google voice that sounds the same
+everywhere, with a Female/Male choice in Settings.
+
+- **Server TTS helper + route.** `lib/agent/synthesizeSpeech.ts` mirrors
+  `transcribe.ts`: it calls Gemini TTS (`gemini-2.5-flash-preview-tts`) on the
+  Generative Language API with the SAME `GOOGLE_API_KEY` and `x-goog-api-key`
+  header posture — same processor terms as transcription, so answers (which can
+  contain customer names) add no new sub-processor. It returns playable WAV (the
+  raw 24kHz PCM Gemini emits is wrapped in a RIFF container server-side). The two
+  prebuilt voices are "Kore" (female, default) and "Charon" (male). The new
+  `app/api/assistant/speak/route.ts` is OUTPUT only and inherits the agent rails:
+  404 when the agent flag is off, signed-in-operator required, text size-capped,
+  server-side voice allowlist. It is in the agent-safety test set.
+- **Client playback (inside `voiceOutput.ts` only).** `createSpeaker`'s signature
+  is unchanged (`AssistantChat`'s call site is byte-identical) — only the internals
+  changed. `speak()` now fetches audio from `/api/assistant/speak` and plays it
+  with an HTMLAudioElement primed inside the mic-tap gesture (iOS unlock). On any
+  fetch failure / offline / flag-off 404 it falls back to the passed Web Speech
+  engine, so read-aloud never just dies. Voice-only-reads-back, the mute toggle,
+  and `onEnd` clearing the speaking status are preserved.
+- **Settings voice choice (client-side, no DB).** A small "Voice" control
+  (`AssistantVoiceSettings.tsx`) reads/writes a `localStorage` preference — NOT
+  `org_settings`, NOT the settings server action, NO migration. `voiceOutput.ts`
+  reads it and sends `voice` in the POST; the route re-validates against its
+  allowlist (clamps anything else). Default is the female voice. ≥44px tap targets
+  via the shared `.tt-btn` kit.
+
+**Safety preserved:** TTS is output only — it reads the same answer the UI shows,
+runs no agent, reads no data, and can never trigger or auto-confirm a write (it is
+downstream of the confirm-card flow). `GOOGLE_API_KEY` stays server-only (header
+only; never logged, echoed, or returned).
+
+**Hard rules honored:** parallel-safe (`AssistantChat.tsx`, `app/(app)/page.tsx`,
+`HomeSearch.tsx`, `globals.css` untouched; `createSpeaker` signature identical);
+no SQL/schema/RLS/migration changes; tests + typecheck + lint + build all green
+(1793 tests). CI proves the routing + WAV wrap with the Google fetch mocked — a
+live-key staging check is still needed before read-aloud is enabled.
+
+**Pre-enable:** no new env var required — `GOOGLE_API_KEY` is already present and
+read-aloud is gated by the existing `TIDYTAILS_ENABLE_AGENT` flag. The TTS model
+id is env-overridable (`TIDYTAILS_ASSISTANT_TTS_MODEL`) if a newer preview ships.
+
 ## TT-040 — full-app redesign: shared design system (foundation)
 
 **Status:** built, PR open (visual-only; awaiting Cowork gate review).
