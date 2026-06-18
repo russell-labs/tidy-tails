@@ -86,7 +86,7 @@ export function InstallAppPrompt() {
 
   return (
     <div className="px-4 pt-3">
-      <div className="flex items-start gap-3 rounded-2xl border border-line bg-surface p-4 shadow-soft">
+      <div className="tt-card flex items-start gap-3 p-4">
         <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold text-ink">
             Add Tidy Tails to your Home Screen
@@ -109,7 +109,7 @@ export function InstallAppPrompt() {
                 void installEvent.prompt();
                 dismiss();
               }}
-              className="mt-3 min-h-11 rounded-lg border border-brand bg-brand px-4 py-2 text-sm font-semibold text-white"
+              className="tt-btn tt-btn-primary mt-3"
             >
               Install
             </button>

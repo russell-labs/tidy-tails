@@ -14,6 +14,8 @@
   --color-brand: #6d28d9;
   --color-brand-ink: #4c1d95;
   --color-brand-soft: #f1ecfd;
+  /* Soft brand hairline for tinted chips/controls (redesign kit). */
+  --color-brand-line: #ddd0fb;
 
   --color-danger: #be123c;
   --color-danger-ink: #9f1239;
@@ -24,6 +26,11 @@
 
   --color-ok: #15803d;
   --color-ok-soft: #ecfaef;
+
+  /* Elevation. `shadow-soft` is referenced across cards (Skeleton, install
+     prompt, list cards) but was never defined — this is the single calm card
+     shadow from the redesign kit. */
+  --shadow-soft: 0 1px 3px rgba(28, 27, 34, 0.06);
 
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system,
     "Segoe UI", sans-serif;
@@ -197,4 +204,165 @@ button {
 *:focus-visible {
   outline: 2px solid var(--color-brand);
   outline-offset: 2px;
+}
+
+/* =========================================================================
+   Tidy Tails redesign kit (TT-040 foundation).
+
+   Reusable building blocks for the parallel screen sessions — match the
+   approved full-app mockup (design/2026-06-18-full-app-redesign.html): Geist,
+   12px button radius / 16px card radius / 8px chip radius, ≥44px tap targets,
+   flat surfaces with one soft shadow, the brand-violet palette above.
+
+   These are conveniences, NOT new behavior. Built from the @theme tokens so
+   they stay in sync. They live in the `components` layer, so any Tailwind
+   utility a caller adds (e.g. `class="tt-btn-primary w-full"`) still wins.
+   Reuse these instead of re-deriving button/card/input styling per screen.
+   ========================================================================= */
+@layer components {
+  /* Surface card — white, hairline border, 16px radius, one soft shadow.
+     Padding is the caller's choice (use a Tailwind `p-*`). */
+  .tt-card {
+    background: var(--color-surface);
+    border: 1px solid var(--color-line);
+    border-radius: 1rem; /* 16px */
+    box-shadow: var(--shadow-soft);
+  }
+
+  /* Buttons — 12px radius, ≥44px tall, 14px / 600. Compose with a variant. */
+  .tt-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    min-height: 2.75rem; /* 44px */
+    padding: 0 1rem;
+    border-radius: 0.75rem; /* 12px */
+    border: 1px solid transparent;
+    font-size: 0.875rem; /* 14px */
+    font-weight: 600;
+    line-height: 1.1;
+    transition:
+      background-color 120ms ease,
+      border-color 120ms ease,
+      opacity 120ms ease;
+  }
+  .tt-btn:disabled {
+    background: var(--color-canvas);
+    border-color: var(--color-line);
+    color: var(--color-ink-faint);
+    box-shadow: none;
+    cursor: default;
+  }
+  .tt-btn-primary {
+    background: var(--color-brand);
+    border-color: var(--color-brand);
+    color: #fff;
+    box-shadow: 0 2px 6px rgba(76, 29, 149, 0.28);
+  }
+  .tt-btn-primary:not(:disabled):active {
+    background: var(--color-brand-ink);
+    border-color: var(--color-brand-ink);
+  }
+  .tt-btn-secondary {
+    background: var(--color-surface);
+    border-color: var(--color-line);
+    color: var(--color-ink-soft);
+  }
+  .tt-btn-secondary:not(:disabled):active {
+    background: var(--color-canvas);
+  }
+  /* Destructive — red, and it must read as red (safety pattern, never softened). */
+  .tt-btn-danger {
+    background: var(--color-danger);
+    border-color: var(--color-danger);
+    color: #fff;
+    box-shadow: 0 2px 6px rgba(190, 18, 60, 0.25);
+  }
+  .tt-btn-danger:not(:disabled):active {
+    background: var(--color-danger-ink);
+    border-color: var(--color-danger-ink);
+  }
+
+  /* Small brand-tinted chip — 8px radius. */
+  .tt-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    min-height: 2.125rem; /* 34px */
+    padding: 0 0.875rem;
+    border-radius: 0.5rem; /* 8px */
+    border: 1px solid var(--color-brand-line);
+    background: var(--color-brand-soft);
+    color: var(--color-brand);
+    font-size: 0.8125rem; /* 13px */
+    font-weight: 600;
+  }
+
+  /* Round control (mic / send / FAB) — full radius, 46px. */
+  .tt-fab {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.875rem; /* 46px */
+    height: 2.875rem;
+    border-radius: 9999px;
+    border: none;
+    background: var(--color-brand);
+    color: #fff;
+    box-shadow: 0 2px 6px rgba(76, 29, 149, 0.3);
+  }
+
+  /* Inputs — 12px radius, calm canvas fill, ≥44px tall. */
+  .tt-input,
+  .tt-textarea {
+    width: 100%;
+    background: var(--color-canvas);
+    border: 1px solid var(--color-line);
+    border-radius: 0.75rem; /* 12px */
+    color: var(--color-ink);
+    font-size: 0.875rem; /* 14px */
+  }
+  .tt-input {
+    min-height: 2.875rem; /* 46px */
+    padding: 0 0.875rem;
+  }
+  .tt-textarea {
+    min-height: 4rem;
+    padding: 0.625rem 0.875rem;
+    line-height: 1.5;
+  }
+  .tt-input::placeholder,
+  .tt-textarea::placeholder {
+    color: var(--color-ink-faint);
+  }
+  /* Calm focus lift on any focus. The global `*:focus-visible` outline above
+     is intentionally NOT overridden, so keyboard focus keeps its AA-contrast
+     2px brand outline on top of this ring. */
+  .tt-input:focus,
+  .tt-textarea:focus {
+    background: var(--color-surface);
+    border-color: var(--color-brand);
+    box-shadow: 0 0 0 3px rgba(109, 40, 217, 0.16);
+  }
+
+  /* Type helpers matching the kit's scale (Geist). */
+  .tt-page-title {
+    font-size: 1.25rem; /* 20px */
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: var(--color-ink);
+  }
+  .tt-section-title {
+    font-size: 1.125rem; /* 18px */
+    font-weight: 700;
+    color: var(--color-ink);
+  }
+  .tt-eyebrow {
+    font-size: 0.75rem; /* 12px */
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--color-ink-faint);
+  }
 }

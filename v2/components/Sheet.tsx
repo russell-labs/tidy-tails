@@ -123,7 +123,7 @@ export function Sheet({
       />
       <div className={panelClass}>
         <header className="flex shrink-0 items-center justify-between border-b border-line px-5 py-3.5">
-          <h2 className="text-base font-bold text-ink">{title}</h2>
+          <h2 className="text-lg font-bold text-ink">{title}</h2>
           <button
             type="button"
             onClick={onClose}

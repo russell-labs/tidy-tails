@@ -102,7 +102,7 @@ export function ChoiceButton({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className={`min-h-11 rounded-lg border px-2 py-2 text-sm font-semibold ${
+      className={`min-h-11 rounded-xl border px-2 py-2 text-sm font-semibold ${
         active
           ? "border-brand bg-brand text-white"
           : "border-line bg-surface text-ink-soft active:bg-brand-soft"
