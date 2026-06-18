@@ -20,26 +20,18 @@ export function FirstRunEmptyState({
   return (
     <div className="rounded-2xl border border-line bg-surface p-6 text-center shadow-soft">
       <div
-        className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-brand-soft text-brand-ink"
+        className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-soft text-brand"
         aria-hidden="true"
       >
-        <svg
-          width="22"
-          height="22"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-          <circle cx="9" cy="7" r="4" />
-          <line x1="19" y1="8" x2="19" y2="14" />
-          <line x1="22" y1="11" x2="16" y2="11" />
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor">
+          <circle cx="6.5" cy="11" r="1.9" />
+          <circle cx="10" cy="7.6" r="2.1" />
+          <circle cx="14" cy="7.6" r="2.1" />
+          <circle cx="17.5" cy="11" r="1.9" />
+          <ellipse cx="12" cy="15.8" rx="4.6" ry="4" />
         </svg>
       </div>
-      <h2 className="text-base font-semibold text-ink">{title}</h2>
+      <h2 className="text-base font-bold text-ink">{title}</h2>
       <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-ink-soft">
         {description}
       </p>
