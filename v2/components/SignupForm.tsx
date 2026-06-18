@@ -29,10 +29,7 @@ export function SignupForm() {
           <span className="font-semibold">{state.email}</span>. Open it to
           confirm your email, then sign in.
         </p>
-        <Link
-          href="/login"
-          className="min-h-12 rounded-xl bg-brand px-4 py-3 text-center text-base font-semibold text-white shadow-sm transition hover:bg-brand-ink active:bg-brand-ink"
-        >
+        <Link href="/login" className="tt-btn tt-btn-primary w-full">
           Go to sign in
         </Link>
       </div>
@@ -54,7 +51,7 @@ export function SignupForm() {
             autoComplete="email"
             required
             placeholder="you@example.com"
-            className="min-h-12 rounded-xl border border-line bg-white px-4 py-3 text-base text-ink placeholder:text-ink-faint transition focus:border-brand"
+            className="tt-input text-base"
           />
         </label>
 
@@ -67,7 +64,7 @@ export function SignupForm() {
             required
             minLength={8}
             placeholder="At least 8 characters"
-            className="min-h-12 rounded-xl border border-line bg-white px-4 py-3 text-base text-ink placeholder:text-ink-faint transition focus:border-brand"
+            className="tt-input text-base"
           />
         </label>
 
@@ -83,7 +80,7 @@ export function SignupForm() {
         <button
           type="submit"
           disabled={pending}
-          className="mt-2 min-h-12 rounded-xl bg-brand px-4 py-3 text-base font-semibold text-white shadow-sm transition hover:bg-brand-ink active:bg-brand-ink disabled:opacity-60"
+          className="tt-btn tt-btn-primary mt-2 w-full"
         >
           {pending ? "Creating account..." : "Create account"}
         </button>

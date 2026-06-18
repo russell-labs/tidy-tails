@@ -46,7 +46,7 @@ export function MessageDraftSettingsForm({
           name="bookingConfirmationTemplate"
           rows={5}
           defaultValue={settings.bookingConfirmationTemplate}
-          className="w-full resize-none rounded-lg border border-line bg-canvas px-3 py-2 text-sm leading-relaxed text-ink"
+          className="tt-textarea resize-none"
         />
       </label>
 
@@ -58,7 +58,7 @@ export function MessageDraftSettingsForm({
           name="firstPlatformTextTemplate"
           rows={6}
           defaultValue={settings.firstPlatformTextTemplate}
-          className="w-full resize-none rounded-lg border border-line bg-canvas px-3 py-2 text-sm leading-relaxed text-ink"
+          className="tt-textarea resize-none"
         />
       </label>
 
@@ -70,7 +70,7 @@ export function MessageDraftSettingsForm({
           name="appointmentReminderTemplate"
           rows={4}
           defaultValue={settings.appointmentReminderTemplate}
-          className="w-full resize-none rounded-lg border border-line bg-canvas px-3 py-2 text-sm leading-relaxed text-ink"
+          className="tt-textarea resize-none"
         />
       </label>
 
@@ -82,7 +82,7 @@ export function MessageDraftSettingsForm({
           name="rebookReminderTemplate"
           rows={4}
           defaultValue={settings.rebookReminderTemplate}
-          className="w-full resize-none rounded-lg border border-line bg-canvas px-3 py-2 text-sm leading-relaxed text-ink"
+          className="tt-textarea resize-none"
         />
       </label>
 
@@ -94,7 +94,7 @@ export function MessageDraftSettingsForm({
           name="readyPickupTemplate"
           rows={4}
           defaultValue={settings.readyPickupTemplate}
-          className="w-full resize-none rounded-lg border border-line bg-canvas px-3 py-2 text-sm leading-relaxed text-ink"
+          className="tt-textarea resize-none"
         />
       </label>
 
@@ -129,7 +129,7 @@ export function MessageDraftSettingsForm({
       <button
         type="submit"
         disabled={pending}
-        className="mt-3 w-full rounded-xl bg-brand px-4 py-3 text-base font-semibold text-white active:bg-brand-ink disabled:opacity-60"
+        className="tt-btn tt-btn-primary mt-3 w-full"
       >
         Save message settings
       </button>

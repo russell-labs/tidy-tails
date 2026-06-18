@@ -84,12 +84,11 @@ const STRUCTURE_OPTIONS: {
 const STEPS = ["Structure", "Business", "Scheduling", "Locations", "Economics", "Review"] as const;
 const STEP = { structure: 0, business: 1, scheduling: 2, locations: 3, economics: 4, review: 5 };
 
-const inputClass =
-  "min-h-12 rounded-xl border border-line bg-white px-4 py-3 text-base text-ink placeholder:text-ink-faint transition focus:border-brand";
-const primaryButton =
-  "min-h-12 rounded-xl bg-brand px-4 py-3 text-base font-semibold text-white shadow-sm transition hover:bg-brand-ink active:bg-brand-ink disabled:opacity-60";
-const ghostButton =
-  "min-h-12 rounded-xl border border-line bg-white px-4 py-3 text-base font-semibold text-ink-soft transition hover:border-brand disabled:opacity-60";
+// Onboarding inputs keep 16px (text-base) so iPhone Safari doesn't zoom on
+// focus; the rest of the shell comes from the shared redesign kit (TT-040).
+const inputClass = "tt-input text-base";
+const primaryButton = "tt-btn tt-btn-primary";
+const ghostButton = "tt-btn tt-btn-secondary";
 
 export function OnboardingWizard() {
   const [state, formAction, pending] = useActionState<OnboardingState, FormData>(
