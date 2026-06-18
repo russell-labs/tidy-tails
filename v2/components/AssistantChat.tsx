@@ -450,7 +450,9 @@ export function AssistantChat({ writesEnabled }: { writesEnabled: boolean }) {
 
     recorder.start();
     setRecording(true);
-    setStatus({ phase: "listening" });
+    // The composer itself becomes the "Listening…" indicator (an aria-live pill)
+    // while recording, so we don't also stack a transcript status bubble.
+    setStatus(null);
     // Hard stop so a forgotten-open mic can't record forever.
     recordTimerRef.current = setTimeout(() => stopRecording(), MAX_RECORDING_MS);
   }
@@ -508,36 +510,80 @@ export function AssistantChat({ writesEnabled }: { writesEnabled: boolean }) {
   }
 
   const micAvailable = voiceSupport?.supported === true;
+  const draftHasText = draft.trim() !== "";
+  // ONE round control morphs through the turn: Stop while recording, Send once
+  // there's text to send, otherwise Talk (the mic) when voice is available.
+  const composerMode: "stop" | "send" | "talk" = recording
+    ? "stop"
+    : draftHasText
+      ? "send"
+      : micAvailable
+        ? "talk"
+        : "send";
+  const intro = assistantIntroCopy(writesEnabled);
 
   return (
     // Self-contained chat panel: it FILLS the available space via the flex chain
     // (layout wrapper → main → this box are all flex-col with flex-1), so the
     // panel bottom always lands inside the wrapper's nav-reserved padding —
     // clearing the fixed BottomNav whatever chrome sits above (banner, header,
-    // the iPhone install prompt). The transcript scrolls inside; the composer is
-    // the panel's last row (above the nav, not page-fixed). A fixed
-    // viewport-height (100dvh − Nrem) was wrong: it assumed a fixed chrome height,
-    // so a tall install prompt pushed the composer + last confirm card behind the
-    // bars. The list carries bottom scroll room (plus iOS safe-area) so the final
-    // card's buttons AND result always clear the composer.
+    // the iPhone install prompt). The header + subtitle are pinned rows; the
+    // transcript scrolls between them and the composer (the panel's last row,
+    // above the nav, not page-fixed). The list carries bottom scroll room (plus
+    // iOS safe-area) so the final confirm card's buttons AND result always clear
+    // the composer.
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-line bg-canvas">
-      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+      {/* Header — assistant identity, with the read-aloud control as a pill. */}
+      <div className="flex items-center gap-2.5 border-b border-line bg-surface px-4 py-3">
+        <AssistantAvatar size={30} />
+        <div className="min-w-0 flex-1 leading-tight">
+          <p className="text-[15px] font-semibold text-ink">Assistant</p>
+          <p className="truncate text-xs text-ink-faint">Tidy Tails</p>
+        </div>
+        {speakSupported ? (
+          <button
+            type="button"
+            onClick={toggleSpeak}
+            aria-pressed={speakEnabled}
+            aria-label={speakEnabled ? "Mute spoken answers" : "Unmute spoken answers"}
+            title={speakEnabled ? "Spoken answers on" : "Spoken answers off"}
+            className={`inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border px-3 text-xs font-semibold transition-colors ${
+              speakEnabled
+                ? "border-brand-line bg-brand-soft text-brand active:bg-brand-line"
+                : "border-line bg-canvas text-ink-soft active:bg-brand-soft"
+            }`}
+          >
+            {speakEnabled ? <SpeakerOnIcon /> : <SpeakerOffIcon />}
+            <span>{speakEnabled ? "Read aloud" : "Muted"}</span>
+          </button>
+        ) : null}
+      </div>
+
+      {/* Truthful, flag-aware capability line — stays visible after the empty
+          state scrolls away, so the read-only disclosure never disappears. */}
+      <p className="border-b border-line bg-surface px-4 py-2 text-xs leading-snug text-ink-soft">
+        {intro.subtitle}
+      </p>
+
+      <div className="min-h-0 flex-1 space-y-3.5 overflow-y-auto px-4 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
         {entries.length === 0 ? (
-          <div className="mt-6 text-center">
-            <p className="text-sm text-ink-soft">
-              {assistantIntroCopy(writesEnabled).emptyState}
+          <div className="mt-4 flex flex-col items-center text-center">
+            <AssistantAvatar size={44} />
+            <p className="mt-3 max-w-[18rem] text-sm text-ink-soft">
+              {intro.emptyState}
               {micAvailable ? " Tap the mic to ask out loud." : null}
             </p>
-            <div className="mt-4 flex flex-col gap-2">
+            <div className="mt-4 flex w-full flex-col gap-2">
               {SUGGESTIONS.map((suggestion) => (
                 <button
                   key={suggestion}
                   type="button"
                   onClick={() => send(suggestion)}
                   disabled={pending || recording}
-                  className="rounded-xl border border-line bg-surface px-4 py-2.5 text-left text-sm font-medium text-ink-soft active:bg-brand-soft disabled:opacity-60"
+                  className="flex items-center gap-2 rounded-xl border border-line bg-surface px-4 py-2.5 text-left text-sm font-medium text-ink-soft shadow-soft transition-colors active:border-brand-line active:bg-brand-soft active:text-brand disabled:opacity-60"
                 >
-                  {suggestion}
+                  <SparkIcon />
+                  <span>{suggestion}</span>
                 </button>
               ))}
             </div>
@@ -556,17 +602,20 @@ export function AssistantChat({ writesEnabled }: { writesEnabled: boolean }) {
               />
             </div>
           ) : entry.kind === "assistant" ? (
-            <div key={index} className="flex flex-col items-start gap-1">
-              <Bubble entry={entry} />
-              {entry.text.trim() ? (
-                <AnswerFeedback
-                  rated={entry.rated ?? null}
-                  awaitingNote={entry.awaitingNote ?? false}
-                  onRate={(rating) => onRateAnswer(index, rating)}
-                  onSubmitNote={(note) => onSubmitNote(index, note)}
-                  onSkipNote={() => onSkipNote(index)}
-                />
-              ) : null}
+            <div key={index} className="flex items-start gap-2.5">
+              <AssistantAvatar size={28} />
+              <div className="flex min-w-0 flex-1 flex-col items-start gap-1.5">
+                <AssistantBubble entry={entry} />
+                {entry.text.trim() ? (
+                  <AnswerFeedback
+                    rated={entry.rated ?? null}
+                    awaitingNote={entry.awaitingNote ?? false}
+                    onRate={(rating) => onRateAnswer(index, rating)}
+                    onSubmitNote={(note) => onSubmitNote(index, note)}
+                    onSkipNote={() => onSkipNote(index)}
+                  />
+                ) : null}
+              </div>
             </div>
           ) : (
             <Bubble key={index} entry={entry} />
@@ -578,93 +627,127 @@ export function AssistantChat({ writesEnabled }: { writesEnabled: boolean }) {
       </div>
 
       <form
-        className="flex items-end gap-2 border-t border-line bg-surface px-3 py-2.5"
+        className="flex items-center gap-2.5 border-t border-line bg-surface px-3.5 py-3"
         onSubmit={(event) => {
           event.preventDefault();
           send(draft);
         }}
       >
-        {speakSupported ? (
-          <button
-            type="button"
-            onClick={toggleSpeak}
-            aria-pressed={speakEnabled}
-            aria-label={speakEnabled ? "Mute spoken answers" : "Unmute spoken answers"}
-            title={speakEnabled ? "Spoken answers on" : "Spoken answers off"}
-            className="grid min-h-11 w-11 shrink-0 place-items-center rounded-xl border border-line bg-canvas text-ink-soft active:bg-brand-soft"
-          >
-            {speakEnabled ? <SpeakerOnIcon /> : <SpeakerOffIcon />}
-          </button>
-        ) : null}
-
         <label className="sr-only" htmlFor="assistant-input">
           Message the assistant
         </label>
-        <textarea
-          id="assistant-input"
-          value={draft}
-          onChange={(event) => setDraft(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" && !event.shiftKey) {
-              event.preventDefault();
-              send(draft);
-            }
-          }}
-          rows={1}
-          placeholder={recording ? "Listening…" : "Ask about your business…"}
-          disabled={recording}
-          className="max-h-32 min-h-11 flex-1 resize-none rounded-xl border border-line bg-canvas px-3 py-2.5 text-sm text-ink outline-none focus:border-brand disabled:opacity-60"
-        />
 
-        {micAvailable ? (
+        {recording ? (
+          // While recording, the composer itself IS the "Listening…" indicator.
+          <div
+            aria-live="polite"
+            className="flex min-h-[46px] flex-1 items-center gap-2.5 rounded-xl border border-brand-line bg-brand-soft px-3.5 text-sm font-semibold text-brand"
+          >
+            <span className="relative inline-flex h-2.5 w-2.5">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-brand opacity-75" />
+              <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-brand" />
+            </span>
+            <span>Listening…</span>
+            <span className="flex items-center gap-1" aria-hidden="true">
+              <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-brand [animation-delay:-0.3s]" />
+              <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-brand [animation-delay:-0.15s]" />
+              <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-brand" />
+            </span>
+          </div>
+        ) : (
+          <textarea
+            id="assistant-input"
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && !event.shiftKey) {
+                event.preventDefault();
+                send(draft);
+              }
+            }}
+            rows={1}
+            placeholder="Ask about your business…"
+            className="max-h-32 min-h-[46px] flex-1 resize-none rounded-xl border border-line bg-canvas px-3.5 py-3 text-sm text-ink outline-none transition-colors focus:border-brand focus:bg-surface"
+          />
+        )}
+
+        {composerMode === "stop" ? (
+          <button
+            type="button"
+            onClick={stopRecording}
+            aria-pressed
+            aria-label="Stop recording"
+            className="tt-fab shrink-0 active:bg-brand-ink"
+          >
+            <StopIcon />
+          </button>
+        ) : composerMode === "talk" ? (
           <button
             type="button"
             onClick={onMicTap}
-            disabled={pending && !recording}
-            aria-pressed={recording}
-            aria-label={recording ? "Stop recording" : "Ask by voice"}
-            className={`grid min-h-11 w-11 shrink-0 place-items-center rounded-xl text-white disabled:bg-canvas disabled:text-ink-faint ${
-              recording ? "animate-pulse bg-danger" : "bg-brand active:bg-brand-ink"
-            }`}
+            disabled={pending}
+            aria-label="Ask by voice"
+            className="tt-fab shrink-0 active:bg-brand-ink disabled:bg-canvas disabled:text-ink-faint disabled:shadow-none"
           >
-            {recording ? <StopIcon /> : <MicIcon />}
+            <MicIcon />
           </button>
-        ) : null}
-
-        <button
-          type="submit"
-          disabled={pending || recording || draft.trim() === ""}
-          className="min-h-11 shrink-0 rounded-xl bg-brand px-4 text-sm font-semibold text-white active:bg-brand-ink disabled:bg-canvas disabled:text-ink-faint"
-        >
-          Send
-        </button>
+        ) : (
+          <button
+            type="submit"
+            disabled={pending || recording || !draftHasText}
+            aria-label="Send"
+            className="tt-fab shrink-0 active:bg-brand-ink disabled:bg-canvas disabled:text-ink-faint disabled:shadow-none"
+          >
+            <SendArrowIcon />
+          </button>
+        )}
       </form>
     </div>
   );
 }
 
-function Bubble({ entry }: { entry: Exclude<Entry, { kind: "proposal" }> }) {
+// The assistant's identity mark — a brand-soft sparkle, sized per context
+// (header, transcript bubble, empty state).
+function AssistantAvatar({ size = 28 }: { size?: number }) {
+  const icon = Math.round(size * 0.52);
+  return (
+    <span
+      aria-hidden="true"
+      style={{ width: size, height: size }}
+      className="grid shrink-0 place-items-center rounded-full bg-brand-soft text-brand"
+    >
+      <svg width={icon} height={icon} viewBox="0 0 24 24" fill="currentColor">
+        <path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z" />
+      </svg>
+    </span>
+  );
+}
+
+function Bubble({ entry }: { entry: Extract<Entry, { kind: "user" | "error" }> }) {
   if (entry.kind === "user") {
     return (
       <div className="flex justify-end">
-        <div className="max-w-[85%] whitespace-pre-wrap rounded-2xl bg-brand px-4 py-2.5 text-sm text-white">
-          {entry.text}
-        </div>
-      </div>
-    );
-  }
-  if (entry.kind === "error") {
-    return (
-      <div className="flex justify-start">
-        <div className="max-w-[85%] rounded-2xl bg-danger-soft px-4 py-2.5 text-sm text-danger-ink">
+        <div className="max-w-[82%] whitespace-pre-wrap rounded-[16px_16px_4px_16px] bg-brand px-3.5 py-2.5 text-sm leading-relaxed text-white">
           {entry.text}
         </div>
       </div>
     );
   }
   return (
-    <div className="flex max-w-[85%] flex-col items-start gap-1">
-      <div className="whitespace-pre-wrap rounded-2xl bg-surface px-4 py-2.5 text-sm text-ink shadow-sm">
+    <div className="flex justify-start">
+      <div className="max-w-[85%] rounded-2xl bg-danger-soft px-3.5 py-2.5 text-sm leading-relaxed text-danger-ink">
+        {entry.text}
+      </div>
+    </div>
+  );
+}
+
+// The assistant's reply bubble (rendered beside its avatar) plus the quiet
+// "looked things up" footnote.
+function AssistantBubble({ entry }: { entry: Extract<Entry, { kind: "assistant" }> }) {
+  return (
+    <>
+      <div className="max-w-full whitespace-pre-wrap rounded-[16px_16px_16px_4px] border border-line bg-surface px-3.5 py-2.5 text-sm leading-relaxed text-ink shadow-soft">
         {entry.text}
       </div>
       {entry.toolsUsed.length > 0 ? (
@@ -672,7 +755,45 @@ function Bubble({ entry }: { entry: Exclude<Entry, { kind: "proposal" }> }) {
           Done · looked up {entry.toolsUsed.length === 1 ? "1 thing" : `${entry.toolsUsed.length} things`}
         </span>
       ) : null}
-    </div>
+    </>
+  );
+}
+
+// A small brand sparkle used to lead the empty-state suggestion chips.
+function SparkIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className="shrink-0 text-brand"
+    >
+      <path d="m12 3 1.9 5.8a2 2 0 0 0 1.3 1.3L21 12l-5.8 1.9a2 2 0 0 0-1.3 1.3L12 21l-1.9-5.8a2 2 0 0 0-1.3-1.3L3 12l5.8-1.9a2 2 0 0 0 1.3-1.3Z" />
+    </svg>
+  );
+}
+
+function SendArrowIcon() {
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M12 19V5M6 11l6-6 6 6" />
+    </svg>
   );
 }
 

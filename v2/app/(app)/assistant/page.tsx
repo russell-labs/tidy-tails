@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { AssistantChat } from "@/components/AssistantChat";
-import { assistantIntroCopy } from "@/lib/assistantIntroCopy";
 import { isAgentEnabled, isAgentWritesEnabled } from "@/lib/writeGate";
 
 export const metadata: Metadata = { title: "Assistant" };
@@ -15,18 +14,14 @@ export default function AssistantPage() {
     notFound();
   }
 
-  // The intro copy must tell the truth about what the assistant can do, which
-  // depends on whether agent WRITES are enabled. Resolved here (server-only env)
-  // and shared with the chat's empty-state so the two never disagree.
+  // Whether agent WRITES are on decides what the assistant can truthfully claim
+  // to do. Resolved here (server-only env) and handed to the chat, which renders
+  // the matching capability line and empty-state copy via assistantIntroCopy so
+  // the words can never disagree with the actual capability.
   const writesEnabled = isAgentWritesEnabled();
-  const intro = assistantIntroCopy(writesEnabled);
 
   return (
     <main className="flex min-h-0 flex-1 flex-col px-3 py-4">
-      <div className="mb-3 px-1">
-        <h1 className="text-xl font-bold text-ink">Assistant</h1>
-        <p className="mt-0.5 text-sm text-ink-soft">{intro.subtitle}</p>
-      </div>
       <AssistantChat writesEnabled={writesEnabled} />
     </main>
   );
