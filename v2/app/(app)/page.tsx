@@ -4,6 +4,7 @@ import { dataMode, loadDataset } from "@/lib/data/repo";
 import { lastAppointment, usualPrice, usualService } from "@/lib/derive";
 import { fullName } from "@/lib/format";
 import { isPetPassedAway } from "@/lib/petLifecycle";
+import { isAgentEnabled, isAgentWritesEnabled } from "@/lib/writeGate";
 
 // Render per request: the cards show time-relative labels ("12 days ago") that
 // must be computed against the current date, not frozen at build.
@@ -45,5 +46,15 @@ export default async function HomePage() {
     };
   });
 
-  return <HomeSearch households={households} mode={dataMode()} />;
+  // Resolve the assistant gate server-side (same source as the /assistant route)
+  // so the launcher only renders when the feature is on, and the embedded chat
+  // knows its write capability. Off → HomeSearch renders no launcher at all.
+  return (
+    <HomeSearch
+      households={households}
+      mode={dataMode()}
+      agentEnabled={isAgentEnabled()}
+      writesEnabled={isAgentWritesEnabled()}
+    />
+  );
 }

@@ -5,14 +5,23 @@ import { isActiveHouseholdSearch, shouldHideBottomNavForSearch } from "@/lib/sea
 import { AddHousehold } from "./AddHousehold";
 import { ClientSearch } from "./ClientSearch";
 import { FirstRunEmptyState } from "./FirstRunEmptyState";
+import { HomeAssistantLauncher } from "./HomeAssistantLauncher";
 import type { HouseholdCardData } from "./HouseholdCard";
 
 export function HomeSearch({
   households,
   mode,
+  // Assistant feature gate, resolved server-side in page.tsx (same source as the
+  // /assistant route). When off, the launcher never renders — the home screen is
+  // byte-identical to before. writesEnabled flows through to the embedded chat
+  // exactly as the /assistant route passes it.
+  agentEnabled,
+  writesEnabled,
 }: {
   households: HouseholdCardData[];
   mode: "fixtures" | "live";
+  agentEnabled: boolean;
+  writesEnabled: boolean;
 }) {
   const [query, setQuery] = useState("");
   const activeSearch = isActiveHouseholdSearch(query);
@@ -60,6 +69,11 @@ export function HomeSearch({
         <AddHousehold mode={mode} />
       </div>
       <ClientSearch households={households} query={query} onQueryChange={setQuery} />
+      {agentEnabled ? (
+        <div className="mt-5">
+          <HomeAssistantLauncher writesEnabled={writesEnabled} />
+        </div>
+      ) : null}
     </main>
   );
 }

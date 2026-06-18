@@ -83,7 +83,19 @@ const SUGGESTIONS = [
 
 const GENERIC_ERROR = "Something went wrong answering that. Please try again.";
 
-export function AssistantChat({ writesEnabled }: { writesEnabled: boolean }) {
+export function AssistantChat({
+  writesEnabled,
+  embedded = false,
+}: {
+  writesEnabled: boolean;
+  // Rendered inside another, normally-scrolling page (e.g. the home launcher)
+  // rather than the full-screen /assistant route. When true the panel is a
+  // self-contained, height-capped card and does NOT pin the app shell to the
+  // viewport — so it never hijacks the host page's scroll. Everything else (turn
+  // streaming, confirm cards, mic, read-aloud, feedback) is identical. Default
+  // false = today's full-screen behaviour, byte-for-byte.
+  embedded?: boolean;
+}) {
   const [entries, setEntries] = useState<Entry[]>([]);
   const [draft, setDraft] = useState("");
   const [pending, setPending] = useState(false);
@@ -134,13 +146,16 @@ export function AssistantChat({ writesEnabled }: { writesEnabled: boolean }) {
   // this chat panel is a definite-height flex container (transcript scrolls
   // inside, composer + last confirm card always clear the BottomNav). Scoped to
   // this route via a body flag — same idiom as the search/sheet flags — so every
-  // other (body-scrolling) page keeps its min-h-dvh growth untouched.
+  // other (body-scrolling) page keeps its min-h-dvh growth untouched. Embedded
+  // mode lives inside such a body-scrolling page, so it must NOT set the flag:
+  // pinning the shell there would hijack the host page's scroll.
   useEffect(() => {
+    if (embedded) return;
     document.body.dataset.tidyAssistant = "true";
     return () => {
       delete document.body.dataset.tidyAssistant;
     };
-  }, []);
+  }, [embedded]);
 
   function scrollToEnd() {
     requestAnimationFrame(() => {
@@ -523,16 +538,23 @@ export function AssistantChat({ writesEnabled }: { writesEnabled: boolean }) {
   const intro = assistantIntroCopy(writesEnabled);
 
   return (
-    // Self-contained chat panel: it FILLS the available space via the flex chain
-    // (layout wrapper → main → this box are all flex-col with flex-1), so the
-    // panel bottom always lands inside the wrapper's nav-reserved padding —
-    // clearing the fixed BottomNav whatever chrome sits above (banner, header,
-    // the iPhone install prompt). The header + subtitle are pinned rows; the
-    // transcript scrolls between them and the composer (the panel's last row,
-    // above the nav, not page-fixed). The list carries bottom scroll room (plus
-    // iOS safe-area) so the final confirm card's buttons AND result always clear
-    // the composer.
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-line bg-canvas">
+    // Self-contained chat panel. Full-screen route: it FILLS the available space
+    // via the flex chain (layout wrapper → main → this box are all flex-col with
+    // flex-1), so the panel bottom always lands inside the wrapper's nav-reserved
+    // padding — clearing the fixed BottomNav whatever chrome sits above (banner,
+    // header, the iPhone install prompt). Embedded: instead of filling a pinned
+    // 100dvh chain (which it can't assume inside a body-scrolling page), it caps
+    // its own height and scrolls the transcript internally. Either way the header
+    // + subtitle are pinned rows; the transcript scrolls between them and the
+    // composer (the panel's last row); the list carries bottom scroll room (plus
+    // iOS safe-area) so the final confirm card's buttons AND result clear it.
+    <div
+      className={
+        embedded
+          ? "flex max-h-[70svh] flex-col overflow-hidden rounded-2xl border border-line bg-canvas"
+          : "flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-line bg-canvas"
+      }
+    >
       {/* Header — assistant identity, with the read-aloud control as a pill. */}
       <div className="flex items-center gap-2.5 border-b border-line bg-surface px-4 py-3">
         <AssistantAvatar size={30} />
