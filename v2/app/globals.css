@@ -366,3 +366,20 @@ button {
     color: var(--color-ink-faint);
   }
 }
+
+/* iOS Safari auto-zooms — and then holds that zoom across the page — whenever a
+   focused input/textarea has a font-size below 16px. The kit scale is 14px, so
+   tapping the chat composer (or any field) on iPhone zooms the viewport. Force
+   >=16px on coarse-pointer (touch) fields so focusing one never triggers zoom.
+   Unlayered on purpose so it wins over Tailwind utilities like `text-sm`. Desktop
+   (fine pointer) keeps the 14px kit scale. No viewport zoom-lock — that would harm
+   accessibility. */
+@media (pointer: coarse) {
+  .tt-input,
+  .tt-textarea,
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  textarea,
+  select {
+    font-size: 16px;
+  }
+}
