@@ -94,6 +94,7 @@ export function AssistantChat({ writesEnabled }: { writesEnabled: boolean }) {
   const [speakEnabled, setSpeakEnabled] = useState(true);
 
   const endRef = useRef<HTMLDivElement | null>(null);
+  const listRef = useRef<HTMLDivElement | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<BlobPart[]>([]);
@@ -143,8 +144,18 @@ export function AssistantChat({ writesEnabled }: { writesEnabled: boolean }) {
   }, []);
 
   function scrollToEnd() {
+    // Scroll ONLY the transcript container. scrollIntoView also scrolls the host
+    // page, which in the embedded home launcher jumps the whole screen on every
+    // turn. Capture "near bottom" on the PRE-append layout so we don't yank the
+    // view when the operator has scrolled up to read earlier messages.
+    const el = listRef.current;
+    if (!el) return;
+    const wasNearBottom =
+      el.scrollHeight - el.scrollTop - el.clientHeight < 120;
     requestAnimationFrame(() => {
-      endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+      if (listRef.current && wasNearBottom) {
+        listRef.current.scrollTop = listRef.current.scrollHeight;
+      }
     });
   }
 
@@ -565,7 +576,10 @@ export function AssistantChat({ writesEnabled }: { writesEnabled: boolean }) {
         {intro.subtitle}
       </p>
 
-      <div className="min-h-0 flex-1 space-y-3.5 overflow-y-auto px-4 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+      <div
+        ref={listRef}
+        className="min-h-0 flex-1 space-y-3.5 overflow-y-auto px-4 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))]"
+      >
         {entries.length === 0 ? (
           <div className="mt-4 flex flex-col items-center text-center">
             <AssistantAvatar size={44} />
