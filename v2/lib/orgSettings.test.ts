@@ -4,6 +4,7 @@ import {
   isOrgLocation,
   normalizeOrgSettings,
   orgLocationAddress,
+  resolveLocationForDate,
 } from "./orgSettings";
 import { DEFAULT_WORKING_DAY } from "./scheduling/time";
 
@@ -250,5 +251,133 @@ describe("orgSettings — rented economics (WS4c B1)", () => {
     expect(
       normalizeOrgSettings({ scheduling_style: "batched", settings: {} }).rentedLocations,
     ).toEqual([]);
+  });
+});
+
+describe("weekday location schedule — normalization", () => {
+  it("defaults to an empty weekday map when the column is absent", () => {
+    expect(normalizeOrgSettings({}).weekdayLocations).toEqual({});
+    expect(DEFAULT_ORG_SETTINGS.weekdayLocations).toEqual({});
+  });
+
+  it("reads numeric/string weekday keys and trims location names", () => {
+    const result = normalizeOrgSettings({
+      weekday_locations: { "1": "Annette", 3: "  Gina  ", "5": "Annette" },
+    });
+    expect(result.weekdayLocations).toEqual({
+      1: "Annette",
+      3: "Gina",
+      5: "Annette",
+    });
+  });
+
+  it("drops out-of-range days and blank/non-string values (those days are off)", () => {
+    const result = normalizeOrgSettings({
+      weekday_locations: {
+        0: "Sunday Spot",
+        2: "", // blank -> off
+        4: 42, // non-string -> off
+        7: "Nope", // out of range -> dropped
+        "-1": "AlsoNope", // out of range -> dropped
+      },
+    });
+    expect(result.weekdayLocations).toEqual({ 0: "Sunday Spot" });
+  });
+
+  it("ignores a non-object weekday_locations value", () => {
+    expect(
+      normalizeOrgSettings({ weekday_locations: "not-an-object" }).weekdayLocations,
+    ).toEqual({});
+    expect(
+      normalizeOrgSettings({ weekday_locations: [1, 2, 3] }).weekdayLocations,
+    ).toEqual({});
+  });
+});
+
+describe("resolveLocationForDate", () => {
+  // 2026-06-15 is a Monday; the week runs Mon..Sun through 2026-06-21 (Sunday).
+  const settings = normalizeOrgSettings({
+    scheduling_style: "one_to_one",
+    settings: {
+      locations: [
+        { name: "Annette", address: "290 Millard Street, Orillia" },
+        { name: "Gina", address: "60 Olive Crescent, Orillia" },
+      ],
+    },
+    weekday_locations: {
+      1: "Annette", // Monday
+      2: "Gina", // Tuesday
+      3: "Annette", // Wednesday
+      // Thursday (4) absent -> off
+      5: "Gina", // Friday
+      // Saturday (6) + Sunday (0) absent -> off
+    },
+  });
+
+  it("resolves a weekday with a configured location to that location", () => {
+    expect(resolveLocationForDate(settings, "2026-06-15")).toEqual({
+      location: "Annette",
+      off: false,
+    }); // Monday
+    expect(resolveLocationForDate(settings, "2026-06-16")).toEqual({
+      location: "Gina",
+      off: false,
+    }); // Tuesday
+    expect(resolveLocationForDate(settings, "2026-06-19")).toEqual({
+      location: "Gina",
+      off: false,
+    }); // Friday
+  });
+
+  it("resolves an unconfigured weekday to off", () => {
+    expect(resolveLocationForDate(settings, "2026-06-18")).toEqual({
+      location: null,
+      off: true,
+    }); // Thursday — absent
+    expect(resolveLocationForDate(settings, "2026-06-20")).toEqual({
+      location: null,
+      off: true,
+    }); // Saturday — absent
+    expect(resolveLocationForDate(settings, "2026-06-21")).toEqual({
+      location: null,
+      off: true,
+    }); // Sunday — absent
+  });
+
+  it("returns the canonical org spelling even if the stored value differs in case/spacing", () => {
+    const messy = normalizeOrgSettings({
+      settings: { locations: [{ name: "Annette", address: "x" }] },
+      weekday_locations: { 1: "  annette " },
+    });
+    expect(resolveLocationForDate(messy, "2026-06-15")).toEqual({
+      location: "Annette",
+      off: false,
+    });
+  });
+
+  it("degrades to off when the configured location is no longer an org location", () => {
+    const stale = normalizeOrgSettings({
+      settings: { locations: [{ name: "Annette", address: "x" }] },
+      weekday_locations: { 1: "Gina" }, // Gina was removed from locations
+    });
+    expect(resolveLocationForDate(stale, "2026-06-15")).toEqual({
+      location: null,
+      off: true,
+    });
+  });
+
+  it("is off for every day on an org that has never set a schedule", () => {
+    const s = normalizeOrgSettings({ scheduling_style: "batched", settings: {} });
+    for (const date of [
+      "2026-06-15",
+      "2026-06-16",
+      "2026-06-17",
+      "2026-06-18",
+      "2026-06-19",
+      "2026-06-20",
+      "2026-06-21",
+    ]) {
+      expect(resolveLocationForDate(s, date)).toEqual({ location: null, off: true });
+    }
   });
 });

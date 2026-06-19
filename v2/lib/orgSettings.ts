@@ -8,6 +8,7 @@ import type { DurationDefaults } from "./scheduling/oneToOne";
 import { DEFAULT_WORKING_DAY, type WorkingDay } from "./scheduling/time";
 import { selectStrategy, type SchedulingStyle } from "./scheduling/strategy";
 import type { LocationPayoutType } from "./operatorSettings";
+import { weekdayForISODate } from "./dates";
 
 // WS4a needs only name + address from each location (payout is WS4b/WS4c).
 export type OrgLocation = { name: string; address: string };
@@ -41,6 +42,29 @@ export type RentedLocation = {
   dailyRate: number | null;
 };
 
+// TT — recurring weekly "where I work" schedule. Maps a weekday number (0 =
+// Sunday .. 6 = Saturday, matching JS Date.getDay()) to the org location name
+// Sam works that day. A weekday that is ABSENT (or maps to "" / a name that is
+// not one of the org's locations) means she is OFF that day. Stored additively
+// in the org_settings.weekday_locations jsonb column; null/empty reads as "all
+// days off", which is the safe default for an org that has never set it.
+export type WeekdayLocations = Record<number, string>;
+
+// The seven weekday slots, Monday-first to match how the settings card lists
+// them. Value is the JS Date.getDay() index for that weekday.
+export const WEEKDAY_ORDER = [
+  { key: 1, short: "Mon", long: "Monday" },
+  { key: 2, short: "Tue", long: "Tuesday" },
+  { key: 3, short: "Wed", long: "Wednesday" },
+  { key: 4, short: "Thu", long: "Thursday" },
+  { key: 5, short: "Fri", long: "Friday" },
+  { key: 6, short: "Sat", long: "Saturday" },
+  { key: 0, short: "Sun", long: "Sunday" },
+] as const;
+
+// The form value that represents "day off" (no location worked).
+export const WEEKDAY_OFF_VALUE = "";
+
 export type OrgSettings = {
   schedulingStyle: SchedulingStyle;
   locations: OrgLocation[];
@@ -60,6 +84,9 @@ export type OrgSettings = {
   // operator surfaces. "" → use a neutral label / drop the signature (a Sam-like
   // org with no row reads as "" and is seeded "Samantha" at cutover).
   operatorName: string;
+  // TT — recurring weekly location schedule (weekday -> org location name).
+  // Empty map → every day off; this is the default for an org with no row.
+  weekdayLocations: WeekdayLocations;
 };
 
 export const DEFAULT_SOFT_TARGET = 7;
@@ -78,6 +105,7 @@ export const DEFAULT_ORG_SETTINGS: OrgSettings = {
   ownedLocations: [],
   rentedLocations: [],
   operatorName: "",
+  weekdayLocations: {},
 };
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -196,9 +224,28 @@ function normalizeDurationDefaults(raw: unknown): DurationDefaults | null {
   };
 }
 
+// Reads the raw weekday_locations jsonb (a top-level column on org_settings,
+// like scheduling_style) into a clean weekday -> location map. Keys may arrive
+// as numbers or strings ("0".."6"); anything outside 0..6, and any blank or
+// non-string value, is dropped — so an absent weekday reads as OFF. Location
+// names are trimmed but NOT validated against the org's locations here (the
+// resolver does that), keeping this a pure shape-normalizer.
+function normalizeWeekdayLocations(raw: unknown): WeekdayLocations {
+  const rec = asRecord(raw);
+  const out: WeekdayLocations = {};
+  for (const [rawKey, rawValue] of Object.entries(rec)) {
+    const day = Number(rawKey);
+    if (!Number.isInteger(day) || day < 0 || day > 6) continue;
+    const value = asString(rawValue);
+    if (value) out[day] = value;
+  }
+  return out;
+}
+
 export function normalizeOrgSettings(row: {
   scheduling_style?: unknown;
   settings?: unknown;
+  weekday_locations?: unknown;
 }): OrgSettings {
   const settings = asRecord(row.settings);
   const workingDayRec = asRecord(settings.workingDay);
@@ -230,6 +277,7 @@ export function normalizeOrgSettings(row: {
     ownedLocations: normalizeOwnedLocations(settings.locations),
     rentedLocations: normalizeRentedLocations(settings.locations),
     operatorName: asString(settings.operatorName).slice(0, OPERATOR_NAME_MAX),
+    weekdayLocations: normalizeWeekdayLocations(row.weekday_locations),
   };
 }
 
@@ -250,4 +298,46 @@ export function orgLocationAddress(
     (l) => l.name.trim().toLowerCase() === key,
   );
   return match?.address || null;
+}
+
+// TT — recurring weekly location resolver. Given the org's settings and a
+// calendar date (`YYYY-MM-DD`), resolves the date -> its weekday -> the location
+// Sam configured to work that weekday. The result is OFF (`{ location: null,
+// off: true }`) when no location is configured for that weekday OR the
+// configured name is no longer one of the org's locations (so a renamed/removed
+// location degrades to "off" rather than naming a place that does not exist).
+// Pure: takes the date string, never reads the clock for a well-formed date.
+export type ResolvedLocation = { location: string | null; off: boolean };
+
+export function resolveLocationForDate(
+  settings: OrgSettings,
+  date: string,
+): ResolvedLocation {
+  const weekday = weekdayForISODate(date);
+  const configured = settings.weekdayLocations[weekday];
+  if (!configured || !isOrgLocation(settings, configured)) {
+    return { location: null, off: true };
+  }
+  // Return the canonical org location name (matched case-insensitively) so the
+  // caller always gets the spelling/casing the org settings store.
+  const key = configured.trim().toLowerCase();
+  const match = settings.locations.find(
+    (l) => l.name.trim().toLowerCase() === key,
+  );
+  return { location: match ? match.name : configured, off: false };
+}
+
+// Reads the "Where I work" settings card (7 <select>s named weekday.0..weekday.6,
+// each carrying an org location name or "" for a day off) into a WeekdayLocations
+// map. Off days (blank value) are simply omitted from the map. Normalization +
+// per-org location validation happen downstream (writer + resolver), so this
+// just pulls the raw form values into shape.
+export function weekdayLocationsFromForm(formData: FormData): WeekdayLocations {
+  const out: WeekdayLocations = {};
+  for (const { key } of WEEKDAY_ORDER) {
+    const raw = formData.get(`weekday.${key}`);
+    const value = typeof raw === "string" ? raw.trim() : "";
+    if (value) out[key] = value;
+  }
+  return out;
 }

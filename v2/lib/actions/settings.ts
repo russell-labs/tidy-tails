@@ -10,6 +10,8 @@ import {
   readOperatorSettings,
   writeOperatorSettings,
 } from "@/lib/operatorSettings.server";
+import { weekdayLocationsFromForm } from "@/lib/orgSettings";
+import { writeWeekdayLocations } from "@/lib/orgSettings.server";
 import { getCurrentUser } from "@/lib/supabase/server";
 
 export async function saveOperatorSettings(formData: FormData): Promise<void> {
@@ -70,6 +72,22 @@ export async function saveScheduleCalibrationWithState(
     ...current,
     scheduleCalibration: scheduleCalibrationFromForm(formData),
   });
+  revalidatePath("/schedule");
+  revalidatePath("/settings");
+  return { status: "saved", savedAt: new Date().toISOString() };
+}
+
+// Persist the recurring weekly "where I work" location schedule. Account data
+// (not a device preference), so it goes to the org_settings store behind RLS —
+// never localStorage. Re-verifies the operator (the proxy gates the route, but a
+// server action is its own POST endpoint) before writing only the weekday map.
+export async function saveWeekdayLocationsWithState(
+  _prev: OperatorSettingsState,
+  formData: FormData,
+): Promise<OperatorSettingsState> {
+  const user = await getCurrentUser();
+  if (!user) return { status: "idle" };
+  await writeWeekdayLocations(weekdayLocationsFromForm(formData));
   revalidatePath("/schedule");
   revalidatePath("/settings");
   return { status: "saved", savedAt: new Date().toISOString() };
