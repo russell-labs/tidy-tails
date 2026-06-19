@@ -21,7 +21,7 @@ import {
   resolveHouseholdLoosely,
   resolvePetWithinHousehold,
 } from "@/lib/householdMatch";
-import type { Client } from "@/lib/data/types";
+import type { Client, Pet } from "@/lib/data/types";
 import {
   BOOKING_LOCATIONS,
   SERVICE_TYPES,
@@ -30,8 +30,16 @@ import {
   formatPetNames,
   type ServiceType,
 } from "@/lib/booking";
-import { orgLocationAddress, type OrgLocation } from "@/lib/orgSettings";
+import {
+  orgLocationAddress,
+  resolveLocationForDate,
+  WEEKDAY_ORDER,
+  type OrgLocation,
+} from "@/lib/orgSettings";
 import { resolveLocationLoosely } from "@/lib/locationMatch";
+import { inferSizeClass } from "@/lib/dayCapacity";
+import { suggestedDurationMinutes } from "@/lib/scheduling/oneToOne";
+import { weekdayForISODate } from "@/lib/dates";
 import { serviceCodeFromLabel, serviceLabel } from "@/lib/data/live";
 import { formatDate, fullName } from "@/lib/format";
 import {
@@ -177,6 +185,41 @@ function resolveOrgLocationOrAsk(locations: readonly OrgLocation[], input: strin
   );
 }
 
+// The full weekday name ("Saturday") for an ISO date, for the schedule note. Uses
+// the same noon-anchored weekday index the resolver uses, so it never tz-slips.
+function weekdayLongName(date: string): string {
+  const weekday = weekdayForISODate(date);
+  return WEEKDAY_ORDER.find((d) => d.key === weekday)?.long ?? "day";
+}
+
+// Map a weekday-schedule-resolved org location NAME to a batched payout code
+// (gina/annette). The "Where I work" schedule stores an org location name; the
+// batched booking path keys off the gina/annette code. Reuse the SAME loose
+// matcher the spoken-location path uses, with the two payout shops as the
+// options, so a schedule entry named "Gina" / "Gina's" maps to "gina". Returns
+// null on no clean single match, so the caller falls back to ASKING (never a
+// guess) rather than booking the wrong payout location. The gated booking action
+// still re-validates the code.
+function batchedCodeFromScheduleName(name: string): string | null {
+  const match = resolveLocationLoosely(
+    name,
+    BOOKING_LOCATIONS.map((code) => ({
+      name: code,
+      address: bookingLocationLabel(code),
+    })),
+  );
+  return match.kind === "matched" ? match.name : null;
+}
+
+// A short, human note the proposal carries when the booking's location came from
+// the recurring weekly schedule (not something the operator typed this turn) —
+// e.g. "Jun 29 is a Saturday — that's your Gina day". Surfaced verbatim on the
+// confirm card (via describeProposal) so the operator just approves the inferred
+// location instead of being asked for it. Pure formatting.
+function scheduleLocationNote(date: string, label: string): string {
+  return `${formatDate(date)} is a ${weekdayLongName(date)} — that's your ${label} day, booking there.`;
+}
+
 /** Attributes the model passes to identify a household — a name + optional phone. */
 type HouseholdInput = { name: string; phone: string | null };
 
@@ -221,13 +264,14 @@ function resolvePetOrAsk(
   clientId: string,
   ownerName: string,
   petQuery: string,
-): { petId: string; groupPetIds: string[]; petName: string } {
+): { petId: string; groupPetIds: string[]; petName: string; pet: Pet | null } {
   const householdPets = dataset.pets.filter((p) => p.client_id === clientId);
   const householdAppointments = dataset.appointments.filter((a) => a.client_id === clientId);
   const result = resolvePetWithinHousehold(petQuery, householdPets, householdAppointments);
   if (result.kind === "matched") {
-    const petName = householdPets.find((p) => p.id === result.petId)?.name ?? petQuery;
-    return { petId: result.petId, groupPetIds: result.groupPetIds, petName };
+    const pet = householdPets.find((p) => p.id === result.petId) ?? null;
+    const petName = pet?.name ?? petQuery;
+    return { petId: result.petId, groupPetIds: result.groupPetIds, petName, pet };
   }
   if (result.kind === "ambiguous") {
     throw new AgentToolError(
@@ -254,14 +298,19 @@ const proposeBookAppointment: AgentWriteTool = {
     "a NAME, never an id; you may confirm it with find_household but pass the name here), " +
     "optionally `phone` to disambiguate same-name households, and the dog(s) by `pets` " +
     "(their names). Also pass a concrete ISO `date` (YYYY-MM-DD), a `time_slot` " +
-    "(e.g. '10:00am'), and a `service_type` " +
+    "(the DROP-OFF time, e.g. '10:00am') and a `service_type` " +
     "(one of full_groom, puppy_groom, bath_only, nail_trim, other). Optional `fee`. " +
-    "`location` is REQUIRED: gina or annette for a batched business (it sets the " +
-    "payout split), or one of the operator's locations for a 1:1 business, which " +
-    "ALSO needs `duration_minutes`. For a 1:1 business pass the location the operator " +
-    "named in her OWN words (e.g. 'Gina's', 'the salon', a street) — it is matched to " +
-    "a configured location for you, so don't demand exact wording; read get_locations " +
-    "to see the configured ones. If it can't be matched you'll get the list to ask from. " +
+    "The `time_slot` is a drop-off-time block, not a groom duration: NEVER ask the " +
+    "operator how long the appointment is or for a length in minutes — there is no " +
+    "duration to ask. `location` is OPTIONAL: when you omit it, the booking's location " +
+    "is taken from the operator's recurring weekly 'where I work' schedule for that " +
+    "date and confirmed on the card — so do NOT ask which location when the day's " +
+    "schedule already answers it. Only pass `location` when the operator herself names " +
+    "one this turn, or when the schedule has that weekday off / unset and you've been " +
+    "asked to supply it; then pass it in her OWN words (e.g. 'Gina's', 'the salon', a " +
+    "street) — it is matched to a configured location for you, so don't demand exact " +
+    "wording; read get_locations to see the configured ones. If it can't be resolved " +
+    "you'll get the list to ask from. " +
     "If the household or a dog is ambiguous, you'll be told to ask which — never propose on a guess.",
   input_schema: {
     type: "object",
@@ -274,15 +323,23 @@ const proposeBookAppointment: AgentWriteTool = {
         description: "The dog name(s) to book, e.g. ['Biscuit'] or ['Coco','Kiwi'].",
       },
       date: { type: "string", description: "ISO YYYY-MM-DD." },
-      time_slot: { type: "string", description: "Drop-off / start time, e.g. '10:00am'." },
+      time_slot: {
+        type: "string",
+        description: "Drop-off time block, e.g. '10:00am' (NOT a groom duration — don't ask how long).",
+      },
       service_type: {
         type: "string",
         enum: [...SERVICE_TYPES],
         description: "The grooming service code.",
       },
       fee: { type: "number", description: "Optional fee for the appointment." },
-      location: { type: "string", description: "Location (gina/annette for batched; an org location name for 1:1)." },
-      duration_minutes: { type: "integer", description: "1:1 block length in minutes (required for 1:1)." },
+      location: {
+        type: "string",
+        description:
+          "OPTIONAL. Omit to take the location from the weekly 'where I work' schedule for the date " +
+          "(confirmed on the card). Only set it when the operator names one, or the day is off/unset: " +
+          "gina/annette for batched, an org location name (or spoken words) for 1:1.",
+      },
     },
     required: ["household", "pets", "date", "time_slot", "service_type"],
     additionalProperties: false,
@@ -307,42 +364,70 @@ const proposeBookAppointment: AgentWriteTool = {
     );
 
     const org = await loadOrgSettings();
+    // A booking's time is a DROP-OFF block, never an asked-for groom length. We
+    // NEVER solicit a duration from the operator; the 1:1 surface still persists a
+    // duration_minutes, so default it from the service + this dog's size using the
+    // SAME per-size suggestion the 1:1 engine uses (operator-adjustable later).
+    // The batched surface ignores it (stays null).
     let location: string | null = null;
     let locationLabel: string | null = null;
     let durationMinutes: number | null = null;
+    // Set when the location was inferred from the weekly schedule (not typed this
+    // turn) — surfaced on the confirm card so she just approves the inferred place.
+    let scheduleNote: string | null = null;
 
     if (org.schedulingStyle === "one_to_one") {
-      if (!locationInput) {
-        throw new AgentToolError(
-          `This is a one-at-a-time schedule. Which location is it at — ${listOrgLocations(org.locations)}? Pass it as \`location\`.`,
-        );
+      if (locationInput) {
+        // She named a location this turn — honor it. Loose-match the spoken words
+        // ("the studio", "Gina's", a street) to a configured org location;
+        // ambiguous / no-match asks. The gated action re-validates with isOrgLocation.
+        location = resolveOrgLocationOrAsk(org.locations, locationInput);
+      } else {
+        // No location given: resolve it from the recurring weekly schedule for the
+        // date and CONFIRM it, instead of asking. Only ask when that weekday is
+        // off / unset (no schedule answer) — then note it's her day off.
+        const scheduled = resolveLocationForDate(org, date);
+        if (scheduled.off || !scheduled.location) {
+          throw new AgentToolError(
+            `${weekdayLongName(date)} (${formatDate(date)}) isn't set in the weekly schedule (looks like a day off). ` +
+              `Which location is it at — ${listOrgLocations(org.locations)}? Pass it as \`location\`.`,
+          );
+        }
+        location = scheduled.location;
+        scheduleNote = scheduleLocationNote(date, scheduled.location);
       }
-      // Loose-match the spoken location ("the studio", "Gina's", a street) to a
-      // configured org location; ambiguous / no-match asks rather than guessing.
-      // The gated booking action re-validates the resolved name with isOrgLocation.
-      const resolved = resolveOrgLocationOrAsk(org.locations, locationInput);
-      const duration = Number(input.duration_minutes);
-      if (!Number.isFinite(duration) || duration <= 0) {
-        throw new AgentToolError(
-          "Ask the operator how long the appointment is, then pass `duration_minutes`.",
-        );
-      }
-      location = resolved;
-      locationLabel = orgLocationAddress(org, resolved) ?? resolved;
-      durationMinutes = Math.round(duration);
-    } else {
-      // Batched: a location is REQUIRED — it drives the salon-payout split, so a
-      // null-location booking would mis-state Sam's take-home. Ask, never guess.
-      if (!locationInput) {
-        throw new AgentToolError(
-          "Which location is this booking at — Gina's or Annette's? It sets the payout split.",
-        );
-      }
+      locationLabel = orgLocationAddress(org, location) ?? location;
+      // Default the persisted block length from the service + dog size — never asked.
+      // A pet we couldn't size (no record) falls through to the medium default.
+      const firstPet = resolvedPets[0]?.pet ?? null;
+      const size = firstPet ? inferSizeClass(firstPet) : "medium";
+      durationMinutes = suggestedDurationMinutes(
+        serviceType,
+        size,
+        org.durationDefaults ?? undefined,
+      );
+    } else if (locationInput) {
+      // Batched, location named this turn — it drives the salon-payout split.
       if (!(BOOKING_LOCATIONS as readonly string[]).includes(locationInput)) {
         throw new AgentToolError("Location must be 'gina' or 'annette' for this business.");
       }
       location = locationInput;
       locationLabel = bookingLocationLabel(locationInput);
+    } else {
+      // Batched, no location given: take it from the weekly schedule for the date
+      // and CONFIRM it (the schedule stores an org location name; map it to the
+      // gina/annette payout code). Only ask when the weekday is off / unset, OR
+      // the scheduled place doesn't map to a payout shop — never guess the split.
+      const scheduled = resolveLocationForDate(org, date);
+      const code = scheduled.location ? batchedCodeFromScheduleName(scheduled.location) : null;
+      if (scheduled.off || !scheduled.location || !code) {
+        throw new AgentToolError(
+          "Which location is this booking at — Gina's or Annette's? It sets the payout split.",
+        );
+      }
+      location = code;
+      locationLabel = bookingLocationLabel(code);
+      scheduleNote = scheduleLocationNote(date, bookingLocationLabel(code) ?? scheduled.location);
     }
 
     return {
@@ -360,6 +445,7 @@ const proposeBookAppointment: AgentWriteTool = {
       location,
       locationLabel,
       durationMinutes,
+      scheduleNote,
     };
   },
 };
