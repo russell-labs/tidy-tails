@@ -4,6 +4,7 @@ import { SignOutButton } from "@/components/SignOutButton";
 import { disconnectGoogleCalendarAction } from "@/lib/actions/googleCalendar";
 import { LocationSettingsForm } from "@/components/LocationSettingsForm";
 import { MessageDraftSettingsForm } from "@/components/MessageDraftSettingsForm";
+import { WeekdayLocationSettingsForm } from "@/components/WeekdayLocationSettingsForm";
 import { ScheduleCalibrationForm } from "@/components/ScheduleCalibrationForm";
 import { SmsMessages } from "@/components/SmsMessages";
 import { AssistantVoiceSettings } from "@/components/AssistantVoiceSettings";
@@ -310,6 +311,29 @@ export default async function SettingsPage({
           </div>
         </div>
         <LocationSettingsForm settings={settings.locationSettings} />
+      </CollapsibleCard>
+
+      <CollapsibleCard
+        title="Where I work"
+        summary="Set which location you work each weekday — repeats every week"
+      >
+        <div className="border-b border-line px-3.5 py-3">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold text-ink">Weekly schedule</p>
+              <p className="mt-1 text-xs leading-relaxed text-ink-soft">
+                Pick a location for each weekday, or &ldquo;Off&rdquo; for a day
+                you don&rsquo;t work. This recurring pattern persists until you
+                change it.
+              </p>
+            </div>
+            <Pill tone="ready">Active</Pill>
+          </div>
+        </div>
+        <WeekdayLocationSettingsForm
+          locations={orgSettings.locations}
+          weekdayLocations={orgSettings.weekdayLocations}
+        />
       </CollapsibleCard>
 
       <CollapsibleCard
