@@ -264,6 +264,38 @@ describe("booking an existing dog routes to propose_book_appointment (not add_ho
   it("the add-household tool description warns it is not for booking an existing dog", () => {
     expect(writeToolsSrc.toLowerCase()).toContain("not for booking an existing dog");
   });
+
+  // The booking-conversation fixes are guidance the model reads at decision time
+  // (system prompt + the booking tool description). CI has no model key, so we pin
+  // the GUIDANCE strings rather than the live routing — the same approach the rest
+  // of this file uses. These guard the three behavior changes from silent drift.
+
+  it("(1) the prompt + tool tell the model NEVER to ask for a duration", () => {
+    // A booking time is a drop-off block, not a groom length: no minutes question.
+    const prompt = runAgentSrc.toLowerCase();
+    expect(prompt).toContain("drop-off time");
+    expect(prompt).toMatch(/never ask how long|no duration to collect/);
+    // The tool no longer declares a duration_minutes input the model could fill.
+    expect(writeToolsSrc).not.toContain("duration_minutes:");
+    expect(writeToolsSrc.toLowerCase()).toContain("don't ask how long");
+  });
+
+  it("(2) the prompt tells the model to take the location from the weekly schedule and confirm it", () => {
+    const prompt = runAgentSrc.toLowerCase();
+    expect(prompt).toContain("weekly schedule");
+    expect(prompt).toContain("confirm card states it");
+    // It only asks for a location on a day off / unset — the documented fallback.
+    expect(prompt).toMatch(/day off|unset/);
+    // The booking path actually resolves the schedule server-side.
+    expect(writeToolsSrc).toContain("resolveLocationForDate");
+  });
+
+  it("(3) the prompt tells the model to propose sooner and not re-ask for given info", () => {
+    const prompt = runAgentSrc.toLowerCase();
+    expect(prompt).toMatch(/propose sooner|prepare the booking/);
+    expect(prompt).toContain("never re-ask");
+    expect(prompt).toMatch(/one confirmation over a chain of questions/);
+  });
 });
 
 // Cross-tenant isolation, tool-layer guarantee. The hard boundary is the per-org
