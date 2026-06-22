@@ -21,6 +21,12 @@ import { recordAgentTurn } from "@/lib/agentTurnLog.server";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+// Give the function a known, generous budget that comfortably exceeds runAgent's
+// own wall-clock deadline (45s). runAgent always settles before this, so the
+// stream can flush a terminal {done}/{error} event and write its audit row — the
+// platform never kills the function mid-turn (the perpetual-"Thinking…" hang
+// that reverted PR #80). Valid on both Hobby (≤60s) and Pro Vercel plans.
+export const maxDuration = 60;
 
 const NDJSON_HEADERS = {
   "content-type": "application/x-ndjson; charset=utf-8",

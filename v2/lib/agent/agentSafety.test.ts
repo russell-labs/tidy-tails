@@ -264,6 +264,65 @@ describe("booking an existing dog routes to propose_book_appointment (not add_ho
   it("the add-household tool description warns it is not for booking an existing dog", () => {
     expect(writeToolsSrc.toLowerCase()).toContain("not for booking an existing dog");
   });
+
+  // The booking-conversation fixes are guidance the model reads at decision time
+  // (system prompt + the booking tool description). CI has no model key, so we pin
+  // the GUIDANCE strings rather than the live routing — the same approach the rest
+  // of this file uses. These guard the three behavior changes from silent drift.
+
+  it("(1) the prompt + tool tell the model NEVER to ask for a duration", () => {
+    // A booking time is a drop-off block, not a groom length: no minutes question.
+    const prompt = runAgentSrc.toLowerCase();
+    expect(prompt).toContain("drop-off time");
+    expect(prompt).toMatch(/never ask how long|no duration to collect/);
+    // The tool no longer declares a duration_minutes input the model could fill.
+    expect(writeToolsSrc).not.toContain("duration_minutes:");
+    expect(writeToolsSrc.toLowerCase()).toContain("don't ask how long");
+  });
+
+  it("(2) the prompt tells the model to take the location from the weekly schedule and confirm it", () => {
+    const prompt = runAgentSrc.toLowerCase();
+    expect(prompt).toContain("weekly schedule");
+    expect(prompt).toContain("confirm card states it");
+    // It only asks for a location on a day off / unset — the documented fallback.
+    expect(prompt).toMatch(/day off|unset/);
+    // The booking path actually resolves the schedule server-side.
+    expect(writeToolsSrc).toContain("resolveLocationForDate");
+  });
+
+  it("(3) the prompt tells the model to propose sooner and not re-ask for given info", () => {
+    const prompt = runAgentSrc.toLowerCase();
+    expect(prompt).toMatch(/propose sooner|prepare the booking/);
+    expect(prompt).toContain("never re-ask");
+    expect(prompt).toMatch(/one confirmation over a chain of questions/);
+  });
+
+  // The conservative counterweight to "propose sooner" — and the fix for the hang
+  // PR #80 caused. The model must ASK for genuinely-missing required info (above
+  // all the drop-off TIME) with one short question and STOP, never try to propose
+  // without it, and never loop on a just-failed tool call. Pinned as guidance
+  // strings (CI has no model key); the live Preview booking is the real proof.
+  it("(4) the prompt tells the model to ASK for a missing drop-off time and STOP — never stall or propose without it", () => {
+    const prompt = runAgentSrc.toLowerCase();
+    // Ask exactly one short question for the missing detail, then wait.
+    expect(prompt).toMatch(/ask (one|a) (short )?question/);
+    expect(prompt).toMatch(/and stop|then stop|wait for her answer/);
+    // Never propose a booking without a drop-off time, and never guess one.
+    expect(prompt).toMatch(/without a drop-off time/);
+    expect(prompt).toMatch(/never guess|do not guess|not guess one/);
+  });
+
+  it("(5) the prompt forbids looping on a just-failed tool call", () => {
+    const prompt = runAgentSrc.toLowerCase();
+    expect(prompt).toMatch(/same tool again|same tool .* loop|do not call that same tool/);
+  });
+
+  it("(6) the prompt tells the model to use a household's only dog without asking which", () => {
+    const prompt = runAgentSrc.toLowerCase();
+    expect(prompt).toMatch(/exactly one dog|only one dog|a single dog/);
+    expect(prompt).toMatch(/use that dog/);
+    expect(prompt).toMatch(/do not ask which|don't ask which|without asking which/);
+  });
 });
 
 // Cross-tenant isolation, tool-layer guarantee. The hard boundary is the per-org

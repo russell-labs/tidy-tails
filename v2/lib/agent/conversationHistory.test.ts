@@ -24,6 +24,7 @@ const BOOK: AgentProposal = {
   location: "gina",
   locationLabel: "Tidy Tails (Gina)",
   durationMinutes: null,
+  scheduleNote: null,
 };
 
 const ADD_PET: AgentProposal = {

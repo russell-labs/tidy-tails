@@ -142,7 +142,9 @@ describe("propose_book_appointment (batched)", () => {
     ).rejects.toBeInstanceOf(AgentToolError);
   });
 
-  it("requires a location (it drives Sam's payout split) — asks rather than guessing", async () => {
+  it("requires a location when the schedule is off/unset — asks rather than guessing", async () => {
+    // Default settings carry an EMPTY weekday schedule, so an un-stated location
+    // can't be resolved and the tool asks (it never guesses the payout split).
     loadDatasetMock.mockResolvedValue(dataset());
     await expect(
       runAgentWriteTool("propose_book_appointment", {
@@ -151,9 +153,55 @@ describe("propose_book_appointment (batched)", () => {
         date: "2026-07-11",
         time_slot: "10:00am",
         service_type: "full_groom",
-        // no location
+        // no location, no schedule entry → asks
       }),
-    ).rejects.toBeInstanceOf(AgentToolError);
+    ).rejects.toThrow(/Gina|Annette|payout split/);
+  });
+
+  it("resolves the payout location from the weekly schedule and CONFIRMS it", async () => {
+    // Behavior (2) for the batched waterfall: the "where I work" schedule names an
+    // org location for the weekday; map it to the gina/annette payout code and
+    // confirm it, instead of asking. 2026-07-11 is a Saturday.
+    loadOrgSettingsMock.mockResolvedValue({
+      ...DEFAULT_ORG_SETTINGS, // batched
+      locations: [{ name: "Gina", address: "60 Olive Crescent, Orillia" }],
+      weekdayLocations: { 6: "Gina" }, // Saturday → Gina's
+    });
+    loadDatasetMock.mockResolvedValue(dataset());
+    const proposal = (await runAgentWriteTool("propose_book_appointment", {
+      household: "Mary Jones",
+      pets: ["Kiwi"],
+      date: "2026-07-11", // a Saturday
+      time_slot: "10:00am",
+      service_type: "full_groom",
+      // no location — taken from the schedule
+    })) as BookAppointmentProposal;
+    expect(proposal.location).toBe("gina"); // mapped to the payout code
+    expect(proposal.locationLabel).toContain("Gina");
+    expect(proposal.scheduleNote).toBeTruthy();
+    expect(proposal.scheduleNote).toContain("Saturday");
+    // A batched booking still carries no asked-for duration.
+    expect(proposal.durationMinutes).toBeNull();
+  });
+
+  it("asks for the payout location when the scheduled place isn't a payout shop", async () => {
+    // The schedule names a real org location that doesn't map to gina/annette, so
+    // the payout split is unknown — ask rather than guess it.
+    loadOrgSettingsMock.mockResolvedValue({
+      ...DEFAULT_ORG_SETTINGS,
+      locations: [{ name: "Downtown", address: "1 Main St" }],
+      weekdayLocations: { 6: "Downtown" },
+    });
+    loadDatasetMock.mockResolvedValue(dataset());
+    await expect(
+      runAgentWriteTool("propose_book_appointment", {
+        household: "Mary Jones",
+        pets: ["Kiwi"],
+        date: "2026-07-11",
+        time_slot: "10:00am",
+        service_type: "full_groom",
+      }),
+    ).rejects.toThrow(/Gina|Annette|payout split/);
   });
 
   it("rejects an unknown service type", async () => {
@@ -168,6 +216,42 @@ describe("propose_book_appointment (batched)", () => {
       }),
     ).rejects.toBeInstanceOf(AgentToolError);
   });
+
+  // Behavior (4): a genuinely-missing required detail must ASK, not stall and not
+  // propose-on-a-guess. With no drop-off time, the tool asks for it (a clear,
+  // caller-correctable AgentToolError the model relays as one short question) —
+  // it never produces a proposal and never throws an unexpected error.
+  it("asks for the drop-off time when none is given (never stalls or proposes without it)", async () => {
+    loadDatasetMock.mockResolvedValue(dataset());
+    const call = runAgentWriteTool("propose_book_appointment", {
+      household: "Mary Jones",
+      pets: ["Kiwi"],
+      date: "2026-07-11",
+      service_type: "full_groom",
+      location: "gina",
+      // no time_slot — must ask, not guess or stall
+    });
+    await expect(call).rejects.toBeInstanceOf(AgentToolError);
+    await expect(call).rejects.toThrow(/drop-?off|what time/i);
+  });
+
+  // Behavior (3): a household with exactly ONE dog, referred to generically, books
+  // that dog — the tool does not ask "which dog?" and the proposal carries the
+  // dog's real name (Kiwi), not the generic phrase.
+  it("auto-resolves a household's only dog from a generic 'the dog' reference", async () => {
+    loadDatasetMock.mockResolvedValue(dataset()); // one dog on file: Kiwi
+    const proposal = (await runAgentWriteTool("propose_book_appointment", {
+      household: "Mary Jones",
+      pets: ["the dog"],
+      date: "2026-07-11",
+      time_slot: "10:00am",
+      service_type: "full_groom",
+      location: "gina",
+    })) as BookAppointmentProposal;
+    expect(proposal.kind).toBe("book_appointment");
+    expect(proposal.petNames).toBe("Kiwi");
+    expect(proposal.petQueries).toEqual(["Kiwi"]);
+  });
 });
 
 describe("propose_book_appointment (one_to_one)", () => {
@@ -176,23 +260,15 @@ describe("propose_book_appointment (one_to_one)", () => {
       ...DEFAULT_ORG_SETTINGS,
       schedulingStyle: "one_to_one",
       locations: [{ name: "Home Studio", address: "1 Bay St" }],
+      // No weekday schedule by default — so an un-stated location still asks.
+      weekdayLocations: {},
     });
   });
 
-  it("requires a location and duration before proposing", async () => {
-    loadDatasetMock.mockResolvedValue(dataset());
-    await expect(
-      runAgentWriteTool("propose_book_appointment", {
-        household: "Mary Jones",
-        pets: ["Kiwi"],
-        date: "2026-07-11",
-        time_slot: "10:00am",
-        service_type: "full_groom",
-      }),
-    ).rejects.toBeInstanceOf(AgentToolError);
-  });
-
-  it("proposes a 1:1 booking with the resolved org location and duration", async () => {
+  it("never asks for a duration — defaults the 1:1 block length from the dog's size", async () => {
+    // Behavior (1): the time is a drop-off block, not an asked-for length. With a
+    // location named and NO duration passed, it still proposes and fills the block
+    // length itself (small Kiwi → the small default), instead of demanding minutes.
     loadDatasetMock.mockResolvedValue(dataset());
     const proposal = (await runAgentWriteTool("propose_book_appointment", {
       household: "Mary Jones",
@@ -201,11 +277,84 @@ describe("propose_book_appointment (one_to_one)", () => {
       time_slot: "10:00am",
       service_type: "full_groom",
       location: "Home Studio",
-      duration_minutes: 90,
+      // no duration_minutes — the operator is NEVER asked for one
     })) as BookAppointmentProposal;
-    expect(proposal.durationMinutes).toBe(90);
     expect(proposal.location).toBe("Home Studio");
     expect(proposal.locationLabel).toContain("Bay");
+    // Defaulted from size (small → 30), never null and never solicited.
+    expect(proposal.durationMinutes).toBe(30);
+  });
+
+  it("sizes the default block from a larger dog (large → longer block)", async () => {
+    loadDatasetMock.mockResolvedValue(
+      dataset({ pets: [pet({ id: "pet-1", client_id: "client-1", name: "Kiwi", size: "large" })] }),
+    );
+    const proposal = (await runAgentWriteTool("propose_book_appointment", {
+      household: "Mary Jones",
+      pets: ["Kiwi"],
+      date: "2026-07-11",
+      time_slot: "10:00am",
+      service_type: "full_groom",
+      location: "Home Studio",
+    })) as BookAppointmentProposal;
+    expect(proposal.durationMinutes).toBe(90); // large default, not asked for
+  });
+
+  it("resolves the location from the weekly schedule and CONFIRMS it (no location asked)", async () => {
+    // Behavior (2): 2026-07-11 is a Saturday; the schedule says she works Home
+    // Studio that weekday. With NO location passed, it resolves + confirms it.
+    loadOrgSettingsMock.mockResolvedValue({
+      ...DEFAULT_ORG_SETTINGS,
+      schedulingStyle: "one_to_one",
+      locations: [{ name: "Home Studio", address: "1 Bay St" }],
+      weekdayLocations: { 6: "Home Studio" }, // Saturday → Home Studio
+    });
+    loadDatasetMock.mockResolvedValue(dataset());
+    const proposal = (await runAgentWriteTool("propose_book_appointment", {
+      household: "Mary Jones",
+      pets: ["Kiwi"],
+      date: "2026-07-11", // a Saturday
+      time_slot: "10:00am",
+      service_type: "full_groom",
+      // no location — taken from the schedule
+    })) as BookAppointmentProposal;
+    expect(proposal.location).toBe("Home Studio");
+    // The confirm card states WHY (a schedule note naming the weekday + place).
+    expect(proposal.scheduleNote).toBeTruthy();
+    expect(proposal.scheduleNote).toContain("Saturday");
+    expect(proposal.scheduleNote).toContain("Home Studio");
+  });
+
+  it("only asks for a location when that weekday is off / unset", async () => {
+    // Behavior (2) fallback: empty schedule → that weekday is a day off, so it
+    // asks (and says it's not on the schedule) instead of guessing.
+    loadDatasetMock.mockResolvedValue(dataset());
+    await expect(
+      runAgentWriteTool("propose_book_appointment", {
+        household: "Mary Jones",
+        pets: ["Kiwi"],
+        date: "2026-07-11",
+        time_slot: "10:00am",
+        service_type: "full_groom",
+        // no location, no schedule entry → asks
+      }),
+    ).rejects.toThrow(/which location|day off|schedule/i);
+  });
+
+  it("honors a location the operator named this turn (no schedule note then)", async () => {
+    loadDatasetMock.mockResolvedValue(dataset());
+    const proposal = (await runAgentWriteTool("propose_book_appointment", {
+      household: "Mary Jones",
+      pets: ["Kiwi"],
+      date: "2026-07-11",
+      time_slot: "10:00am",
+      service_type: "full_groom",
+      location: "Home Studio",
+    })) as BookAppointmentProposal;
+    expect(proposal.location).toBe("Home Studio");
+    expect(proposal.locationLabel).toContain("Bay");
+    // She named it, so there is no "from your schedule" confirmation line.
+    expect(proposal.scheduleNote).toBeNull();
   });
 
   it("loose-matches a spoken location to the configured org location ('the studio' → Home Studio)", async () => {
@@ -217,7 +366,6 @@ describe("propose_book_appointment (one_to_one)", () => {
       time_slot: "10:00am",
       service_type: "full_groom",
       location: "the studio",
-      duration_minutes: 90,
     })) as BookAppointmentProposal;
     // Resolved to the real configured name — the gated action re-validates it.
     expect(proposal.location).toBe("Home Studio");
@@ -233,7 +381,6 @@ describe("propose_book_appointment (one_to_one)", () => {
         time_slot: "10:00am",
         service_type: "full_groom",
         location: "the airport",
-        duration_minutes: 90,
       }),
     ).rejects.toThrow(/Home Studio/); // error lists the configured option
   });
@@ -246,6 +393,7 @@ describe("propose_book_appointment (one_to_one)", () => {
         { name: "North Salon", address: "1 A St" },
         { name: "South Salon", address: "2 B St" },
       ],
+      weekdayLocations: {},
     });
     loadDatasetMock.mockResolvedValue(dataset());
     await expect(
@@ -256,7 +404,6 @@ describe("propose_book_appointment (one_to_one)", () => {
         time_slot: "10:00am",
         service_type: "full_groom",
         location: "the salon",
-        duration_minutes: 90,
       }),
     ).rejects.toThrow(/North Salon|South Salon/);
   });

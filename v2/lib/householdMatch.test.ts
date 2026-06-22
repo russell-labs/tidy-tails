@@ -132,4 +132,50 @@ describe("resolvePetWithinHousehold", () => {
     const pets = [pet({ id: "p1", client_id: "c1", name: "Kiwi" })];
     expect(resolvePetWithinHousehold("Rex", pets, [])).toEqual({ kind: "none" });
   });
+
+  // TT — single-dog auto-resolve. A household with exactly ONE dog should not be
+  // asked "which dog?" when the operator refers to it generically ("the dog").
+  it("auto-resolves the household's only dog for a generic 'the dog' reference", () => {
+    const pets = [pet({ id: "p1", client_id: "c1", name: "Test" })];
+    const result = resolvePetWithinHousehold("the dog", pets, []);
+    expect(result.kind).toBe("matched");
+    if (result.kind !== "matched") throw new Error("expected matched");
+    expect(result.petId).toBe("p1");
+    expect(result.groupPetIds).toEqual(["p1"]);
+  });
+
+  it("auto-resolves the only dog for other generic references", () => {
+    const pets = [pet({ id: "p1", client_id: "c1", name: "Test" })];
+    for (const query of ["the household's dog", "their dog", "the puppy", "dog", "the only dog"]) {
+      const result = resolvePetWithinHousehold(query, pets, []);
+      expect(result.kind, `query=${JSON.stringify(query)}`).toBe("matched");
+      if (result.kind !== "matched") throw new Error("expected matched");
+      expect(result.petId).toBe("p1");
+    }
+  });
+
+  // An empty/unspecified name is NOT a generic reference — it must ask, not
+  // silently resolve to the lone dog (every caller passes a required name).
+  it("returns none for an empty name even when the household has one dog", () => {
+    const pets = [pet({ id: "p1", client_id: "c1", name: "Test" })];
+    expect(resolvePetWithinHousehold("", pets, [])).toEqual({ kind: "none" });
+    expect(resolvePetWithinHousehold("   ", pets, [])).toEqual({ kind: "none" });
+  });
+
+  // The guardrail: a SPECIFIC name that doesn't match must NOT silently resolve to
+  // the lone dog — that would book the wrong (or a brand-new) dog. Still none.
+  it("does NOT auto-resolve a specific non-matching name even with one dog on file", () => {
+    const pets = [pet({ id: "p1", client_id: "c1", name: "Test" })];
+    expect(resolvePetWithinHousehold("Bandit", pets, [])).toEqual({ kind: "none" });
+  });
+
+  // A generic reference is only unambiguous when there is exactly one dog. With two
+  // distinct dogs, "the dog" must not auto-pick one.
+  it("does NOT auto-resolve 'the dog' when the household has two distinct dogs", () => {
+    const pets = [
+      pet({ id: "p1", client_id: "c1", name: "Coco" }),
+      pet({ id: "p2", client_id: "c1", name: "Kiwi" }),
+    ];
+    expect(resolvePetWithinHousehold("the dog", pets, []).kind).not.toBe("matched");
+  });
 });

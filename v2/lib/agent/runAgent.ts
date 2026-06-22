@@ -46,6 +46,47 @@ export { ProviderNotConfiguredError as AgentNotConfiguredError } from "./provide
 const MAX_TURNS = 8;
 const MAX_TOKENS = 1024;
 
+// Wall-clock budget for one whole run, kept COMFORTABLY under the route's
+// maxDuration (60s) so runAgent always settles — returns or throws — before the
+// serverless platform kills the function. MAX_TURNS bounds iterations but not
+// time; without this a slow/churning turn could run until the function times out
+// mid-`await`, leaving the stream with no terminal event (a perpetual
+// "Thinking…") and no audit row. That is the failure that reverted PR #80.
+const DEFAULT_DEADLINE_MS = 45_000;
+// Ceiling on any single await (one model round-trip or one tool run). A wedged
+// call is abandoned at this bound even when budget remains, so the operator is
+// not left waiting on one hung call. Generous — a normal Flash call is 1–5s.
+const PER_AWAIT_TIMEOUT_MS = 25_000;
+// Shown when the run hits its time budget — friendly, and clearly NOT a success.
+const TIMED_OUT_MESSAGE =
+  "That took longer than expected. Please try again in a moment.";
+
+/** Internal marker: a model/tool call (or the whole run) hit its time budget. */
+class AgentDeadlineError extends Error {}
+
+/**
+ * Resolve `promise`, but reject with AgentDeadlineError if it has not settled in
+ * `ms`. The underlying work is left to settle on its own (the provider seam has
+ * no cancel), but the RUNNER stops waiting — so a hung model call or DB read can
+ * never outlive the budget and hang the whole turn.
+ */
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  if (ms <= 0) return Promise.reject(new AgentDeadlineError());
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new AgentDeadlineError()), ms);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
+
 /** One prior turn of the conversation, as the chat surface stores it. */
 export type AgentTurn = { role: "user" | "assistant"; text: string };
 
@@ -75,6 +116,10 @@ export type RunAgentOptions = {
   model?: string;
   /** Live status callback for streaming UIs. */
   onEvent?: (event: AgentEvent) => void;
+  /** Wall-clock budget (ms) for the whole run. Defaults to DEFAULT_DEADLINE_MS. */
+  deadlineMs?: number;
+  /** Clock source (ms). Injectable for deterministic tests; defaults to Date.now. */
+  now?: () => number;
 };
 
 function systemPrompt(): string {
@@ -138,11 +183,38 @@ function systemPrompt(): string {
     "you, so do not demand exact wording. If it can't be matched, you'll be given the",
     "options to ask which she means.",
     "",
+    "The operator works a recurring weekly schedule — which location she works is",
+    "set per weekday. So for a BOOKING you usually do NOT need to ask where: leave",
+    "`location` off and the booking takes the location from her schedule for that",
+    "date, and the confirm card states it (e.g. 'Saturday — that's your Gina day')",
+    "for her to approve. Only name a `location` yourself when she states one this",
+    "turn; if that weekday is a day off / unset, you'll be asked to supply one — only",
+    "then ask her which.",
+    "",
     "Booking is for dogs already on file. When she asks to book / schedule a visit,",
     "use propose_book_appointment with the household name + dog name(s). If",
     "find_household shows the pet already exists, BOOK it —",
     "do not use propose_add_household or propose_add_pet for a pet that already exists.",
     "Only add a household or pet when find_household confirms the dog is genuinely new (not on file).",
+    "",
+    "A booking's time is the DROP-OFF time — a block, not a groom length. There is",
+    "NO duration to collect: NEVER ask how long the appointment is or for minutes;",
+    "the system sets any needed block length itself.",
+    "",
+    "Ask for less, and PROPOSE sooner. Once you have the owner + pet, the date, the",
+    "drop-off time, and the service (with the location resolved from her schedule or",
+    "named by her), prepare the booking — show the confirm card instead of asking",
+    "another question. Never re-ask for something she already gave earlier in this",
+    "conversation; reuse it. Prefer ONE confirmation over a chain of questions.",
+    "",
+    "But never propose on missing REQUIRED info — balance asking less against this.",
+    "If a required detail is missing — most often the DROP-OFF TIME — ask her for it.",
+    "Ask ONE short question for just that detail and STOP; wait for her answer before",
+    "doing anything else. Do NOT try to prepare a booking without a drop-off time, and",
+    "never guess one. If a tool just returned an error or asked you for something, do",
+    "NOT call that same tool again with the same details on a loop — ask the one thing",
+    "you need, then stop and wait. If a household has exactly one dog and she says",
+    "'the dog' (or doesn't name one), use that dog — do not ask which dog.",
     "",
     "Disambiguate, never guess. On any tool error or low confidence, ask a",
     "clarifying question or say what you could not determine — do not invent an",
@@ -198,15 +270,40 @@ export async function runAgent(
 
   const toolCalls: AgentToolCall[] = [];
 
+  // Time guard: a budget for the WHOLE run, enforced both at the top of each
+  // iteration and as a ceiling on every single await. `remaining()` shrinks as
+  // the run proceeds; each await is bounded by the smaller of the per-await
+  // ceiling and what's left, so the run can never outlive its budget — it
+  // settles with TIMED_OUT_MESSAGE instead of hanging the function.
+  const now = options.now ?? (() => Date.now());
+  const deadlineAt = now() + (options.deadlineMs ?? DEFAULT_DEADLINE_MS);
+  const remaining = () => deadlineAt - now();
+  const awaitBudget = () => Math.min(PER_AWAIT_TIMEOUT_MS, remaining());
+  const timedOut = (): AgentRunResult => ({ text: TIMED_OUT_MESSAGE, toolCalls });
+
   for (let turn = 0; turn < MAX_TURNS; turn += 1) {
+    if (remaining() <= 0) return timedOut();
+
     options.onEvent?.({ type: "thinking" });
-    const response = await provider.createMessage({
-      system,
-      tools,
-      messages,
-      model,
-      maxTokens: MAX_TOKENS,
-    });
+    let response;
+    try {
+      response = await withTimeout(
+        provider.createMessage({
+          system,
+          tools,
+          messages,
+          model,
+          maxTokens: MAX_TOKENS,
+        }),
+        awaitBudget(),
+      );
+    } catch (error) {
+      // Out of time → settle gracefully (never hang). Any other provider error
+      // (e.g. not-configured / request error) propagates to the caller, which
+      // surfaces a clear error and ends the stream.
+      if (error instanceof AgentDeadlineError) return timedOut();
+      throw error;
+    }
 
     if (response.stopReason !== "tool_use") {
       return { text: response.text, toolCalls };
@@ -227,33 +324,43 @@ export async function runAgent(
       // A write tool only PROPOSES. A successful proposal IS this turn's output:
       // we stop here and hand the proposal to the UI for Sam to confirm. It is
       // never fed back to the model and never executed — the confirm action,
-      // on her tap, performs the actual (gated) write. A propose error (e.g.
-      // ambiguous pet) is fed back like a read error so the model disambiguates.
+      // on her tap, performs the actual (gated) write. A caller-correctable
+      // AgentToolError (e.g. ambiguous pet) is fed back so the model can ask.
       if (AGENT_WRITE_TOOL_NAMES.includes(call.name)) {
         try {
-          const proposal = await runAgentWriteTool(call.name, call.input);
+          const proposal = await withTimeout(
+            runAgentWriteTool(call.name, call.input),
+            awaitBudget(),
+          );
           return { text: response.text, toolCalls, proposal };
         } catch (error) {
-          const messageText =
-            error instanceof AgentToolError
-              ? error.message
-              : "Preparing that action failed unexpectedly. Tell the operator you couldn't set it up.";
-          results.push({ id: call.id, name: call.name, content: messageText, isError: true });
+          if (error instanceof AgentDeadlineError) return timedOut();
+          if (error instanceof AgentToolError) {
+            results.push({ id: call.id, name: call.name, content: error.message, isError: true });
+            continue;
+          }
+          // An UNEXPECTED throw is a real failure, not something the model can
+          // fix by asking. Propagate it so the caller surfaces an error and ends
+          // the stream — never feed it back to be retried (that churn, with no
+          // time bound, is what hung PR #80).
+          throw error;
         }
-        continue;
       }
 
       try {
-        const result = await runAgentTool(call.name, call.input);
+        const result = await withTimeout(runAgentTool(call.name, call.input), awaitBudget());
         results.push({ id: call.id, name: call.name, content: JSON.stringify(result) });
       } catch (error) {
+        if (error instanceof AgentDeadlineError) return timedOut();
         // Caller-correctable errors (bad id, ambiguous input) go back to the
         // model as a tool error so it can ask or adjust — it never fabricates.
-        const messageText =
-          error instanceof AgentToolError
-            ? error.message
-            : "The lookup failed unexpectedly. Tell the operator you could not retrieve that.";
-        results.push({ id: call.id, name: call.name, content: messageText, isError: true });
+        if (error instanceof AgentToolError) {
+          results.push({ id: call.id, name: call.name, content: error.message, isError: true });
+        } else {
+          // Unexpected failure → propagate (end the turn with an error), do not
+          // feed back and churn. See the write path above.
+          throw error;
+        }
       }
     }
 

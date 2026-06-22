@@ -37,6 +37,10 @@ import { isAudioWithinLimit, isLikelyAudioMime } from "@/lib/agent/voiceInput";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+// Known, generous budget that comfortably exceeds runAgent's own 45s deadline so
+// the run always settles and the stream flushes a terminal {done}/{error} event
+// before the platform could kill the function. Valid on Hobby (≤60s) and Pro.
+export const maxDuration = 60;
 
 const NDJSON_HEADERS = {
   "content-type": "application/x-ndjson; charset=utf-8",
