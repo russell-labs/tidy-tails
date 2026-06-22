@@ -39,11 +39,6 @@ export type BookAppointmentProposal = {
   location: string | null; // resolved location code/id, when one was given
   locationLabel: string | null; // display label for the location
   durationMinutes: number | null; // 1:1 block length; null for batched
-  // A short confirmation line when the location was inferred from the recurring
-  // weekly "where I work" schedule (not typed this turn), e.g. "Jun 29 is a
-  // Saturday — that's your Gina day, booking there." null when the operator named
-  // the location herself. Shown on the confirm card so she just approves it.
-  scheduleNote: string | null;
 };
 
 /**
@@ -398,10 +393,7 @@ export function describeProposal(proposal: AgentProposal): string {
       ];
       if (proposal.locationLabel) parts.push(proposal.locationLabel);
       if (proposal.fee != null) parts.push(formatMoney(proposal.fee));
-      const line = `Book ${proposal.petNames} — ${parts.join(" · ")}`;
-      // When the location came from the weekly schedule, lead with that note so
-      // the operator sees WHY this location was chosen and just approves it.
-      return proposal.scheduleNote ? `${proposal.scheduleNote}\n${line}` : line;
+      return `Book ${proposal.petNames} — ${parts.join(" · ")}`;
     }
     case "add_tip": {
       const method = METHOD_LABEL[proposal.paymentMethod] ?? proposal.paymentMethod;

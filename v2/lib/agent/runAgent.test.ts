@@ -226,7 +226,6 @@ describe("runAgent — multi-turn proposals do not bleed into a new request (TT-
     location: "gina",
     locationLabel: "Tidy Tails (Gina)",
     durationMinutes: null,
-    scheduleNote: null,
   };
   const ADD_PET: AgentProposal = {
     kind: "add_pet",
