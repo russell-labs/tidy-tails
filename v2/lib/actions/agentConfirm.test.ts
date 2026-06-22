@@ -123,6 +123,7 @@ const BOOK: BookAppointmentProposal = {
   location: "gina",
   locationLabel: "Tidy Tails (Gina)",
   durationMinutes: null,
+  scheduleNote: null,
 };
 
 const TIP: AddTipProposal = {
