@@ -35,7 +35,6 @@ const BOOK: BookAppointmentProposal = {
   location: "gina",
   locationLabel: "Tidy Tails (Gina)",
   durationMinutes: null,
-  scheduleNote: null,
 };
 
 const TIP: AddTipProposal = {
@@ -91,21 +90,6 @@ describe("describeProposal — booking", () => {
     const text = describeProposal({ ...BOOK, fee: null });
     expect(text).toContain("Kiwi");
     expect(text).not.toContain("$NaN");
-  });
-
-  it("leads with the schedule note when the location was inferred from the schedule", () => {
-    // Behavior (2): a schedule-resolved booking confirms WHY this location, so the
-    // operator just approves it. The note is part of the SAME card text.
-    const note = "June 29 is a Saturday — that's your Gina day, booking there.";
-    const text = describeProposal({ ...BOOK, scheduleNote: note });
-    expect(text).toContain(note);
-    expect(text.startsWith(note)).toBe(true);
-    // The booking line is still present after the note.
-    expect(text).toContain("Book Kiwi");
-  });
-
-  it("omits any schedule note when the operator named the location herself", () => {
-    expect(describeProposal(BOOK)).not.toContain("booking there");
   });
 });
 

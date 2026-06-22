@@ -32,7 +32,6 @@ const PROPOSAL: BookAppointmentProposal = {
   location: "gina",
   locationLabel: "Tidy Tails (Gina)",
   durationMinutes: null,
-  scheduleNote: null,
 };
 
 const noop = () => {};
