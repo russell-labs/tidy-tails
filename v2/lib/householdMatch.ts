@@ -39,6 +39,57 @@ export type PetMatchResult =
   | { kind: "none" }
   | { kind: "ambiguous"; options: { petId: string; name: string }[] };
 
+// Words that, on their own, refer to "the dog" without naming it.
+const GENERIC_DOG_WORDS = new Set([
+  "dog",
+  "dogs",
+  "pup",
+  "pups",
+  "puppy",
+  "puppies",
+  "pet",
+  "pets",
+  "doggo",
+  "doggy",
+  "doggie",
+  "canine",
+]);
+
+// Determiners / possessives that can precede a generic dog word and carry no
+// identifying meaning of their own ("the household's dog", "their dog").
+const GENERIC_DET_WORDS = new Set([
+  "the",
+  "a",
+  "an",
+  "their",
+  "her",
+  "his",
+  "my",
+  "our",
+  "its",
+  "one",
+  "only",
+  "household",
+  "household's",
+  "households",
+  "this",
+  "that",
+]);
+
+// True when the query is a GENERIC reference to a dog (e.g. "the dog", "their
+// dog", "the household's dog") rather than a specific name. Used only to resolve
+// the LONE dog of a single-dog household — a specific name is never treated as
+// generic, so a wrong/new name can't silently resolve to that dog.
+function isGenericDogReference(query: string): boolean {
+  const words = query
+    .toLowerCase()
+    .replace(/[^a-z']/g, " ")
+    .split(/\s+/)
+    .filter(Boolean);
+  const core = words.filter((w) => !GENERIC_DET_WORDS.has(w));
+  return core.length === 1 && GENERIC_DOG_WORDS.has(core[0]);
+}
+
 function toSearchHousehold(client: Client, pets: Pet[]): SearchHousehold {
   return {
     id: client.id,
@@ -100,9 +151,27 @@ export function resolvePetWithinHousehold(
   householdAppointments: Appointment[],
 ): PetMatchResult {
   const query = (petName ?? "").trim().toLowerCase();
-  if (!query) return { kind: "none" };
 
   const groups = groupPetsForDisplay(householdPets, householdAppointments);
+
+  // Single-dog auto-resolve: a household with exactly ONE dog on file, referred
+  // to GENERICALLY ("the dog", "their dog"), resolves to that one dog — there is
+  // no other dog to disambiguate against, so asking "which dog?" is pure friction.
+  // Restricting this to a generic reference means a specific (wrong or brand-new)
+  // name still falls through to the name match below, never silently resolving to
+  // the lone dog. An empty query is NOT treated as generic; it stays `none`
+  // (callers pass a required name — empty means "unspecified", which must ask).
+  if (query && groups.length === 1 && isGenericDogReference(query)) {
+    const group = groups[0];
+    return {
+      kind: "matched",
+      petId: group.pet.id,
+      groupPetIds: group.pets.map((pet) => pet.id),
+    };
+  }
+
+  if (!query) return { kind: "none" };
+
   const scored = groups
     .map((group) => ({
       group,

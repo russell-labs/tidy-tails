@@ -216,6 +216,42 @@ describe("propose_book_appointment (batched)", () => {
       }),
     ).rejects.toBeInstanceOf(AgentToolError);
   });
+
+  // Behavior (4): a genuinely-missing required detail must ASK, not stall and not
+  // propose-on-a-guess. With no drop-off time, the tool asks for it (a clear,
+  // caller-correctable AgentToolError the model relays as one short question) —
+  // it never produces a proposal and never throws an unexpected error.
+  it("asks for the drop-off time when none is given (never stalls or proposes without it)", async () => {
+    loadDatasetMock.mockResolvedValue(dataset());
+    const call = runAgentWriteTool("propose_book_appointment", {
+      household: "Mary Jones",
+      pets: ["Kiwi"],
+      date: "2026-07-11",
+      service_type: "full_groom",
+      location: "gina",
+      // no time_slot — must ask, not guess or stall
+    });
+    await expect(call).rejects.toBeInstanceOf(AgentToolError);
+    await expect(call).rejects.toThrow(/drop-?off|what time/i);
+  });
+
+  // Behavior (3): a household with exactly ONE dog, referred to generically, books
+  // that dog — the tool does not ask "which dog?" and the proposal carries the
+  // dog's real name (Kiwi), not the generic phrase.
+  it("auto-resolves a household's only dog from a generic 'the dog' reference", async () => {
+    loadDatasetMock.mockResolvedValue(dataset()); // one dog on file: Kiwi
+    const proposal = (await runAgentWriteTool("propose_book_appointment", {
+      household: "Mary Jones",
+      pets: ["the dog"],
+      date: "2026-07-11",
+      time_slot: "10:00am",
+      service_type: "full_groom",
+      location: "gina",
+    })) as BookAppointmentProposal;
+    expect(proposal.kind).toBe("book_appointment");
+    expect(proposal.petNames).toBe("Kiwi");
+    expect(proposal.petQueries).toEqual(["Kiwi"]);
+  });
 });
 
 describe("propose_book_appointment (one_to_one)", () => {

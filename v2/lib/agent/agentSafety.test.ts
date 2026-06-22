@@ -296,6 +296,33 @@ describe("booking an existing dog routes to propose_book_appointment (not add_ho
     expect(prompt).toContain("never re-ask");
     expect(prompt).toMatch(/one confirmation over a chain of questions/);
   });
+
+  // The conservative counterweight to "propose sooner" — and the fix for the hang
+  // PR #80 caused. The model must ASK for genuinely-missing required info (above
+  // all the drop-off TIME) with one short question and STOP, never try to propose
+  // without it, and never loop on a just-failed tool call. Pinned as guidance
+  // strings (CI has no model key); the live Preview booking is the real proof.
+  it("(4) the prompt tells the model to ASK for a missing drop-off time and STOP — never stall or propose without it", () => {
+    const prompt = runAgentSrc.toLowerCase();
+    // Ask exactly one short question for the missing detail, then wait.
+    expect(prompt).toMatch(/ask (one|a) (short )?question/);
+    expect(prompt).toMatch(/and stop|then stop|wait for her answer/);
+    // Never propose a booking without a drop-off time, and never guess one.
+    expect(prompt).toMatch(/without a drop-off time/);
+    expect(prompt).toMatch(/never guess|do not guess|not guess one/);
+  });
+
+  it("(5) the prompt forbids looping on a just-failed tool call", () => {
+    const prompt = runAgentSrc.toLowerCase();
+    expect(prompt).toMatch(/same tool again|same tool .* loop|do not call that same tool/);
+  });
+
+  it("(6) the prompt tells the model to use a household's only dog without asking which", () => {
+    const prompt = runAgentSrc.toLowerCase();
+    expect(prompt).toMatch(/exactly one dog|only one dog|a single dog/);
+    expect(prompt).toMatch(/use that dog/);
+    expect(prompt).toMatch(/do not ask which|don't ask which|without asking which/);
+  });
 });
 
 // Cross-tenant isolation, tool-layer guarantee. The hard boundary is the per-org

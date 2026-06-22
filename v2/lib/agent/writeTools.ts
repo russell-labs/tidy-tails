@@ -348,7 +348,17 @@ const proposeBookAppointment: AgentWriteTool = {
     const household = householdInputFrom(input);
     const petQueries = petQueriesFrom(input);
     const date = requireIsoDate(input.date, "date");
-    const timeSlot = requireString(input.time_slot, "time_slot");
+    // The drop-off time is required. If it's missing, ASK for it (one short
+    // question) — a clear, caller-correctable error the model relays. Never
+    // propose a booking without a drop-off time, and never guess one.
+    const timeSlotInput =
+      typeof input.time_slot === "string" ? input.time_slot.trim() : "";
+    if (!timeSlotInput) {
+      throw new AgentToolError(
+        "What time is the drop-off? Ask the operator for it, then pass it as `time_slot` — don't guess one.",
+      );
+    }
+    const timeSlot = timeSlotInput;
     const serviceType = requireServiceType(input.service_type);
     const fee = optionalMoney(input.fee, "fee");
     const locationInput =
